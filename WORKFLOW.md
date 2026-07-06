@@ -15,20 +15,21 @@ overrides this workflow.
 ## The chain
 
 ```
-idea → to-issues → triage → from-issue → PR
-     → requesting-code-review → from-pr-review ⇄ receiving-code-review
-     → check-run gate → merge (or follow-up issue)
-     → next → (back to from-issue)
+chat / PRD / messy idea → to-issues → triage → next → from-issue
+     → PR with closing issue reference + evidence bundle
+     → requesting-code-review → from-pr-review ⇄ receiving-code-review if judgment is needed
+     → retest → check-run gate → merge candidate / human stop / follow-up issue
+     → next
 ```
 
-`next` is the loop-closer: after a merge, it tells you what's eligible to work
-next, so "PR merged, now what" has an answer instead of a cold-start roadmap ask.
+`next` is the state-machine selector: it lists ready-for-agent issues whose
+blockers are both closed and contract-satisfying.
 
 | Skill | Owner | Role |
 |---|---|---|
 | `to-issues` | adopted (Matt Pocock) | messy idea → scoped GitHub issues, one vertical slice each. Tags each issue HITL or AFK **at creation**. |
 | `triage` | adopted (Matt Pocock) | label + sort. Only `ready-for-agent` issues are eligible for `from-issue`. |
-| `from-issue` | Tracer custom | one `ready-for-agent` issue → branch → smallest safe slice → PR with an evidence bundle. One issue, one PR. |
+| `from-issue` | Tracer custom | one `ready-for-agent` issue → branch → smallest safe slice → PR with a closing issue reference + evidence bundle. One issue, one PR. |
 | `requesting-code-review` | adopted (REPOZY) | reviewer side. Security pass, severity-blocks-merge, produces a merge-readiness verdict. |
 | `from-pr-review` | Tracer custom | **plumbing** for the return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, emit handoff. Delegates every judgment call to `receiving-code-review`. |
 | `receiving-code-review` | adopted (REPOZY) | **judgment**. Per review item: fix now / scope creep / follow-up issue / defer. Forbids "good catch" / agreeing before verification. |
@@ -50,8 +51,10 @@ quality or of any agent's prose claim that tests passed. Readiness is read from
 actual check-run state (`gh pr checks` / GitHub API), never from a report.
 
 **3. Slice-contract rule.** A downstream issue may only start if the upstream
-blocker supplies the exact contract it consumes. If the contract is missing,
-ambiguous, or weaker than needed, stop and request that contract first.
+blocker supplies the exact data/API/behavior/file contract it consumes. A closed
+blocker is not sufficient by itself. If the contract is missing, ambiguous,
+stale, or weaker than needed, stop planning or implementation and request that
+contract first.
 
 > Case study: Issue 6 / PR 8 failed because the downstream slice was allowed to
 > proceed before the upstream contract it depended on was made explicit.
