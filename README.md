@@ -1,0 +1,96 @@
+# tracer-workflow
+
+Issue-backed, PR-mediated, evidence-first AI coding workflow. GitHub is the
+coordination layer — issues, PRs, comments, and check runs are the source of
+truth, not any chat transcript.
+
+Doctrine, the HITL/AFK rule, the evidence-bundle contract, and the check-run gate:
+[WORKFLOW.md](./WORKFLOW.md).
+
+## Workflow
+
+```mermaid
+flowchart LR
+    idea([raw idea / PRD]) --> ti[to-issues]
+    ti --> tr[triage]
+    tr -->|ready-for-agent| nx[next]
+    nx --> fi[from-issue]
+    fi -->|"PR + Closes #N"| rg[review-gate]
+    rg -->|verdict on PR| fpr[from-pr-review]
+    fpr <-->|delegates judgment| rec[receiving-code-review]
+    fpr -->|check-run gate| gate{all checks green?}
+    gate -->|yes| merge([merge])
+    gate -->|no| rg
+    merge --> nx
+
+    classDef custom fill:#2d3748,stroke:#4fd1c5,color:#fff
+    classDef adopted fill:#2d3748,stroke:#718096,color:#fff
+    class fi,fpr,nx,rg custom
+    class ti,tr,rec adopted
+```
+
+Teal = custom (owned here). Gray = adopted (upstream copies, consumed not
+authored). `review-gate` runs `requesting-code-review` inside a fresh session and
+posts the verdict to the PR.
+
+## Skills
+
+| Skill | Source | Role |
+|---|---|---|
+| `to-issues` | Matt Pocock | idea/PRD → scoped issues, one vertical slice each |
+| `triage` | Matt Pocock | label + sort; only `ready-for-agent` is eligible for `from-issue` |
+| `next` | custom | after merge, list open `ready-for-agent` issues with no open blockers |
+| `from-issue` | custom | one issue → branch → slice → PR with `Closes #N` + evidence bundle |
+| `requesting-code-review` | superpowers | producer: severity-tagged findings + security pass (run by `review-gate`) |
+| `receiving-code-review` | superpowers | disposition: fix-now / defer / follow-up / reject / needs-human |
+| `review-gate` | custom | fresh-session review posts a SHA-stamped verdict to the PR |
+| `from-pr-review` | custom | apply fixes, verify against real check-runs, reply per thread, re-push |
+
+Custom skills are versioned here and symlinked into the runtime skills dir.
+Adopted skills are upstream copies — extended through their config seams or routed
+around, not edited in place. `receiving-code-review` has no config seam and is used
+stock; `requesting-code-review` takes review scope via a root `context-snapshot.json`
+when present.
+
+## review-gate
+
+The review circuit, run so GitHub is the handoff bus — no clipboard relay.
+
+1. **Review** — paste `skills/review-gate/PROMPT.md` into a fresh ChatGPT/Claude
+   web session (GitHub connector, comment-write). It runs `requesting-code-review`,
+   classifies findings with `receiving-code-review` dispositions, and posts a
+   verdict comment to the PR. Fresh session is deliberate: it reviews against the
+   issue as written, carrying none of the planning thread's assumptions.
+
+2. **Trigger** — `tooling/review-gate-poller/` polls open PRs for a gate verdict
+   whose `head-sha` matches current head. On a fresh `needs-fix`, it shells
+   `opencode run` to apply the fix pass via `from-pr-review`. Pushing invalidates
+   the verdict (new SHA) and the cycle repeats until `merge-candidate`.
+
+Verdict format and the two load-bearing rules (SHA-staleness, comment-only):
+[skills/review-gate/references/verdict-contract.md](./skills/review-gate/references/verdict-contract.md).
+
+Only `needs-fix` triggers autonomous action. `merge-candidate`, `needs-human`, and
+`blocked` surface to a human — merge stays manual.
+
+### Poller setup
+
+Requires `bun`, `gh` (authenticated), `opencode` on PATH.
+
+```
+# smoke-test by hand first
+cd tooling/review-gate-poller
+RG_REPO=<owner/repo> RG_WORKDIR=<repo working dir> bun poller.ts
+
+# then install the launchd job (edit paths + env in the plist first)
+cp com.tracer.review-gate-poller.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.tracer.review-gate-poller.plist
+```
+
+Env: `RG_REPO` (required), `RG_WORKDIR` (repo dir the fix pass runs in),
+`RG_STATE_PATH` (idempotency state, defaults under `~/.local/state`),
+`RG_REVIEWER_LOGIN` (optional — restrict verdicts to one author).
+
+Hands-off is bounded by the machine being awake. Asleep = no poll; fallback is
+reading the latest gate comment and kicking the session yourself. The verdict is
+on GitHub either way.
