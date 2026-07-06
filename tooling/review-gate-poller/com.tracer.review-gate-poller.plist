@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the review-gate poller.
+
+  Install:
+    cp com.tracer.review-gate-poller.plist ~/Library/LaunchAgents/
+    # edit the paths + env below first
+    launchctl load ~/Library/LaunchAgents/com.tracer.review-gate-poller.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.tracer.review-gate-poller.plist
+
+  StartInterval is seconds between runs. 60 is fine — you're not latency-bound.
+  Bounded by the machine being awake; asleep = no poll, which is the accepted
+  manual-fallback case (read the gate comment and kick the session yourself).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tracer.review-gate-poller</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- absolute path to bun; `which bun` -->
+        <string>/Users/perrystory/.bun/bin/bun</string>
+        <string>/Users/perrystory/Code/tracer-workflow/tooling/review-gate-poller/poller.ts</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>RG_REPO</key>
+        <string>ptstory/themarkergirl.com</string>
+        <key>RG_WORKDIR</key>
+        <string>/Users/perrystory/Code/vibecoding/themarkergirl.com</string>
+        <!-- optional: restrict verdicts to one reviewer login -->
+        <!-- <key>RG_REVIEWER_LOGIN</key><string>ptstory</string> -->
+        <!-- gh and opencode need PATH; launchd's default PATH is minimal -->
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/Users/perrystory/.bun/bin:/usr/bin:/bin:/usr/local/bin</string>
+        <key>HOME</key>
+        <string>/Users/perrystory</string>
+    </dict>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/perrystory/.local/state/review-gate/poller.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/perrystory/.local/state/review-gate/poller.err.log</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
