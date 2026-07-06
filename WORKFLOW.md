@@ -7,9 +7,10 @@ Issue-backed, PR-mediated, evidence-first AI coding workflow.
 the source of truth, not any chat transcript.
 
 If you're reading this because you forgot what the workflow was: the chain is
-below, the skills are in `skills/`, and the two rules that are *yours* (not
-inherited from the adopted skills) are the evidence-bundle contract and the
-check-run gate. Those two are the load-bearing parts.
+below, the skills are in `skills/`, and the repo-owned rules are the
+evidence-bundle contract, the slice-contract rule, and the check-run gate.
+`using-superpowers` is optional guardrail context, not a global router that
+overrides this workflow.
 
 ## The chain
 
@@ -23,15 +24,15 @@ idea → to-issues → triage → from-issue → PR
 `next` is the loop-closer: after a merge, it tells you what's eligible to work
 next, so "PR merged, now what" has an answer instead of a cold-start roadmap ask.
 
-| Skill | Source | Role |
+| Skill | Owner | Role |
 |---|---|---|
-| `to-issues` | Matt Pocock (adopted) | messy idea → scoped GitHub issues, one vertical slice each. Tags each issue HITL or AFK **at creation**. |
-| `triage` | Matt Pocock (adopted) | label + sort. Only `ready-for-agent` issues are eligible for `from-issue`. |
-| `from-issue` | custom | one `ready-for-agent` issue → branch → smallest safe slice → PR with an evidence bundle. One issue, one PR. |
-| `requesting-code-review` | REPOZY (adopted) | reviewer side. Security pass, severity-blocks-merge, produces a merge-readiness verdict. |
-| `from-pr-review` | custom | **plumbing** for the return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, emit handoff. Delegates every judgment call to `receiving-code-review`. |
-| `receiving-code-review` | REPOZY (adopted) | **judgment**. Per review item: fix now / scope creep / follow-up issue / defer. Forbids "good catch" / agreeing before verification. |
-| `next` | custom | loop-closer. After merge, lists open `ready-for-agent` issues with no open blockers → hand one to `from-issue`. Read-only. |
+| `to-issues` | adopted (Matt Pocock) | messy idea → scoped GitHub issues, one vertical slice each. Tags each issue HITL or AFK **at creation**. |
+| `triage` | adopted (Matt Pocock) | label + sort. Only `ready-for-agent` issues are eligible for `from-issue`. |
+| `from-issue` | Tracer custom | one `ready-for-agent` issue → branch → smallest safe slice → PR with an evidence bundle. One issue, one PR. |
+| `requesting-code-review` | adopted (REPOZY) | reviewer side. Security pass, severity-blocks-merge, produces a merge-readiness verdict. |
+| `from-pr-review` | Tracer custom | **plumbing** for the return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, emit handoff. Delegates every judgment call to `receiving-code-review`. |
+| `receiving-code-review` | adopted (REPOZY) | **judgment**. Per review item: fix now / scope creep / follow-up issue / defer. Forbids "good catch" / agreeing before verification. |
+| `next` | Tracer custom | loop-closer. After merge, lists open `ready-for-agent` issues with no open blockers → hand one to `from-issue`. Read-only. |
 
 ## The two rules that are yours
 
@@ -48,9 +49,12 @@ required check is pending or red for the current head SHA — regardless of diff
 quality or of any agent's prose claim that tests passed. Readiness is read from
 actual check-run state (`gh pr checks` / GitHub API), never from a report.
 
-> This is the exact failure the gate exists for: an agent declaring a PR
-> "mergeable" off reported test passes, without reading the check-run state for
-> the head SHA it just pushed.
+**3. Slice-contract rule.** A downstream issue may only start if the upstream
+blocker supplies the exact contract it consumes. If the contract is missing,
+ambiguous, or weaker than needed, stop and request that contract first.
+
+> Case study: Issue 6 / PR 8 failed because the downstream slice was allowed to
+> proceed before the upstream contract it depended on was made explicit.
 
 ## HITL / AFK
 
@@ -67,10 +71,11 @@ Anything touching write endpoints, auth paths, public surface, or live infra
 
 ## Where things live
 
-- Canonical source of truth for custom skills: **this repo**, `skills/`.
+- Canonical source of truth for Tracer custom skills: **this repo**, `skills/`.
 - Runtime: `~/.agents/skills/<name>` symlinks into this repo, so there is one
-  copy and the repo is authoritative. (The adopted skills — to-issues, triage,
-  requesting/receiving-code-review — are separate copies from their upstreams;
-  only the custom skills are symlinked here.)
+  copy and the repo is authoritative.
+- Adopted skills (`to-issues`, `triage`, `requesting-code-review`,
+  `receiving-code-review`) live in their upstream skill repos/copies and are
+  consumed here; they are not authored by this repo.
 - Per-repo contract: each project gets an `AGENTS.md` / `WORKFLOW.md` pointer and
   its label mapping via `setup-matt-pocock-skills`.
