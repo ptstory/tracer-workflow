@@ -59,6 +59,34 @@ contract first.
 > Case study: Issue 6 / PR 8 failed because the downstream slice was allowed to
 > proceed before the upstream contract it depended on was made explicit.
 
+## Resumability
+
+Every stage reads its input from a GitHub artifact (issue, PR, verdict comment,
+check-run state) and writes its output as one. No stage depends on in-memory
+session context from a prior stage. So the workflow resumes from any stage, in
+any tool, by pointing the stage at the relevant GitHub artifact — the same
+property that makes it tool-agnostic across ChatGPT, Claude, and OpenCode.
+
+Resume entry points:
+
+| State on GitHub | Resume with |
+|---|---|
+| issue exists, no PR | `from-issue <issue-url>` |
+| PR exists, no verdict | `review-gate` against the PR |
+| PR exists, `needs-fix` verdict on current head | `from-pr-review` |
+| merged | `next` |
+
+Two limits:
+
+- **Resumable between stages, not within one.** A stage that died half-done with
+  uncommitted local work has no GitHub artifact to resume from — the work is only
+  in the worktree. Re-run the stage; `from-issue`'s dirty-tree handling makes that
+  restart clean rather than a collision. This is why stages commit incrementally:
+  the more each stage persists, the smaller this dead zone.
+- **SHA-staleness bounds fix-pass resume.** A verdict is valid only on its head
+  SHA. If head moved since the verdict, resuming `from-pr-review` correctly does
+  nothing until a fresh review runs against current head.
+
 ## HITL / AFK
 
 The autonomy call is made **at issue creation**, in the planning plane, with full
