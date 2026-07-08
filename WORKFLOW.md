@@ -15,25 +15,48 @@ overrides this workflow.
 ## The chain
 
 ```
-chat / PRD / messy idea → to-issues → triage → next → from-issue
+chat / PRD / messy idea → to-issues → triage-queue → agent-brief → next → from-issue
      → PR with closing issue reference + evidence bundle
      → requesting-code-review → from-pr-review ⇄ receiving-code-review if judgment is needed
      → retest → check-run gate → merge candidate / human stop / follow-up issue
      → next
 ```
 
-`next` is the state-machine selector: it lists ready-for-agent issues whose
-blockers are both closed and contract-satisfying.
+`triage-queue` is the shallow repository-wide selector: it recommends how open
+issues and external PRs should move through the state machine, but it does not
+change labels, close issues, or write durable briefs.
 
-| Skill | Owner | Role |
+`agent-brief` is the deep single-item triage pass: it turns one selected issue or
+PR into the durable GitHub comment that `ready-for-agent`, `needs-info`,
+`ready-for-human`, or `wontfix` depends on.
+
+`next` is the state-machine selector after merge: it lists ready-for-agent issues
+whose blockers are both closed and contract-satisfying.
+
+| Skill / prompt | Owner | Role |
 |---|---|---|
 | `to-issues` | adopted (Matt Pocock) | messy idea → scoped GitHub issues, one vertical slice each. Tags each issue HITL or AFK **at creation**. |
-| `triage` | adopted (Matt Pocock) | label + sort. Only `ready-for-agent` issues are eligible for `from-issue`. |
+| `triage-queue` | Tracer custom prompt | repository-wide shallow issue/PR pass; recommends states for maintainer selection only. |
+| `agent-brief` | Tracer custom prompt | deep single issue/PR triage; writes the durable handoff comment for delegation or human stop. |
 | `from-issue` | Tracer custom | one `ready-for-agent` issue → branch → smallest safe slice → PR with a closing issue reference + evidence bundle. One issue, one PR. |
 | `requesting-code-review` | adopted (REPOZY) | reviewer side. Security pass, severity-blocks-merge, produces a merge-readiness verdict. |
 | `from-pr-review` | Tracer custom | **plumbing** for the return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, emit handoff. Delegates every judgment call to `receiving-code-review`. |
 | `receiving-code-review` | adopted (REPOZY) | **judgment**. Per review item: fix now / scope creep / follow-up issue / defer. Forbids "good catch" / agreeing before verification. |
 | `next` | Tracer custom | loop-closer. After merge, lists open `ready-for-agent` issues with no open blockers → hand one to `from-issue`. Read-only. |
+
+## Triage depth rule
+
+Repository-wide triage is allowed only as a queueing pass. It may recommend
+states and identify promising `ready-for-agent` candidates, but it should not
+pretend to complete the deeper contract for every issue in one session.
+
+Deep triage remains one issue or PR at a time. Before an item becomes safe for an
+AFK agent, the `agent-brief` pass should gather context, check the current repo
+state, identify scope boundaries, and produce concrete acceptance criteria.
+
+This preserves the workflow invariant that `from-issue` consumes one durable
+GitHub artifact whose contract is specific enough to execute without relying on
+chat memory.
 
 ## The two rules that are yours
 
@@ -71,6 +94,8 @@ Resume entry points:
 
 | State on GitHub | Resume with |
 |---|---|
+| repo has many untriaged / stale issues | `triage-queue <repo>` |
+| selected issue/PR needs durable triage comment | `agent-brief <issue-or-pr-url>` |
 | issue exists, no PR | `from-issue <issue-url>` |
 | PR exists, no verdict | `review-gate` against the PR |
 | PR exists, `needs-fix` verdict on current head | `from-pr-review` |
@@ -102,9 +127,10 @@ Anything touching write endpoints, auth paths, public surface, or live infra
 
 ## Where things live
 
-- Canonical source of truth for Tracer custom skills: **this repo**, `skills/`.
-- Runtime: `~/.agents/skills/<name>` symlinks into this repo, so there is one
-  copy and the repo is authoritative.
+- Canonical source of truth for Tracer custom skills and reusable prompts: **this
+  repo**, `skills/`.
+- Runtime: `~/.agents/skills/<name>` symlinks into this repo where a prompt is
+  installed as a skill, so there is one copy and the repo is authoritative.
 - Adopted skills (`to-issues`, `triage`, `requesting-code-review`,
   `receiving-code-review`) live in their upstream skill repos/copies and are
   consumed here; they are not authored by this repo.
