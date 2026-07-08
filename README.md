@@ -12,7 +12,8 @@ Doctrine, the HITL/AFK rule, the evidence-bundle contract, and the check-run gat
 ```mermaid
 flowchart LR
     idea([raw idea / PRD]) --> ti[to-issues]
-    ti --> tr[triage]
+    ti --> tq[triage-queue]
+    tq --> tr[agent-brief]
     tr -->|ready-for-agent| nx[next]
     nx --> fi[from-issue]
     fi -->|"PR + Closes #N"| rg[review-gate]
@@ -25,20 +26,21 @@ flowchart LR
 
     classDef custom fill:#2d3748,stroke:#4fd1c5,color:#fff
     classDef adopted fill:#2d3748,stroke:#718096,color:#fff
-    class fi,fpr,nx,rg custom
-    class ti,tr,rec adopted
+    class fi,fpr,nx,rg,tq,tr custom
+    class ti,rec adopted
 ```
 
 Teal = custom (owned here). Gray = adopted (upstream copies, consumed not
 authored). `review-gate` runs `requesting-code-review` inside a fresh session and
 posts the verdict to the PR.
 
-## Skills
+## Skills and reusable prompts
 
-| Skill | Source | Role |
+| Name | Source | Role |
 |---|---|---|
 | `to-issues` | Matt Pocock | idea/PRD → scoped issues, one vertical slice each |
-| `triage` | Matt Pocock | label + sort; only `ready-for-agent` is eligible for `from-issue` |
+| `triage-queue` | custom prompt | shallow repository-wide pass over open issues/PRs; recommends queue state without changing GitHub |
+| `agent-brief` | custom prompt | deep single issue/PR triage; writes the durable ready-for-agent / needs-info / wontfix handoff comment |
 | `next` | custom | after merge, list open `ready-for-agent` issues with no open blockers |
 | `from-issue` | custom | one issue → branch → slice → PR with `Closes #N` + evidence bundle |
 | `requesting-code-review` | superpowers | producer: severity-tagged findings + security pass (run by `review-gate`) |
@@ -46,11 +48,25 @@ posts the verdict to the PR.
 | `review-gate` | custom | fresh-session review posts a SHA-stamped verdict to the PR |
 | `from-pr-review` | custom | apply fixes, verify against real check-runs, reply per thread, re-push |
 
-Custom skills are versioned here and symlinked into the runtime skills dir.
-Adopted skills are upstream copies — extended through their config seams or routed
-around, not edited in place. `receiving-code-review` has no config seam and is used
-stock; `requesting-code-review` takes review scope via a root `context-snapshot.json`
-when present.
+Custom skills and reusable prompts are versioned here and symlinked into the
+runtime skills dir when appropriate. Adopted skills are upstream copies — extended
+through their config seams or routed around, not edited in place. `receiving-code-review`
+has no config seam and is used stock; `requesting-code-review` takes review scope
+via a root `context-snapshot.json` when present.
+
+## triage-queue and agent-brief
+
+The triage side has two reusable plain prompts, not auto-triggered skills:
+
+1. **Queue pass** — paste `skills/triage-queue/PROMPT.md` into a web session to
+   evaluate many open issues/PRs shallowly. It produces recommendations only: no
+   labels, comments, closures, or agent briefs.
+2. **Deep brief** — paste `skills/agent-brief/PROMPT.md` for one selected issue or
+   PR. It reads the GitHub artifact deeply and writes the durable triage comment
+   that makes `ready-for-agent` safe.
+
+This keeps repository-wide triage useful without weakening the single-issue
+contract that `from-issue` consumes.
 
 ## review-gate
 
