@@ -18,7 +18,8 @@ flowchart LR
     nx --> fi[from-issue]
     fi -->|"PR + Closes #N"| rg[review-gate]
     rg -->|verdict on PR| fpr[from-pr-review]
-    fpr <-->|delegates judgment| rec[receiving-code-review]
+    fpr -->|delegates judgment| rec[receiving-code-review]
+    rec -->|disposition| fpr
     fpr -->|check-run gate| gate{all checks green?}
     gate -->|yes| merge([merge])
     gate -->|no| rg
