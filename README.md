@@ -38,15 +38,15 @@ posts the verdict to the PR.
 
 | Name | Source | Role |
 |---|---|---|
-| `to-issues` | Matt Pocock | idea/PRD → scoped issues, one vertical slice each |
-| `triage-queue` | custom prompt | shallow repository-wide pass over open issues/PRs; recommends queue state without changing GitHub |
-| `agent-brief` | custom prompt | deep single issue/PR triage; writes the durable ready-for-agent / needs-info / wontfix handoff comment |
-| `next` | custom skill | after merge, list open `ready-for-agent` issues with no open blockers |
-| `from-issue` | custom skill | one issue → branch → slice → PR with `Closes #N` + evidence bundle |
-| `requesting-code-review` | superpowers | producer: severity-tagged findings + security pass (run by `review-gate`) |
-| `receiving-code-review` | superpowers | disposition: fix-now / defer / follow-up / reject / needs-human |
-| `review-gate` | custom skill | fresh-session review posts a SHA-stamped verdict to the PR |
-| `from-pr-review` | custom skill | apply fixes, verify against real check-runs, reply per thread, re-push |
+| `to-issues` | adopted (Matt Pocock) | idea/PRD → scoped issues, one vertical slice each |
+| `triage-queue` | Tracer custom prompt | shallow repository-wide pass over open issues/PRs; recommends queue state without changing GitHub |
+| `agent-brief` | Tracer custom prompt | deep single issue/PR triage; writes the durable ready-for-agent / needs-info / wontfix handoff comment |
+| `next` | Tracer custom skill | after merge, list open `ready-for-agent` issues with no open blockers |
+| `from-issue` | Tracer custom skill | one issue → branch → slice → PR with `Closes #N` + evidence bundle |
+| `requesting-code-review` | adopted (REPOZY) | producer: severity-tagged findings + security pass (run by `review-gate`) |
+| `receiving-code-review` | adopted (REPOZY) | disposition: fix-now / defer / follow-up / reject / needs-human |
+| `review-gate` | Tracer custom skill | fresh-session review posts a SHA-stamped verdict to the PR |
+| `from-pr-review` | Tracer custom skill | apply fixes, verify against real check-runs, reply per thread, re-push |
 
 Custom skills are versioned under `skills/`. Plain reusable prompts that are not
 runtime skills live under `prompts/`. Adopted skills are upstream copies — extended
