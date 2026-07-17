@@ -111,3 +111,11 @@ Env: `RG_REPO` (required), `RG_WORKDIR` (repo dir the fix pass runs in),
 Hands-off is bounded by the machine being awake. Asleep = no poll; fallback is
 reading the latest gate comment and kicking the session yourself. The verdict is
 on GitHub either way.
+
+## unbacked-work-monitor
+
+Nightly Bun monitor for local-only commits retained by branches or linked
+worktrees but not by trusted remote refs. It scans configurable repository roots
+recursively, discovers non-bare Git repos, and writes JSON + Markdown reports.
+See [`tooling/unbacked-work-monitor/README.md`](./tooling/unbacked-work-monitor/README.md)
+for roots-based invocation, output paths, and launchd install notes.
