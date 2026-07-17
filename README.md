@@ -100,6 +100,7 @@ cd tooling/review-gate-poller
 RG_REPO=<owner/repo> RG_WORKDIR=<repo working dir> bun poller.ts
 
 # then install the launchd job (edit paths + env in the plist first)
+mkdir -p ~/.local/state/review-gate
 cp com.tracer.review-gate-poller.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.tracer.review-gate-poller.plist
 ```
@@ -111,6 +112,9 @@ Env: `RG_REPO` (required), `RG_WORKDIR` (repo dir the fix pass runs in),
 Hands-off is bounded by the machine being awake. Asleep = no poll; fallback is
 reading the latest gate comment and kicking the session yourself. The verdict is
 on GitHub either way.
+
+The poller exits 0 when a run completes; non-zero means a real setup/runtime
+error.
 
 ## unbacked-work-monitor
 

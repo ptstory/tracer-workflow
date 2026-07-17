@@ -117,6 +117,17 @@ function discoverRepoRoot(candidatePath: string): string | null {
 function discoverReposUnderRoot(root: string): string[] {
   const discovered = new Set<string>();
   const visited = new Set<string>();
+  const rootPath = resolve(root);
+
+  if (!existsSync(rootPath)) {
+    throw new Error(`configured root not found: ${rootPath}`);
+  }
+
+  try {
+    readdirSync(rootPath, { withFileTypes: true });
+  } catch {
+    throw new Error(`configured root unreadable: ${rootPath}`);
+  }
 
   function walk(candidatePath: string): void {
     const absolutePath = resolve(candidatePath);

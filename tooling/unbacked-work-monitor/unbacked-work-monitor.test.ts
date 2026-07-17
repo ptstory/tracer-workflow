@@ -193,6 +193,24 @@ test("no trusted remote is classified explicitly", () => {
   expect(report.repos[0].classification).toBe("no-trusted-remote-configured-or-found");
 });
 
+test("missing configured root fails instead of scanning empty", () => {
+  const baseDir = sandbox();
+  const missingRoot = join(baseDir, "missing-root");
+
+  expect(() => scanRoots([missingRoot], ["origin"])).toThrow(/configured root/i);
+});
+
+test("empty but valid configured root is allowed", () => {
+  const baseDir = sandbox();
+  const emptyRoot = join(baseDir, "empty-root");
+  mkdirSync(emptyRoot, { recursive: true });
+
+  const report = scanRoots([emptyRoot], ["origin"]);
+
+  expect(report.repos).toEqual([]);
+  expect(report.counts.reposScanned).toBe(0);
+});
+
 test("fetch failure is isolated and scan continues", () => {
   const baseDir = sandbox();
   const rootsDir = join(baseDir, "roots");

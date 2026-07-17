@@ -31,6 +31,7 @@ scans the discovered repos.
 Install:
 
 ```bash
+mkdir -p /Users/perrystory/.local/state/tracer/unbacked-work
 cp /Users/perrystory/Code/tracer-workflow/tooling/unbacked-work-monitor/com.tracer.unbacked-work-monitor.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.tracer.unbacked-work-monitor.plist
 ```
@@ -41,3 +42,6 @@ Remove:
 launchctl unload ~/Library/LaunchAgents/com.tracer.unbacked-work-monitor.plist
 rm ~/Library/LaunchAgents/com.tracer.unbacked-work-monitor.plist
 ```
+
+Successful runs exit 0 whether or not attention items were found; non-zero means
+the scan or output write failed.
