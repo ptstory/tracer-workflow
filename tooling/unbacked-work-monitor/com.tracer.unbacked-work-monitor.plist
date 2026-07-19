@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tracer.unbacked-work-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/perrystory/.bun/bin/bun</string>
+        <string>/Users/perrystory/Code/tracer-workflow/tooling/unbacked-work-monitor/unbacked-work-monitor.ts</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/perrystory</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/Users/perrystory/.bun/bin:/usr/bin:/bin:/usr/local/bin</string>
+        <key>UNBACKED_WORK_ROOTS</key>
+        <string>/Users/perrystory/Code/vibecoding,/Users/perrystory/Code/corby</string>
+        <key>UNBACKED_WORK_TRUSTED_REMOTES</key>
+        <string>origin</string>
+        <key>UNBACKED_WORK_OUTPUT_DIR</key>
+        <string>/Users/perrystory/.local/state/tracer/unbacked-work</string>
+    </dict>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/perrystory/.local/state/tracer/unbacked-work/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/perrystory/.local/state/tracer/unbacked-work/launchd.err.log</string>
+</dict>
+</plist>
