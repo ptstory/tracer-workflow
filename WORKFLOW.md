@@ -40,8 +40,9 @@ threads, not agent briefs.
 `next` is the state-machine selector after merge: it lists ready-for-agent issues
 whose blockers are both closed and contract-satisfying.
 
-Router coupling should be tested empirically. Issue 6 is one such run: the
-optional router did not block PR creation in that run.
+Router coupling must be tested empirically. A run is evidence only when its
+repository, issue or PR, enabled optional tooling, commands, and outcome are
+recorded durably; a numbered anecdote or closed PR alone is insufficient.
 
 | Skill / prompt | Owner | Role |
 |---|---|---|
