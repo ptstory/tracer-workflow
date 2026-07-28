@@ -11,9 +11,7 @@ the source of truth, not any chat transcript.
 
 If you're reading this because you forgot what the workflow was: the chain is
 below, the skills are in `skills/`, the plain reusable prompts are in `prompts/`,
-and the repo-owned rules are the evidence-bundle contract, the slice-contract
-rule, and the check-run gate. `using-superpowers` is optional guardrail context,
-not a global router that overrides this workflow.
+and the repo-owned rules are the evidence-bundle contract, the slice-contract rule, and the check-run gate. `using-superpowers` is optional guardrail context, not a global router that overrides this workflow. `from-issue` is the execution stage for a `ready-for-agent` issue; it resumes the same issue/worktree when present, only emits a handoff-only result for a genuine blocker, and must not mint another implementation handoff for the same issue. Handoff-only only for genuine blockers.
 
 ## The chain
 
@@ -47,7 +45,7 @@ whose blockers are both closed and contract-satisfying.
 | `to-issues` | adopted (Matt Pocock) | messy idea → scoped GitHub issues, one vertical slice each. Tags each issue HITL or AFK **at creation**. |
 | `triage-queue` | Tracer custom prompt | repository-wide shallow issue/PR pass; recommends states for maintainer selection only. |
 | `agent-brief` | Tracer custom prompt | deep single issue/PR triage; writes the durable handoff comment for delegation or human stop. |
-| `from-issue` | Tracer custom skill | one `ready-for-agent` issue → branch → smallest safe slice → PR with a closing issue reference + evidence bundle. One issue, one PR. |
+| `from-issue` | Tracer custom skill | execution stage: one `ready-for-agent` issue → resume or create the issue worktree → smallest safe slice → PR with a closing issue reference + evidence bundle. Handoff-only only for genuine blockers; no duplicate implementation handoff for the same issue. |
 | `requesting-code-review` | adopted (REPOZY) | reviewer side. Security pass, severity-blocks-merge, produces a merge-readiness verdict. |
 | `from-pr-review` | Tracer custom skill | **plumbing** for the return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, emit handoff. Delegates every judgment call to `receiving-code-review`. |
 | `receiving-code-review` | adopted (REPOZY) | **judgment**. Uses the canonical verdict contract in `skills/review-gate/references/verdict-contract.md`. Forbids "good catch" / agreeing before verification. |
@@ -118,9 +116,12 @@ Two limits:
 
 - **Resumable between stages, not within one.** A stage that died half-done with
   uncommitted local work has no GitHub artifact to resume from — the work is only
-  in the worktree. Re-run the stage; `from-issue`'s dirty-tree handling makes that
-  restart clean rather than a collision. This is why stages commit incrementally:
-  the more each stage persists, the smaller this dead zone.
+  in the worktree. Re-run the stage; `from-issue` inspects dirty checkout/worktree
+  state explicitly and resumes the same issue/worktree when it is safe to do so,
+  rather than spawning a fresh implementation handoff. If the dirtiness is
+  unrelated or genuinely blocks execution, it stops with a blocker handoff. This
+  is why stages commit incrementally: the more each stage persists, the smaller
+  this dead zone.
 - **SHA-staleness bounds fix-pass resume.** A verdict is valid only on its head
   SHA. If head moved since the verdict, resuming `from-pr-review` correctly does
   nothing until a fresh review runs against current head.
