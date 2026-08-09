@@ -75,9 +75,9 @@ raw idea / PRD
 
 A raw idea goes through `to-issues` and comes out as scoped issues, one vertical
 slice each. `triage-queue` does a shallow pass over everything open and
-recommends what to look at; `agent-brief` then reads one issue deeply and writes
-the durable triage comment that makes `ready-for-agent` safe to apply. `next`
-reports which `ready-for-agent` issues have no open blockers.
+recommends what to look at; `agent-brief` then reads one issue deeply and
+produces the durable triage comment that makes `ready-for-agent` safe to apply.
+`next` reports which `ready-for-agent` issues have no open blockers.
 
 `from-issue` takes one of them, cuts a branch, implements the slice, and opens a
 PR carrying `Closes #N` and an evidence bundle — exact commands and their output,
@@ -122,8 +122,8 @@ Only `needs-fix` triggers autonomous action. `merge-candidate`, `needs-human`, a
 | Name | Source | Role |
 |---|---|---|
 | `to-issues` | adopted (Matt Pocock) | idea/PRD → scoped issues, one vertical slice each |
-| `triage-queue` | Tracer custom prompt | shallow repository-wide pass over open issues/PRs; recommends queue state without changing GitHub |
-| `agent-brief` | Tracer custom prompt | deep single issue/PR triage; writes the durable ready-for-agent / needs-info / wontfix handoff comment |
+| `triage-queue` | Tracer custom; installed as ChatGPT skill `gh-triage-queue` | shallow repository-wide pass over open issues/PRs; recommends queue state without changing GitHub |
+| `agent-brief` | Tracer custom; installed as ChatGPT skill `agent-brief` | deep single issue/PR triage; produces the durable ready-for-agent / needs-info / wontfix handoff comment |
 | `next` | Tracer custom skill | after merge, list open `ready-for-agent` issues with no open blockers |
 | `from-issue` | Tracer custom skill | one issue → branch → slice → PR with `Closes #N` + evidence bundle |
 | `requesting-code-review` | adopted (REPOZY) | producer: severity-tagged findings + security pass (run by `review-gate`) |
@@ -131,25 +131,29 @@ Only `needs-fix` triggers autonomous action. `merge-candidate`, `needs-human`, a
 | `review-gate` | Tracer custom skill | fresh-session review posts a SHA-stamped verdict to the PR |
 | `from-pr-review` | Tracer custom skill | apply fixes, verify against real check-runs, reply per thread, re-push |
 
-Custom skills are versioned under `skills/`. Plain reusable prompts that are not
-runtime skills live under `prompts/`. Adopted skills are upstream copies — extended
-through their config seams or routed around, not edited in place. `receiving-code-review`
-has no config seam and is used stock; `requesting-code-review` takes review scope
-via a root `context-snapshot.json` when present.
+Custom OpenCode skills are versioned under `skills/`. The canonical definitions
+for the ChatGPT-web stages live under `prompts/`. Adopted skills are upstream
+copies — extended through their config seams or routed around, not edited in
+place. `receiving-code-review` has no config seam and is used stock;
+`requesting-code-review` takes review scope via a root `context-snapshot.json`
+when present.
 
 ## triage-queue and agent-brief
 
-The triage side has two reusable plain prompts, not auto-triggered skills:
+The triage side is two stages, shallow then deep. Both are installed as created
+ChatGPT skills in the current deployment (`gh-triage-queue`, `agent-brief`); the
+canonical definitions live in this repo under `prompts/` and the installed skills
+are kept aligned with them by hand.
 
-1. **Queue pass** — paste `prompts/triage-queue.md` into a web session to evaluate
-   many open issues/PRs shallowly. It produces recommendations only: no labels,
-   comments, closures, or agent briefs.
-2. **Deep brief** — paste `prompts/agent-brief.md` for one selected issue or PR.
-   It reads the GitHub artifact deeply and writes the durable triage comment that
-   makes `ready-for-agent` safe.
+1. **Queue pass** — `gh-triage-queue`, defined by `prompts/triage-queue.md`,
+   evaluates many open issues/PRs shallowly. It produces recommendations only: no
+   labels, comments, closures, or agent briefs.
+2. **Deep brief** — `agent-brief`, defined by `prompts/agent-brief.md`, reads one
+   selected issue or PR deeply and produces the durable triage comment that makes
+   `ready-for-agent` safe.
 
-This keeps repository-wide triage useful without weakening the single-issue
-contract that `from-issue` consumes.
+Keeping the installed skills and these definitions in sync — and tightening the
+posting, continuation, and supersession contracts — is tracked in #15.
 
 ## Tooling
 
