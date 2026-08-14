@@ -17,6 +17,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { parseGateComment, type GateComment } from "../lib/verdict";
 
 // --- config -------------------------------------------------------------------
 
@@ -35,8 +36,6 @@ const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
 const DEFAULT_STALE_IN_PROGRESS_TIMEOUT_MS = 30 * 60 * 1000;
 const MIN_STALE_IN_PROGRESS_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_STALE_IN_PROGRESS_TIMEOUT_MS = 24 * 60 * 60 * 1000;
-
-const GATE_MARKER = "## review-gate:";
 
 if (!REPO) {
   console.error("RG_REPO not set (e.g. ptstory/themarkergirl.com)");
@@ -82,34 +81,13 @@ function prComments(n: number): Comment[] {
   return JSON.parse(out).comments as Comment[];
 }
 
-// --- verdict parsing ----------------------------------------------------------
-
-type Verdict = {
-  state: string; // merge-candidate | needs-fix | needs-human | blocked
-  headSha: string | null;
-};
-
-function parseVerdict(body: string): Verdict | null {
-  if (!body.startsWith(GATE_MARKER)) return null;
-  const stateMatch = body.match(/^## review-gate:\s*(\S+)/);
-  const shaMatch = body.match(/^head-sha:\s*([0-9a-f]{40})\s*$/m);
-  if (!stateMatch) return null;
-  return {
-    state: stateMatch[1].trim(),
-    headSha: shaMatch ? shaMatch[1] : null, // null SHA => void, per contract
-  };
-}
-
-/** Latest gate verdict on a PR, or null. Latest by comment order (chronological). */
-function latestVerdict(n: number): Verdict | null {
+/** Latest gate verdict on a PR, or null. Latest by comment creation time. */
+function latestVerdict(n: number): GateComment | null {
   const comments = prComments(n);
-  for (let i = comments.length - 1; i >= 0; i--) {
-    const c = comments[i];
-    if (REVIEWER_LOGIN && c.author.login !== REVIEWER_LOGIN) continue;
-    const v = parseVerdict(c.body);
-    if (v) return v;
-  }
-  return null;
+  const authoredComments = comments
+    .filter((comment) => !REVIEWER_LOGIN || comment.author.login === REVIEWER_LOGIN)
+    .map((comment) => ({ body: comment.body, createdAt: comment.createdAt }));
+  return parseGateComment(authoredComments);
 }
 
 // --- state --------------------------------------------------------------------
@@ -345,7 +323,7 @@ function main(): void {
 
     // Only needs-fix triggers autonomous action. merge-candidate/needs-human/
     // blocked surface to the human — the poller does not merge or escalate.
-    if (v.state !== "needs-fix") continue;
+    if (v.verdict !== "needs-fix") continue;
 
     const key = String(pr.number);
     const existing = state[key];
