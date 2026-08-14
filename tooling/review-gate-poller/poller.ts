@@ -254,11 +254,13 @@ function triggerFixPass(pr: PR): void {
     `Do not merge. Follow the review-gate verdict-contract.`;
 
   // opencode run <prompt> — one-shot session in the repo working dir.
-  // The poller persists its own state; worker output is not streamed through.
-  execFileSync("opencode", ["run", prompt], {
+  // The poller persists its own state; capture the worker's output for logging.
+  const out = execFileSync("opencode", ["run", prompt], {
     stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
     cwd: process.env.RG_WORKDIR ?? process.cwd(),
   });
+  console.log(out);
 }
 
 function currentGitHeadSha(): string {
