@@ -222,11 +222,11 @@ recommends what to look at; `agent-brief` then reads one issue deeply and
 produces the durable triage comment that makes `ready-for-agent` safe to apply.
 `next` reports which `ready-for-agent` issues have no open blockers.
 
-`from-issue` is the execution stage for a `ready-for-agent` issue. It resumes the existing issue/worktree when one exists, and a handoff-only result is allowed only for genuine blockers. It must not emit a second implementation handoff for the same issue.
+`from-issue` is the execution stage for a `ready-for-agent` issue, or for a validated pasted implementation handoff / durable agent brief that has been accepted as equivalent execution input. It consumes that artifact plus the existing issue/worktree when one exists, completes at PR + evidence bundle, and keeps review/check-run/merge downstream. Once it accepts action-ready input, nested brainstorming/planning/`using-superpowers` steps are subordinate subroutines; their ordinary approval gate does not end the run unless it names a concrete unresolved blocker missing from the issue or brief. Multi-file scope, UI impact, a desire for planning, or a nested skill's default approval checkpoint are not blockers by themselves. A handoff-only result is allowed only for genuine blockers or verified failures that cannot be recovered locally. It must not emit a second implementation handoff for the same issue.
 
 `from-issue` takes one of them, cuts a branch, implements the slice, and opens a
 PR carrying `Closes #N` and an evidence bundle — exact commands and their output,
-anchored to the head SHA, rather than a prose claim that things work.
+anchored to the head SHA, rather than a prose claim that things work. The allowed terminal outcomes are: PR opened with closing issue reference + evidence bundle; existing PR/worktree resumed and advanced; explicit durable blocker naming the exact missing prerequisite or decision; verified failure with the exact recovery state persisted. Nested review judgment lives in `review-gate` / `from-pr-review` / `receiving-code-review`.
 
 ## review-gate
 
@@ -259,7 +259,7 @@ Only `needs-fix` triggers autonomous action. `merge-candidate`, `needs-human`, a
 | `triage-queue` | Tracer custom; installed as ChatGPT skill `gh-triage-queue` | shallow repository-wide pass over open issues/PRs; recommends queue state without changing GitHub |
 | `agent-brief` | Tracer custom; installed as ChatGPT skill `agent-brief` | deep single issue/PR triage; produces the durable ready-for-agent / needs-info / wontfix handoff comment |
 | `next` | Tracer custom skill | after merge, list open `ready-for-agent` issues with no open blockers |
-| `from-issue` | Tracer custom skill | one issue → branch → slice → PR with `Closes #N` + evidence bundle |
+| `from-issue` | Tracer custom skill | one ready-for-agent issue, validated pasted implementation handoff, or validated pasted durable agent brief → branch/resume → smallest safe slice → PR with `Closes #N` + evidence bundle; review/check-run/merge remain downstream |
 | `requesting-code-review` | adopted (REPOZY) | producer: severity-tagged findings + security pass (run by `review-gate`) |
 | `receiving-code-review` | adopted (REPOZY) | disposition: fix-now / defer / follow-up / reject / needs-human |
 | `review-gate` | Tracer custom skill | fresh-session review posts a SHA-stamped verdict to the PR |

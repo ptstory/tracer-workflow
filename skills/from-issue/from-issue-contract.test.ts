@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { contractScenarios, docs, type ContractDoc } from "./from-issue-contract.fixtures";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -9,50 +10,52 @@ function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), "utf8");
 }
 
-function expectContainsAll(text: string, fragments: string[]): void {
+function section(text: string, heading: string): string {
+  const start = text.indexOf(`${heading}\n`);
+  expect(start).toBeGreaterThanOrEqual(0);
+
+  const rest = text.slice(start + heading.length + 1);
+  const nextHeading = rest.search(/^##\s/m);
+
+  return nextHeading === -1 ? rest : rest.slice(0, nextHeading);
+}
+
+function normalize(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function expectFragments(text: string, fragments: string[]): void {
+  const haystack = normalize(text);
+
   for (const fragment of fragments) {
-    expect(text).toContain(fragment);
+    expect(haystack).toContain(normalize(fragment));
   }
 }
 
+function expectNoFragments(text: string, fragments: string[] = []): void {
+  const haystack = normalize(text);
+
+  for (const fragment of fragments) {
+    expect(haystack).not.toContain(normalize(fragment));
+  }
+}
+
+function docText(doc: ContractDoc): string {
+  return read(docs[doc]);
+}
+
 describe("from-issue contract", () => {
-  test("ready-for-agent input is framed as an execution stage", () => {
-    const skill = read("skills/from-issue/SKILL.md");
-    const workflow = read("WORKFLOW.md");
-    const readme = read("README.md");
+  for (const scenario of contractScenarios) {
+    test(scenario.name, () => {
+      for (const check of scenario.checks) {
+        const text = docText(check.doc);
+        const target = check.section ? section(text, check.section) : text;
 
-    expectContainsAll(skill, ["execution stage", "`ready-for-agent`", "smallest safe slice"]);
-    expectContainsAll(workflow, ["from-issue` is the execution stage", "`ready-for-agent` issue"]);
-    expectContainsAll(readme, ["`from-issue` is the execution stage", "`ready-for-agent` issue"]);
-  });
-
-  test("dirty checkout and worktree handling is explicit", () => {
-    const skill = read("skills/from-issue/SKILL.md");
-    const workflow = read("WORKFLOW.md");
-
-    expectContainsAll(skill, ["dirty checkout/worktree state explicitly", "current-issue work", "unrelated drift"]);
-    expectContainsAll(workflow, ["dirty checkout/worktree", "stops with a blocker handoff"]);
-  });
-
-  test("genuine blockers are the only handoff-only result", () => {
-    const skill = read("skills/from-issue/SKILL.md");
-    const workflow = read("WORKFLOW.md");
-    const readme = read("README.md");
-
-    expectContainsAll(skill, ["handoff-only result is allowed only for genuine blockers", "blocker handoff only"]);
-    expectContainsAll(workflow, ["Handoff-only only for genuine blockers"]);
-    expectContainsAll(readme, ["handoff-only result is allowed only for genuine blockers"]);
-  });
-
-  test("same issue and worktree resume instead of spawning a new implementation handoff", () => {
-    const skill = read("skills/from-issue/SKILL.md");
-    const workflow = read("WORKFLOW.md");
-    const readme = read("README.md");
-
-    expectContainsAll(skill, ["Resume the existing issue/worktree", "Do not emit another implementation handoff for the same issue"]);
-    expectContainsAll(workflow, ["resumes the same issue/worktree", "rather than spawning a fresh implementation handoff"]);
-    expectContainsAll(readme, ["must not emit a second implementation handoff for the same issue"]);
-  });
+        expectFragments(target, check.fragments);
+        expectNoFragments(target, check.forbidden);
+      }
+    });
+  }
 
   test("managed ignore blocks cover slim worktrees", () => {
     const gitignore = read(".gitignore");
