@@ -40,4 +40,19 @@ describe("parseGateComment", () => {
       ]),
     ).toBeNull();
   });
+
+  test("returns null when the latest gate comment is malformed even if an older valid gate exists", () => {
+    expect(
+      parseGateComment([
+        {
+          body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+        {
+          body: "## review-gate: merge-candidate\nhead-sha: not-a-sha\n",
+          createdAt: "2026-01-02T00:00:00Z",
+        },
+      ]),
+    ).toBeNull();
+  });
 });

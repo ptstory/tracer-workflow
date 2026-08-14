@@ -33,10 +33,18 @@ function shQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function writeGhStub(h: Harness, responses: Record<string, unknown[]>): void {
+function writeGhStub(h: Harness, responses: Record<string, unknown[] | { error: string }>): void {
   const cases = Object.entries(responses)
-    .map(([repo, payload]) => `  ${shQuote(repo)}) printf '%s' ${shQuote(JSON.stringify(payload))} ;;
-`)
+    .map(([repo, payload]) => {
+      if (Array.isArray(payload)) {
+        return `  ${shQuote(repo)}) printf '%s' ${shQuote(JSON.stringify(payload))} ;;
+`;
+      }
+
+      return `  ${shQuote(repo)}) printf '%s\n' ${shQuote(payload.error)} >&2
+    exit 1 ;;
+`;
+    })
     .join("");
 
   writeExecutable(
@@ -208,5 +216,21 @@ describe("tooling/gate-state/gate-state.ts", () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout.trim()).toBe(String(REPOS.length * 2));
+  });
+
+  test("continues when gh fails for one repo and warns on stderr", () => {
+    const [failedRepo, ...rest] = REPOS;
+    const responses = Object.fromEntries([
+      [failedRepo, { error: "gh auth failed for repo" }],
+      ...rest.map((repo) => [repo, gateRows(false)]),
+    ]);
+    writeGhStub(harness, responses);
+
+    const result = runGateState(harness);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain(`warning: failed to load open PRs for ${failedRepo}`);
+    expect(result.stdout).toContain(rest[0]);
+    expect(result.stdout).not.toContain(failedRepo);
   });
 });

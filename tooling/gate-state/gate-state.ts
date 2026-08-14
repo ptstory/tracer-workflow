@@ -88,7 +88,17 @@ function classifyGateState(repo: string, pr: OpenPR): GateState {
 }
 
 function collectGateStates(repos: readonly string[] = REPOS): GateState[] {
-  const rows = repos.flatMap((repo) => listOpenPRs(repo).map((pr) => classifyGateState(repo, pr)));
+  const rows: GateState[] = [];
+
+  for (const repo of repos) {
+    try {
+      rows.push(...listOpenPRs(repo).map((pr) => classifyGateState(repo, pr)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`warning: failed to load open PRs for ${repo}: ${message}\n`);
+    }
+  }
+
   return rows.sort((a, b) => a.repo.localeCompare(b.repo) || a.number - b.number);
 }
 

@@ -26,18 +26,22 @@ function parseGateBody(body: string): Omit<GateComment, "commentedAt"> | null {
 }
 
 function parseGateComment(comments: Comment[]): GateComment | null {
-  let latest: GateComment | null = null;
+  let latestMarked: Comment | null = null;
 
   for (const comment of comments) {
-    const parsed = parseGateBody(comment.body);
-    if (!parsed) continue;
+    if (!comment.body.startsWith("## review-gate:")) continue;
 
-    if (!latest || comment.createdAt >= latest.commentedAt) {
-      latest = { ...parsed, commentedAt: comment.createdAt };
+    if (!latestMarked || comment.createdAt >= latestMarked.createdAt) {
+      latestMarked = comment;
     }
   }
 
-  return latest;
+  if (!latestMarked) return null;
+
+  const parsed = parseGateBody(latestMarked.body);
+  if (!parsed) return null;
+
+  return { ...parsed, commentedAt: latestMarked.createdAt };
 }
 
 export type { Verdict, GateComment };
