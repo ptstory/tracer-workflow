@@ -5,9 +5,12 @@ import { parseGateComment, type GateComment } from "../lib/verdict";
 
 const REPOS = [
   "ptstory/core-tweaks",
+  "ptstory/discipline-kit",
   "ptstory/retro-learnings",
+  "ptstory/the-filter-transcript",
   "ptstory/thread-atlas",
   "ptstory/tracer-workflow",
+  "ptstory/what-does-half-mean",
 ] as const;
 
 type PRComment = {
