@@ -42,6 +42,8 @@ if (!REPO) {
   process.exit(1);
 }
 
+const repo: string = REPO;
+
 // --- gh helpers ---------------------------------------------------------------
 
 function gh(args: string[]): string {
@@ -57,7 +59,7 @@ function openPRs(): PR[] {
     "pr",
     "list",
     "--repo",
-    REPO,
+    repo,
     "--state",
     "open",
     "--json",
@@ -74,7 +76,7 @@ function prComments(n: number): Comment[] {
     "view",
     String(n),
     "--repo",
-    REPO,
+    repo,
     "--json",
     "comments",
   ]);
