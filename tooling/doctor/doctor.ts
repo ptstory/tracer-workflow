@@ -278,28 +278,31 @@ function checkNextSkill(repoRoot: string): DoctorFinding[] {
 
 function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[] {
   const canonicalRepoRoot = getCanonicalCheckoutRoot(repoRoot);
-  const expectedPath = join(canonicalRepoRoot, "skills/next/SKILL.md");
+  const expectedPath = join(canonicalRepoRoot, "skills/next");
   const expected = existsSync(expectedPath) ? realpathSync(expectedPath) : expectedPath;
-  const runtimePath = join(home, ".agents/skills/next/SKILL.md");
-  if (!existsSync(runtimePath)) {
+  const runtimePath = join(home, ".agents/skills/next");
+
+  let stat: ReturnType<typeof lstatSync>;
+  try {
+    stat = lstatSync(runtimePath);
+  } catch {
     return [
       finding(
         "runtime-skill:next",
-        `symlink at ${runtimePath} resolves to ${expected}`,
-        "missing runtime skill symlink",
+        `directory symlink at ${runtimePath} resolves to ${expected}`,
+        "missing runtime skill directory symlink",
         "error",
         `Create a symlink from ${runtimePath} to ${expected} and reinstall the runtime skill if needed.`,
       ),
     ];
   }
 
-  const stat = lstatSync(runtimePath);
   if (!stat.isSymbolicLink()) {
     const resolved = realpathSync(runtimePath);
     return [
       finding(
         "runtime-skill:next",
-        `symlink at ${runtimePath} resolves to ${expected}`,
+        `directory symlink at ${runtimePath} resolves to ${expected}`,
         `not a symlink; realpath=${resolved}`,
         "error",
         `Replace ${runtimePath} with a symlink to ${expected}.`,
@@ -307,13 +310,27 @@ function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[
     ];
   }
 
-  const resolved = realpathSync(runtimePath);
+  let resolved: string;
+  try {
+    resolved = realpathSync(runtimePath);
+  } catch {
+    return [
+      finding(
+        "runtime-skill:next",
+        `directory symlink at ${runtimePath} resolves to ${expected}`,
+        `missing symlink target for ${runtimePath}`,
+        "error",
+        `Restore ${runtimePath} so it points at ${expected}.`,
+      ),
+    ];
+  }
+
   if (resolved === expected) return [];
 
   return [
     finding(
       "runtime-skill:next",
-      `symlink at ${runtimePath} resolves to ${expected}`,
+      `directory symlink at ${runtimePath} resolves to ${expected}`,
       `resolved to ${resolved}`,
       "error",
       `Point ${runtimePath} at ${expected} instead of ${resolved}.`,
@@ -418,24 +435,71 @@ function parsePlistProgramArguments(text: string): string[] {
   return [...programArgumentsMatch[1].matchAll(/<string>(.*?)<\/string>/g)].map((match) => match[1]);
 }
 
-function checkLaunchdPath(repoRoot: string, plistRelativePath: string, scriptRelativePath: string, component: string): DoctorFinding[] {
+function checkLaunchdPath(repoRoot: string, home: string, plistRelativePath: string, scriptRelativePath: string, component: string): DoctorFinding[] {
   const plistPath = join(repoRoot, plistRelativePath);
-  if (!existsSync(plistPath)) return [];
+  const installedPlistPath = join(home, "Library/LaunchAgents", basename(plistRelativePath));
+  if (!existsSync(installedPlistPath)) {
+    return [
+      finding(
+        component,
+        `installed plist at ${installedPlistPath} points to ${join(getCanonicalCheckoutRoot(repoRoot), scriptRelativePath)}`,
+        existsSync(plistPath) ? `missing effective installed plist at ${installedPlistPath}` : `missing effective installed plist at ${installedPlistPath}; checked-in template is also missing`,
+        "error",
+        `Install ${plistPath} to ${installedPlistPath} and rerun launchctl load.`,
+      ),
+    ];
+  }
 
   const canonicalRepoRoot = getCanonicalCheckoutRoot(repoRoot);
   const scriptPath = join(canonicalRepoRoot, scriptRelativePath);
-  const args = parsePlistProgramArguments(readFileSync(plistPath, "utf8"));
-  const observed = args[1] ?? "<missing script path>";
-  if (observed === scriptPath) return [];
+  const args = parsePlistProgramArguments(readFileSync(installedPlistPath, "utf8"));
+  const observed = args[1];
 
-  const scriptExists = existsSync(observed);
+  if (observed === scriptPath) {
+    if (existsSync(scriptPath)) return [];
+
+    return [
+      finding(
+        component,
+        `ProgramArguments[1] resolves to ${scriptPath}`,
+        `configured target script missing at ${scriptPath}`,
+        "error",
+        `Restore ${scriptPath} or update ${installedPlistPath} to point at a real target.`,
+      ),
+    ];
+  }
+
+  if (!observed) {
+    return [
+      finding(
+        component,
+        `ProgramArguments[1] resolves to ${scriptPath}`,
+        `configured plist is missing ProgramArguments[1] in ${installedPlistPath}`,
+        "error",
+        `Update ${installedPlistPath} so ProgramArguments[1] points at ${scriptPath}.`,
+      ),
+    ];
+  }
+
+  if (!existsSync(observed)) {
+    return [
+      finding(
+        component,
+        `ProgramArguments[1] resolves to ${scriptPath}`,
+        `configured target script missing at ${observed}`,
+        "error",
+        `Restore ${observed} or update ${installedPlistPath} to point at ${scriptPath}.`,
+      ),
+    ];
+  }
+
   return [
     finding(
       component,
       `ProgramArguments[1] resolves to ${scriptPath}`,
-      scriptExists ? `stale path ${observed}` : `missing path ${observed}`,
-      scriptExists ? "warning" : "error",
-      `Update ${plistRelativePath} to point at ${scriptPath}.`,
+      `stale configured path ${observed}`,
+      "warning",
+      `Update ${installedPlistPath} to point at ${scriptPath}.`,
     ),
   ];
 }
@@ -448,7 +512,7 @@ function buildDoctorReport(repoRoots: string[], home: string, deps: DoctorDeps =
     ...checkVerdictContract(mainRepoRoot),
     ...repoRoots.flatMap((repoRoot) => checkRepoContract(repoRoot)),
     ...repoRoots.flatMap((repoRoot) => checkRepoGitHubLabels(repoRoot, deps)),
-    ...LAUNCHD_TARGETS.flatMap((target) => checkLaunchdPath(mainRepoRoot, target.plist, target.script, target.component)),
+    ...LAUNCHD_TARGETS.flatMap((target) => checkLaunchdPath(mainRepoRoot, home, target.plist, target.script, target.component)),
   ];
 
   const summary = findings.reduce(
