@@ -55,7 +55,7 @@ function commitFile(repoPath: string, relativePath: string, contents: string, me
   mkdirSync(dirname(fullPath), { recursive: true });
   writeFileSync(fullPath, contents);
   git(repoPath, ["add", relativePath]);
-  const dateEnv = date ? { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } : {};
+  const dateEnv = date ? { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } : undefined;
   git(repoPath, ["commit", "-m", message], dateEnv);
   return git(repoPath, ["rev-parse", "HEAD"]);
 }
