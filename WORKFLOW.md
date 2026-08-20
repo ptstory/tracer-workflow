@@ -2,6 +2,9 @@
 
 Issue-backed, PR-mediated, evidence-first AI coding workflow.
 
+Terms used throughout — evidence bundle, verdict value, slice contract, HITL/AFK,
+plane — are defined in [CONTEXT.md](./CONTEXT.md).
+
 **Planes.** ChatGPT-web / Claude plan and review. OpenCode executes. GitHub
 (issues, PRs, commits, comments, check runs) is the durable coordination layer —
 the source of truth, not any chat transcript.
