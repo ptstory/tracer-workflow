@@ -1,6 +1,18 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, test } from "bun:test";
 
-import { parseGateComment } from "./verdict";
+import { latestConformingGateComment, parseGateBody, parseGateComment } from "./verdict";
+import type { Verdict } from "./verdict";
+
+const verdictExamples = readFileSync(
+  new URL("../../skills/review-gate/references/verdict-examples.md", import.meta.url),
+  "utf8",
+);
+
+function extractVerdictBlocks(text: string): string[] {
+  return [...text.matchAll(/```verdict\s*\n([\s\S]*?)\n```/g)].map((match) => match[1]);
+}
 
 describe("parseGateComment", () => {
   test("parses a conforming verdict with its round", () => {
@@ -67,4 +79,34 @@ describe("parseGateComment", () => {
       },
     });
   });
+});
+
+describe("verdict examples", () => {
+  const blocks = extractVerdictBlocks(verdictExamples);
+
+  test("contains four conforming verdict blocks", () => {
+    expect(blocks).toHaveLength(4);
+  });
+
+  for (const [index, block] of blocks.entries()) {
+    test(`block ${index + 1} parses and round-trips`, () => {
+      const marker = block.match(/^## review-gate:\s*(merge-candidate|needs-fix|needs-human|blocked)\s*$/m)?.[1] as
+        | Verdict
+        | undefined;
+      if (!marker) throw new Error("missing verdict marker");
+
+      const parsed = parseGateBody(block);
+      if (!parsed) throw new Error("expected conforming verdict block");
+      expect(parsed.verdict).toBe(marker);
+
+      const createdAt = `2026-02-0${index + 1}T00:00:00Z`;
+      const latest = latestConformingGateComment([{ body: block, createdAt }]);
+
+      if (!latest) throw new Error("expected latest conforming verdict");
+      expect(latest).toEqual({
+        ...parsed,
+        commentedAt: createdAt,
+      });
+    });
+  }
 });
