@@ -82,4 +82,4 @@ function latestConformingGateComment(comments: Comment[]): GateComment | null {
 }
 
 export type { Verdict, GateComment };
-export { latestConformingGateComment, parseGateComment };
+export { latestConformingGateComment, parseGateBody, parseGateComment };
