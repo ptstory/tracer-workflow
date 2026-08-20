@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { basename, join, resolve } from "node:path";
 
@@ -149,6 +149,62 @@ function finding(component: string, expected: string, observed: string, severity
   return { component, expected, observed, severity, action };
 }
 
+function inspectionObserved(path: string, error: unknown): string {
+  return `filesystem inspection failed at ${path}: ${(error as Error).message}`;
+}
+
+function inspectionFinding(component: string, expected: string, observed: string, action: string): DoctorFinding {
+  return finding(component, expected, observed, "error", action);
+}
+
+function readTextFile(path: string, component: string, expected: string, action: string): { text: string | null; finding: DoctorFinding | null } {
+  try {
+    return { text: readFileSync(path, "utf8"), finding: null };
+  } catch (error) {
+    return {
+      text: null,
+      finding: inspectionFinding(component, expected, inspectionObserved(path, error), action),
+    };
+  }
+}
+
+function realpathOrFinding(path: string, component: string, expected: string, action: string): { path: string | null; finding: DoctorFinding | null } {
+  try {
+    return { path: realpathSync(path), finding: null };
+  } catch (error) {
+    return {
+      path: null,
+      finding: inspectionFinding(component, expected, inspectionObserved(path, error), action),
+    };
+  }
+}
+
+function parsePlistEnvironmentVariables(text: string): Record<string, string> {
+  const match = text.match(/<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/m);
+  if (!match) return {};
+
+  return Object.fromEntries(
+    [...match[1].matchAll(/<key>(.*?)<\/key>\s*<string>(.*?)<\/string>/g)].map((entry) => [entry[1], entry[2]]),
+  );
+}
+
+function findExecutableOnPath(command: string, pathValue: string | undefined): string | null {
+  if (!pathValue) return null;
+
+  for (const segment of pathValue.split(":")) {
+    if (!segment) continue;
+    const candidate = join(segment, command);
+    try {
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 function runCommand(command: string, args: string[]): CommandResult {
   const result = spawnSync(command, args, { encoding: "utf8" });
   return {
@@ -183,7 +239,7 @@ function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorF
           `resolve a GitHub repo slug from ${repoRoot}`,
           "remote.origin.url missing or not a github.com repo",
           "error",
-          "Set the repo's origin remote to a GitHub slug so the doctor can verify live labels.",
+          "Point the origin remote at a GitHub slug.",
         ),
       ];
     }
@@ -197,7 +253,7 @@ function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorF
           `read-only gh label list succeeds for ${repoSlug}`,
           `gh label list failed: ${observed}`,
           "error",
-          "Fix GitHub CLI access for this repo or run the doctor with a repo that gh can read.",
+          "Inspect GitHub CLI access for this repo.",
         ),
       ];
     }
@@ -212,7 +268,7 @@ function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorF
           `read-only gh label list returns JSON for ${repoSlug}`,
           `could not parse gh output: ${(error as Error).message}`,
           "error",
-          "Fix the gh label listing command or CLI output before rerunning the doctor.",
+          "Inspect gh label output for this repo.",
         ),
       ];
     }
@@ -241,7 +297,7 @@ function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorF
         `read-only gh label list succeeds for ${repoRoot}`,
         `label access check threw: ${(error as Error).message}`,
         "error",
-        "Fix the repository access check or rerun against a readable GitHub repo.",
+        "Inspect repository access for this repo.",
       ),
     ];
   }
@@ -256,12 +312,15 @@ function checkNextSkill(repoRoot: string): DoctorFinding[] {
         `skills/next/SKILL.md identifies the ${EXPECTED_SKILL_NAME} role`,
         "missing skills/next/SKILL.md",
         "error",
-        "Restore skills/next/SKILL.md from the canonical next skill source.",
+        "Restore skills/next/SKILL.md.",
       ),
     ];
   }
 
-  const contract = parseSkillContract(readFileSync(skillPath, "utf8"));
+  const read = readTextFile(skillPath, "skill:next", "skills/next/SKILL.md identifies the next role", "Restore skills/next/SKILL.md.");
+  if (read.finding) return [read.finding];
+
+  const contract = parseSkillContract(read.text ?? "");
   const observed = `frontmatter name=${contract.name ?? "<missing>"}; heading=${contract.heading ?? "<missing>"}`;
   if (contract.name === EXPECTED_SKILL_NAME && contract.heading === EXPECTED_SKILL_HEADING) return [];
 
@@ -271,7 +330,7 @@ function checkNextSkill(repoRoot: string): DoctorFinding[] {
       `${EXPECTED_SKILL_NAME} frontmatter + ${EXPECTED_SKILL_HEADING} heading`,
       observed,
       "error",
-      "Sync skills/next/SKILL.md and the runtime alias so they point at the canonical next skill, not Deliverable Package Finalizer.",
+      "Restore the canonical next skill.",
     ),
   ];
 }
@@ -279,7 +338,17 @@ function checkNextSkill(repoRoot: string): DoctorFinding[] {
 function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[] {
   const canonicalRepoRoot = getCanonicalCheckoutRoot(repoRoot);
   const expectedPath = join(canonicalRepoRoot, "skills/next");
-  const expected = existsSync(expectedPath) ? realpathSync(expectedPath) : expectedPath;
+  const expectedResolution = existsSync(expectedPath)
+    ? realpathOrFinding(
+        expectedPath,
+        "runtime-skill:next",
+        `directory symlink at ${join(home, ".agents/skills/next")} resolves to ${expectedPath}`,
+        "Restore the canonical next skill path.",
+      )
+    : { path: expectedPath, finding: null };
+  if (expectedResolution.finding) return [expectedResolution.finding];
+
+  const expected = expectedResolution.path ?? expectedPath;
   const runtimePath = join(home, ".agents/skills/next");
 
   let stat: ReturnType<typeof lstatSync>;
@@ -292,20 +361,32 @@ function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[
         `directory symlink at ${runtimePath} resolves to ${expected}`,
         "missing runtime skill directory symlink",
         "error",
-        `Create a symlink from ${runtimePath} to ${expected} and reinstall the runtime skill if needed.`,
+        `Create a symlink from ${runtimePath} to ${expected}.`,
       ),
     ];
   }
 
   if (!stat.isSymbolicLink()) {
-    const resolved = realpathSync(runtimePath);
+    let resolved: string;
+    try {
+      resolved = realpathSync(runtimePath);
+    } catch (error) {
+      return [
+        inspectionFinding(
+          "runtime-skill:next",
+          `directory symlink at ${runtimePath} resolves to ${expected}`,
+          inspectionObserved(runtimePath, error),
+          `Restore ${runtimePath}.`,
+        ),
+      ];
+    }
     return [
       finding(
         "runtime-skill:next",
         `directory symlink at ${runtimePath} resolves to ${expected}`,
         `not a symlink; realpath=${resolved}`,
         "error",
-        `Replace ${runtimePath} with a symlink to ${expected}.`,
+        `Point ${runtimePath} at ${expected}.`,
       ),
     ];
   }
@@ -320,7 +401,7 @@ function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[
         `directory symlink at ${runtimePath} resolves to ${expected}`,
         `missing symlink target for ${runtimePath}`,
         "error",
-        `Restore ${runtimePath} so it points at ${expected}.`,
+        `Restore ${runtimePath}.`,
       ),
     ];
   }
@@ -333,7 +414,7 @@ function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[
       `directory symlink at ${runtimePath} resolves to ${expected}`,
       `resolved to ${resolved}`,
       "error",
-      `Point ${runtimePath} at ${expected} instead of ${resolved}.`,
+      `Point ${runtimePath} at ${expected}.`,
     ),
   ];
 }
@@ -352,7 +433,10 @@ function checkVerdictContract(repoRoot: string): DoctorFinding[] {
     ];
   }
 
-  const text = readFileSync(path, "utf8");
+  const read = readTextFile(path, "contract:review-gate-verdict", "verdict-contract.md documents the marker and head-sha rules", "Restore the review-gate verdict contract text.");
+  if (read.finding) return [read.finding];
+
+  const text = read.text ?? "";
   const hasMarker = text.includes("## review-gate:");
   const hasHeadSha = text.includes("head-sha:");
   if (hasMarker && hasHeadSha) return [];
@@ -385,18 +469,28 @@ function checkRepoContract(repoRoot: string): DoctorFinding[] {
       ),
     );
   } else {
-    const agents = readFileSync(agentsPath, "utf8");
-    const missingLabels = [...EXPECTED_LABELS].filter((label) => !agents.includes(label));
-    if (missingLabels.length > 0) {
-      findings.push(
-        finding(
-          `repo-contract:${basename(repoRoot)}`,
-          `AGENTS.md lists canonical labels: ${EXPECTED_LABELS.join(", ")}`,
-          `missing labels: ${missingLabels.join(", ")}`,
-          "error",
-          "Restore the canonical label mapping in AGENTS.md.",
-        ),
-      );
+    const agentsRead = readTextFile(
+      agentsPath,
+      `repo-contract:${basename(repoRoot)}`,
+      `AGENTS.md lists canonical labels: ${EXPECTED_LABELS.join(", ")}`,
+      "Restore the AGENTS.md label contract.",
+    );
+    if (agentsRead.finding) {
+      findings.push(agentsRead.finding);
+    } else {
+      const agents = agentsRead.text ?? "";
+      const missingLabels = [...EXPECTED_LABELS].filter((label) => !agents.includes(label));
+      if (missingLabels.length > 0) {
+        findings.push(
+          finding(
+            `repo-contract:${basename(repoRoot)}`,
+            `AGENTS.md lists canonical labels: ${EXPECTED_LABELS.join(", ")}`,
+            `missing labels: ${missingLabels.join(", ")}`,
+            "error",
+            "Restore the canonical label mapping in AGENTS.md.",
+          ),
+        );
+      }
     }
   }
 
@@ -411,17 +505,27 @@ function checkRepoContract(repoRoot: string): DoctorFinding[] {
       ),
     );
   } else {
-    const workflow = readFileSync(workflowPath, "utf8");
-    if (!workflow.includes(EXPECTED_WORKFLOW_POINTER)) {
-      findings.push(
-        finding(
-          `repo-contract:${basename(repoRoot)}`,
-          `WORKFLOW.md mentions ${EXPECTED_WORKFLOW_POINTER}`,
-          "pointer text missing",
-          "error",
-          "Add the setup-matt-pocock-skills pointer to WORKFLOW.md.",
-        ),
-      );
+    const workflowRead = readTextFile(
+      workflowPath,
+      `repo-contract:${basename(repoRoot)}`,
+      `WORKFLOW.md mentions ${EXPECTED_WORKFLOW_POINTER}`,
+      "Restore the workflow pointer contract.",
+    );
+    if (workflowRead.finding) {
+      findings.push(workflowRead.finding);
+    } else {
+      const workflow = workflowRead.text ?? "";
+      if (!workflow.includes(EXPECTED_WORKFLOW_POINTER)) {
+        findings.push(
+          finding(
+            `repo-contract:${basename(repoRoot)}`,
+            `WORKFLOW.md mentions ${EXPECTED_WORKFLOW_POINTER}`,
+            "pointer text missing",
+            "error",
+            "Add the setup-matt-pocock-skills pointer to WORKFLOW.md.",
+          ),
+        );
+      }
     }
   }
 
@@ -445,28 +549,93 @@ function checkLaunchdPath(repoRoot: string, home: string, plistRelativePath: str
         `installed plist at ${installedPlistPath} points to ${join(getCanonicalCheckoutRoot(repoRoot), scriptRelativePath)}`,
         existsSync(plistPath) ? `missing effective installed plist at ${installedPlistPath}` : `missing effective installed plist at ${installedPlistPath}; checked-in template is also missing`,
         "error",
-        `Install ${plistPath} to ${installedPlistPath} and rerun launchctl load.`,
+        `Install ${plistPath} at ${installedPlistPath}.`,
       ),
     ];
   }
 
   const canonicalRepoRoot = getCanonicalCheckoutRoot(repoRoot);
   const scriptPath = join(canonicalRepoRoot, scriptRelativePath);
-  const args = parsePlistProgramArguments(readFileSync(installedPlistPath, "utf8"));
+  const installed = readTextFile(
+    installedPlistPath,
+    component,
+    `installed plist at ${installedPlistPath} points to ${scriptPath}`,
+    `Restore ${installedPlistPath}.`,
+  );
+  if (installed.finding) return [installed.finding];
+
+  const text = installed.text ?? "";
+  const args = parsePlistProgramArguments(text);
   const observed = args[1];
+  const environment = parsePlistEnvironmentVariables(text);
 
   if (observed === scriptPath) {
-    if (existsSync(scriptPath)) return [];
+    if (!existsSync(scriptPath)) {
+      return [
+        finding(
+          component,
+          `ProgramArguments[1] resolves to ${scriptPath}`,
+          `configured target script missing at ${scriptPath}`,
+          "error",
+          `Restore ${scriptPath}.`,
+        ),
+      ];
+    }
 
-    return [
-      finding(
-        component,
-        `ProgramArguments[1] resolves to ${scriptPath}`,
-        `configured target script missing at ${scriptPath}`,
-        "error",
-        `Restore ${scriptPath} or update ${installedPlistPath} to point at a real target.`,
-      ),
-    ];
+    const findings: DoctorFinding[] = [];
+    if (component === "launchd:com.tracer.review-gate-poller.plist") {
+      const workdir = environment.RG_WORKDIR;
+      if (!workdir) {
+        findings.push(
+          finding(
+            component,
+            "EnvironmentVariables.RG_WORKDIR names a directory",
+            "missing EnvironmentVariables.RG_WORKDIR",
+            "error",
+            "Point RG_WORKDIR at a real directory.",
+          ),
+        );
+      } else {
+        try {
+          const resolvedWorkdir = realpathSync(workdir);
+          if (!lstatSync(resolvedWorkdir).isDirectory()) {
+            findings.push(
+              finding(
+                component,
+                "EnvironmentVariables.RG_WORKDIR names a directory",
+                `EnvironmentVariables.RG_WORKDIR=${workdir} resolves to ${resolvedWorkdir} which is not a directory`,
+                "error",
+                "Point RG_WORKDIR at a real directory.",
+              ),
+            );
+          }
+        } catch (error) {
+          findings.push(
+            inspectionFinding(
+              component,
+              "EnvironmentVariables.RG_WORKDIR names a directory",
+              `EnvironmentVariables.RG_WORKDIR=${workdir}; ${(error as Error).message}`,
+              "Point RG_WORKDIR at a real directory.",
+            ),
+          );
+        }
+      }
+      const executable = findExecutableOnPath("opencode", environment.PATH);
+      if (!executable) {
+        findings.push(
+          finding(
+            component,
+            "EnvironmentVariables.PATH exposes an executable opencode",
+            `PATH=${environment.PATH ?? "<missing>"}`,
+            "error",
+            "Add opencode to PATH.",
+          ),
+        );
+      }
+    }
+
+    return findings;
+
   }
 
   if (!observed) {
@@ -476,7 +645,7 @@ function checkLaunchdPath(repoRoot: string, home: string, plistRelativePath: str
         `ProgramArguments[1] resolves to ${scriptPath}`,
         `configured plist is missing ProgramArguments[1] in ${installedPlistPath}`,
         "error",
-        `Update ${installedPlistPath} so ProgramArguments[1] points at ${scriptPath}.`,
+        `Point ProgramArguments[1] at ${scriptPath}.`,
       ),
     ];
   }
@@ -488,7 +657,7 @@ function checkLaunchdPath(repoRoot: string, home: string, plistRelativePath: str
         `ProgramArguments[1] resolves to ${scriptPath}`,
         `configured target script missing at ${observed}`,
         "error",
-        `Restore ${observed} or update ${installedPlistPath} to point at ${scriptPath}.`,
+        `Restore ${observed}.`,
       ),
     ];
   }
@@ -499,7 +668,7 @@ function checkLaunchdPath(repoRoot: string, home: string, plistRelativePath: str
       `ProgramArguments[1] resolves to ${scriptPath}`,
       `stale configured path ${observed}`,
       "warning",
-      `Update ${installedPlistPath} to point at ${scriptPath}.`,
+      `Point ${installedPlistPath} at ${scriptPath}.`,
     ),
   ];
 }

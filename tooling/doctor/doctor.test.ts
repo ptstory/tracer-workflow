@@ -43,7 +43,18 @@ function writeExecutable(path: string, content: string): void {
   chmodSync(path, 0o755);
 }
 
-function writePlist(path: string, scriptPath: string): void {
+function writePlist(path: string, scriptPath: string, environment: Record<string, string> = {}): void {
+  const environmentEntries = Object.entries(environment)
+    .map(([key, value]) => `    <key>${key}</key>\n    <string>${value}</string>\n`)
+    .join("");
+  const environmentXml = Object.keys(environment).length > 0
+    ? `
+    <key>EnvironmentVariables</key>
+    <dict>
+${environmentEntries}    </dict>
+`
+    : "";
+
   writeText(
     path,
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -55,7 +66,7 @@ function writePlist(path: string, scriptPath: string): void {
     <string>/usr/bin/env</string>
     <string>${scriptPath}</string>
   </array>
-</dict>
+${environmentXml}</dict>
 </plist>
 `,
   );
@@ -185,7 +196,18 @@ function writeInstalledLaunchdPlist(home: string, plistRelativePath: string, scr
 
 function writeInstalledLaunchdTargets(home: string, repoRoot: string, scriptRoot = repoRoot): void {
   writeInstalledLaunchdPlist(home, "tooling/unbacked-work-monitor/com.tracer.unbacked-work-monitor.plist", join(scriptRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts"));
-  writeInstalledLaunchdPlist(home, "tooling/review-gate-poller/com.tracer.review-gate-poller.plist", join(scriptRoot, "tooling/review-gate-poller/poller.ts"));
+  const opencodeBin = join(home, ".local/bin");
+  writeExecutable(join(opencodeBin, "opencode"), "#!/usr/bin/env bash\nexit 0\n");
+  writePlist(
+    join(home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
+    join(scriptRoot, "tooling/review-gate-poller/poller.ts"),
+    {
+      RG_REPO: "ptstory/themarkergirl.com",
+      RG_WORKDIR: scriptRoot,
+      PATH: `${opencodeBin}:/usr/bin:/bin`,
+      HOME: home,
+    },
+  );
 }
 
 function makeRepoRoot(): { repoRoot: string; home: string } {
@@ -445,7 +467,7 @@ Pick the next ready-for-agent issue.
   writeTooling(repo.repoRoot);
   writeTooling(legacy.repoRoot);
   makeRuntimeSymlink(repo.home, join(repo.repoRoot, "skills/next"));
-  writeInstalledLaunchdPlist(repo.home, "tooling/review-gate-poller/com.tracer.review-gate-poller.plist", join(repo.repoRoot, "tooling/review-gate-poller/poller.ts"));
+  writeInstalledLaunchdTargets(repo.home, repo.repoRoot);
 
   const stalePath = join(legacy.repoRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts");
   writeText(stalePath, "console.log('legacy');\n");
@@ -457,6 +479,90 @@ Pick the next ready-for-agent issue.
   expect(finding).toMatchObject({ severity: "warning" });
   expect(report.summary.errors).toBe(0);
   expect(report.summary.warnings).toBeGreaterThan(0);
+});
+
+test("doctor findings use exactly one action each", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
+
+  expect(report.findings.length).toBeGreaterThan(0);
+  for (const finding of report.findings) {
+    expect(finding.action).not.toMatch(/\b(and|or)\b|;/i);
+  }
+});
+
+test("review-gate poller reports a missing RG_WORKDIR separately from its script path", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  const opencodeBin = sandbox();
+  writeCleanBaseline(repoRoot);
+  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+  writeExecutable(join(opencodeBin, "opencode"), "#!/usr/bin/env bash\nexit 0\n");
+
+  writePlist(
+    join(home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
+    join(repoRoot, "tooling/review-gate-poller/poller.ts"),
+    {
+      RG_REPO: "ptstory/themarkergirl.com",
+      RG_WORKDIR: join(repoRoot, "missing-workdir"),
+      PATH: `${opencodeBin}:/usr/bin:/bin`,
+      HOME: home,
+    },
+  );
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
+  const finding = report.findings.find((item: any) => item.component === "launchd:com.tracer.review-gate-poller.plist" && item.observed.includes("RG_WORKDIR"));
+
+  expect(finding).toMatchObject({ severity: "error" });
+  expect(finding?.expected).toContain("RG_WORKDIR");
+  expect(finding?.observed).toContain("missing");
+});
+
+test("review-gate poller reports missing opencode on PATH separately from its script path", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  writePlist(
+    join(home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
+    join(repoRoot, "tooling/review-gate-poller/poller.ts"),
+    {
+      RG_REPO: "ptstory/themarkergirl.com",
+      RG_WORKDIR: repoRoot,
+      PATH: "/usr/bin:/bin",
+      HOME: home,
+    },
+  );
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
+  const finding = report.findings.find((item: any) => item.component === "launchd:com.tracer.review-gate-poller.plist" && item.expected.includes("PATH"));
+
+  expect(finding).toMatchObject({ severity: "error" });
+  expect(finding?.expected).toContain("PATH");
+  expect(finding?.observed).toContain("PATH=");
+});
+
+test("filesystem inspection failures stay scoped and later checks still run", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+  rmSync(join(repoRoot, "AGENTS.md"), { force: true });
+  mkdirSync(join(repoRoot, "AGENTS.md"));
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, labels: ["needs-triage", "bug", "enhancement"] },
+  }));
+
+  const repoContractFinding = report.findings.find((item: any) => item.component === `repo-contract:${basename(repoRoot)}`);
+  const labelFinding = report.findings.find((item: any) => item.component === `repo-labels:${repoRoot}`);
+
+  expect(repoContractFinding?.observed).toContain("EISDIR");
+  expect(labelFinding).toMatchObject({ severity: "error" });
 });
 
 test("CLI json mode emits structured output", () => {
