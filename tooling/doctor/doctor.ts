@@ -26,6 +26,7 @@ type DoctorReport = {
 
 type ParsedArgs = {
   json: boolean;
+  canonicalRepoRoot: string;
   repoRoots: string[];
   home: string;
 };
@@ -116,11 +117,11 @@ function parseArgs(argv: string[]): ParsedArgs {
   }
 
   if (repoRoots.length === 0) repoRoots.push(...envRoots.map((root) => resolve(root)));
-  if (repoRoots.length === 0) repoRoots.push(resolve(process.cwd()));
 
   return {
     json,
     repoRoots,
+    canonicalRepoRoot: resolve(process.cwd()),
     home: home ? resolve(home) : resolve(process.env.HOME ?? process.cwd()),
   };
 }
@@ -566,80 +567,121 @@ function checkLaunchdPath(repoRoot: string, home: string, plistRelativePath: str
 
   const text = installed.text ?? "";
   const args = parsePlistProgramArguments(text);
+  const launcher = args[0];
   const observed = args[1];
   const environment = parsePlistEnvironmentVariables(text);
+  const findings: DoctorFinding[] = [];
 
-  if (observed === scriptPath) {
-    if (!existsSync(scriptPath)) {
-      return [
-        finding(
-          component,
-          `ProgramArguments[1] resolves to ${scriptPath}`,
-          `configured target script missing at ${scriptPath}`,
-          "error",
-          `Restore ${scriptPath}.`,
-        ),
-      ];
-    }
+  const template = existsSync(plistPath)
+    ? readTextFile(
+        plistPath,
+        component,
+        `checked-in plist at ${plistPath} documents the launchd launcher and script surface`,
+        `Restore ${plistPath}.`,
+      )
+    : null;
+  if (template?.finding) findings.push(template.finding);
+  const expectedArgs = template?.text ? parsePlistProgramArguments(template.text) : [];
+  const expectedLauncher = expectedArgs[0];
 
-    const findings: DoctorFinding[] = [];
-    if (component === "launchd:com.tracer.review-gate-poller.plist") {
-      const workdir = environment.RG_WORKDIR;
-      if (!workdir) {
+  if (launcher) {
+    const launcherExists = existsSync(launcher);
+    const launcherExpected = expectedLauncher || launcher;
+    if (launcher === launcherExpected) {
+      if (!launcherExists) {
         findings.push(
           finding(
             component,
-            "EnvironmentVariables.RG_WORKDIR names a directory",
-            "missing EnvironmentVariables.RG_WORKDIR",
+            `ProgramArguments[0] resolves to ${launcherExpected}`,
+            `configured launcher missing at ${launcher}`,
             "error",
-            "Point RG_WORKDIR at a real directory.",
+            `Restore ${launcherExpected}.`,
           ),
         );
       } else {
         try {
-          const resolvedWorkdir = realpathSync(workdir);
-          if (!lstatSync(resolvedWorkdir).isDirectory()) {
-            findings.push(
-              finding(
-                component,
-                "EnvironmentVariables.RG_WORKDIR names a directory",
-                `EnvironmentVariables.RG_WORKDIR=${workdir} resolves to ${resolvedWorkdir} which is not a directory`,
-                "error",
-                "Point RG_WORKDIR at a real directory.",
-              ),
-            );
-          }
-        } catch (error) {
+          accessSync(launcher, constants.X_OK);
+        } catch {
           findings.push(
-            inspectionFinding(
+            finding(
               component,
-              "EnvironmentVariables.RG_WORKDIR names a directory",
-              `EnvironmentVariables.RG_WORKDIR=${workdir}; ${(error as Error).message}`,
-              "Point RG_WORKDIR at a real directory.",
+              `ProgramArguments[0] resolves to ${launcherExpected}`,
+              `configured launcher is not executable at ${launcher}`,
+              "error",
+              `Restore ${launcherExpected}.`,
             ),
           );
         }
       }
-      const executable = findExecutableOnPath("opencode", environment.PATH);
-      if (!executable) {
+    } else if (launcherExists) {
+      findings.push(
+        finding(
+          component,
+          `ProgramArguments[0] resolves to ${launcherExpected}`,
+          `stale configured launcher path ${launcher}`,
+          "warning",
+          `Point ProgramArguments[0] at ${launcherExpected}.`,
+        ),
+      );
+    } else {
+      findings.push(
+        finding(
+          component,
+          `ProgramArguments[0] resolves to ${launcherExpected}`,
+          `configured launcher missing at ${launcher}`,
+          "error",
+          `Restore ${launcherExpected}.`,
+        ),
+      );
+    }
+  } else {
+    findings.push(
+      finding(
+        component,
+        `ProgramArguments[0] resolves to ${expectedLauncher || "an executable launcher"}`,
+        `configured plist is missing ProgramArguments[0] in ${installedPlistPath}`,
+        "error",
+        `Point ProgramArguments[0] at ${expectedLauncher || "a real launcher"}.`,
+      ),
+    );
+  }
+
+  if (observed) {
+    if (observed === scriptPath) {
+      if (!existsSync(scriptPath)) {
         findings.push(
           finding(
             component,
-            "EnvironmentVariables.PATH exposes an executable opencode",
-            `PATH=${environment.PATH ?? "<missing>"}`,
+            `ProgramArguments[1] resolves to ${scriptPath}`,
+            `configured target script missing at ${scriptPath}`,
             "error",
-            "Add opencode to PATH.",
+            `Restore ${scriptPath}.`,
           ),
         );
       }
+    } else if (existsSync(observed)) {
+      findings.push(
+        finding(
+          component,
+          `ProgramArguments[1] resolves to ${scriptPath}`,
+          `stale configured path ${observed}`,
+          "warning",
+          `Point ${installedPlistPath} at ${scriptPath}.`,
+        ),
+      );
+    } else {
+      findings.push(
+        finding(
+          component,
+          `ProgramArguments[1] resolves to ${scriptPath}`,
+          `configured target script missing at ${observed}`,
+          "error",
+          `Restore ${observed}.`,
+        ),
+      );
     }
-
-    return findings;
-
-  }
-
-  if (!observed) {
-    return [
+  } else {
+    findings.push(
       finding(
         component,
         `ProgramArguments[1] resolves to ${scriptPath}`,
@@ -647,40 +689,88 @@ function checkLaunchdPath(repoRoot: string, home: string, plistRelativePath: str
         "error",
         `Point ProgramArguments[1] at ${scriptPath}.`,
       ),
-    ];
+    );
   }
 
-  if (!existsSync(observed)) {
-    return [
-      finding(
-        component,
-        `ProgramArguments[1] resolves to ${scriptPath}`,
-        `configured target script missing at ${observed}`,
-        "error",
-        `Restore ${observed}.`,
-      ),
-    ];
+  if (component === "launchd:com.tracer.review-gate-poller.plist") {
+    const workdir = environment.RG_WORKDIR;
+    if (!workdir) {
+      findings.push(
+        finding(
+          component,
+          "EnvironmentVariables.RG_WORKDIR names a directory",
+          "missing EnvironmentVariables.RG_WORKDIR",
+          "error",
+          "Point RG_WORKDIR at a real directory.",
+        ),
+      );
+    } else {
+      try {
+        const resolvedWorkdir = realpathSync(workdir);
+        if (!lstatSync(resolvedWorkdir).isDirectory()) {
+          findings.push(
+            finding(
+              component,
+              "EnvironmentVariables.RG_WORKDIR names a directory",
+              `EnvironmentVariables.RG_WORKDIR=${workdir} resolves to ${resolvedWorkdir} which is not a directory`,
+              "error",
+              "Point RG_WORKDIR at a real directory.",
+            ),
+          );
+        }
+      } catch (error) {
+        findings.push(
+          inspectionFinding(
+            component,
+            "EnvironmentVariables.RG_WORKDIR names a directory",
+            `EnvironmentVariables.RG_WORKDIR=${workdir}; ${(error as Error).message}`,
+            "Point RG_WORKDIR at a real directory.",
+          ),
+        );
+      }
+    }
+
+    const requiredExecutables = ["opencode", "gh", "git"];
+    for (const executableName of requiredExecutables) {
+      const executable = findExecutableOnPath(executableName, environment.PATH);
+      if (!executable) {
+        findings.push(
+          finding(
+            component,
+            `EnvironmentVariables.PATH exposes an executable ${executableName}`,
+            `PATH=${environment.PATH ?? "<missing>"}`,
+            "error",
+            `Add ${executableName} to PATH.`,
+          ),
+        );
+      }
+    }
   }
 
-  return [
-    finding(
-      component,
-      `ProgramArguments[1] resolves to ${scriptPath}`,
-      `stale configured path ${observed}`,
-      "warning",
-      `Point ${installedPlistPath} at ${scriptPath}.`,
-    ),
-  ];
+  return findings;
 }
 
-function buildDoctorReport(repoRoots: string[], home: string, deps: DoctorDeps = {}): DoctorReport {
-  const mainRepoRoot = repoRoots[0];
+function buildDoctorReport(repoRootsOrCanonicalRoot: string[] | string, downstreamRepoRootsOrHome: string[] | string, homeOrDeps: string | DoctorDeps = {}, deps: DoctorDeps = {}): DoctorReport {
+  const canonicalRepoRoot = Array.isArray(repoRootsOrCanonicalRoot)
+    ? (repoRootsOrCanonicalRoot[0] ?? resolve(process.cwd()))
+    : repoRootsOrCanonicalRoot;
+  const repoRoots = Array.isArray(repoRootsOrCanonicalRoot)
+    ? repoRootsOrCanonicalRoot
+    : [repoRootsOrCanonicalRoot, ...(Array.isArray(downstreamRepoRootsOrHome) ? downstreamRepoRootsOrHome : [])].filter(Boolean);
+  const home = Array.isArray(repoRootsOrCanonicalRoot)
+    ? (downstreamRepoRootsOrHome as string)
+    : (homeOrDeps as string);
+  const resolvedDeps = Array.isArray(repoRootsOrCanonicalRoot)
+    ? (homeOrDeps as DoctorDeps)
+    : deps;
+  const mainRepoRoot = canonicalRepoRoot;
+  const allRepoRoots = [...new Set(repoRoots.length > 0 ? repoRoots : [mainRepoRoot])];
   const findings = [
     ...checkNextSkill(mainRepoRoot),
     ...checkRuntimeSkillWiring(mainRepoRoot, home),
     ...checkVerdictContract(mainRepoRoot),
-    ...repoRoots.flatMap((repoRoot) => checkRepoContract(repoRoot)),
-    ...repoRoots.flatMap((repoRoot) => checkRepoGitHubLabels(repoRoot, deps)),
+    ...allRepoRoots.flatMap((repoRoot) => checkRepoContract(repoRoot)),
+    ...allRepoRoots.flatMap((repoRoot) => checkRepoGitHubLabels(repoRoot, resolvedDeps)),
     ...LAUNCHD_TARGETS.flatMap((target) => checkLaunchdPath(mainRepoRoot, home, target.plist, target.script, target.component)),
   ];
 
@@ -695,7 +785,7 @@ function buildDoctorReport(repoRoots: string[], home: string, deps: DoctorDeps =
 
   return {
     repoRoot: mainRepoRoot,
-    repoRoots,
+    repoRoots: allRepoRoots,
     findings,
     summary,
   };
@@ -717,7 +807,7 @@ function renderDoctorText(report: DoctorReport): string {
 function runCli(argv: string[]): number {
   try {
     const parsed = parseArgs(argv);
-    const report = buildDoctorReport(parsed.repoRoots, parsed.home);
+    const report = buildDoctorReport(parsed.canonicalRepoRoot, parsed.repoRoots, parsed.home);
 
     if (parsed.json) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

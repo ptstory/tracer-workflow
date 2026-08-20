@@ -43,7 +43,7 @@ function writeExecutable(path: string, content: string): void {
   chmodSync(path, 0o755);
 }
 
-function writePlist(path: string, scriptPath: string, environment: Record<string, string> = {}): void {
+function writePlist(path: string, scriptPath: string, environment: Record<string, string> = {}, launcherPath = "/usr/bin/env"): void {
   const environmentEntries = Object.entries(environment)
     .map(([key, value]) => `    <key>${key}</key>\n    <string>${value}</string>\n`)
     .join("");
@@ -63,7 +63,7 @@ ${environmentEntries}    </dict>
 <dict>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/env</string>
+    <string>${launcherPath}</string>
     <string>${scriptPath}</string>
   </array>
 ${environmentXml}</dict>
@@ -101,13 +101,24 @@ setup-matt-pocock-skills
 }
 
 function writeTooling(repoRoot: string): void {
+  const launcherPath = join(repoRoot, ".bun/bin/bun");
+  writeExecutable(launcherPath, "#!/usr/bin/env bash\nexit 0\n");
   writePlist(
     join(repoRoot, "tooling/unbacked-work-monitor/com.tracer.unbacked-work-monitor.plist"),
     join(repoRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts"),
+    {},
+    launcherPath,
   );
   writePlist(
     join(repoRoot, "tooling/review-gate-poller/com.tracer.review-gate-poller.plist"),
     join(repoRoot, "tooling/review-gate-poller/poller.ts"),
+    {
+      RG_REPO: "ptstory/themarkergirl.com",
+      RG_WORKDIR: repoRoot,
+      PATH: `${join(repoRoot, ".bun/bin")}:/usr/bin:/bin`,
+      HOME: repoRoot,
+    },
+    launcherPath,
   );
   writeText(join(repoRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts"), "#!/usr/bin/env bun\n");
   writeText(join(repoRoot, "tooling/review-gate-poller/poller.ts"), "#!/usr/bin/env bun\n");
@@ -190,14 +201,18 @@ function makeRuntimeSymlink(home: string, targetSkillDir: string): void {
   symlinkSync(targetSkillDir, runtimePath, "dir");
 }
 
-function writeInstalledLaunchdPlist(home: string, plistRelativePath: string, scriptPath: string): void {
-  writePlist(join(home, "Library/LaunchAgents", basename(plistRelativePath)), scriptPath);
+function writeInstalledLaunchdPlist(home: string, plistRelativePath: string, scriptPath: string, launcherPath: string): void {
+  writePlist(join(home, "Library/LaunchAgents", basename(plistRelativePath)), scriptPath, {}, launcherPath);
 }
 
 function writeInstalledLaunchdTargets(home: string, repoRoot: string, scriptRoot = repoRoot): void {
-  writeInstalledLaunchdPlist(home, "tooling/unbacked-work-monitor/com.tracer.unbacked-work-monitor.plist", join(scriptRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts"));
+  const launcherPath = join(scriptRoot, ".bun/bin/bun");
+  writeExecutable(launcherPath, "#!/usr/bin/env bash\nexit 0\n");
+  writeInstalledLaunchdPlist(home, "tooling/unbacked-work-monitor/com.tracer.unbacked-work-monitor.plist", join(scriptRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts"), launcherPath);
   const opencodeBin = join(home, ".local/bin");
   writeExecutable(join(opencodeBin, "opencode"), "#!/usr/bin/env bash\nexit 0\n");
+  writeExecutable(join(opencodeBin, "gh"), "#!/usr/bin/env bash\nexit 0\n");
+  writeExecutable(join(opencodeBin, "git"), "#!/usr/bin/env bash\nexit 0\n");
   writePlist(
     join(home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
     join(scriptRoot, "tooling/review-gate-poller/poller.ts"),
@@ -207,6 +222,7 @@ function writeInstalledLaunchdTargets(home: string, repoRoot: string, scriptRoot
       PATH: `${opencodeBin}:/usr/bin:/bin`,
       HOME: home,
     },
+    launcherPath,
   );
 }
 
@@ -376,10 +392,19 @@ Pick the next ready-for-agent issue.
   writePlist(
     join(worktreeRoot, "tooling/unbacked-work-monitor/com.tracer.unbacked-work-monitor.plist"),
     join(canonicalRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts"),
+    {},
+    join(canonicalRoot, ".bun/bin/bun"),
   );
   writePlist(
     join(worktreeRoot, "tooling/review-gate-poller/com.tracer.review-gate-poller.plist"),
     join(canonicalRoot, "tooling/review-gate-poller/poller.ts"),
+    {
+      RG_REPO: "ptstory/themarkergirl.com",
+      RG_WORKDIR: canonicalRoot,
+      PATH: `${join(canonicalRoot, ".bun/bin")}:/usr/bin:/bin`,
+      HOME: home,
+    },
+    join(canonicalRoot, ".bun/bin/bun"),
   );
 
   const report = (buildDoctorReport as any)([worktreeRoot], home, makeDoctorDeps());
@@ -471,7 +496,7 @@ Pick the next ready-for-agent issue.
 
   const stalePath = join(legacy.repoRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts");
   writeText(stalePath, "console.log('legacy');\n");
-  writeInstalledLaunchdPlist(repo.home, "tooling/unbacked-work-monitor/com.tracer.unbacked-work-monitor.plist", stalePath);
+  writeInstalledLaunchdPlist(repo.home, "tooling/unbacked-work-monitor/com.tracer.unbacked-work-monitor.plist", stalePath, join(repo.repoRoot, ".bun/bin/bun"));
 
   const report = (buildDoctorReport as any)([repo.repoRoot], repo.home, makeDoctorDeps());
   const finding = report.findings.find((item: any) => item.component === "launchd:com.tracer.unbacked-work-monitor.plist");
@@ -479,6 +504,70 @@ Pick the next ready-for-agent issue.
   expect(finding).toMatchObject({ severity: "warning" });
   expect(report.summary.errors).toBe(0);
   expect(report.summary.warnings).toBeGreaterThan(0);
+});
+
+test("launchd jobs report a missing Bun launcher when the script path is correct", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+  rmSync(join(repoRoot, ".bun/bin/bun"), { force: true });
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
+  const finding = report.findings.find((item: any) => item.component === "launchd:com.tracer.unbacked-work-monitor.plist" && item.expected.includes("ProgramArguments[0]"));
+
+  expect(finding).toMatchObject({ severity: "error" });
+  expect(finding?.observed).toContain("configured launcher missing");
+});
+
+test("launchd jobs report a stale Bun launcher when the script path is correct", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  const stale = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+  writeExecutable(join(stale.repoRoot, ".bun/bin/bun"), "#!/usr/bin/env bash\nexit 0\n");
+
+  writePlist(
+    join(home, "Library/LaunchAgents/com.tracer.unbacked-work-monitor.plist"),
+    join(repoRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts"),
+    {},
+    join(stale.repoRoot, ".bun/bin/bun"),
+  );
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
+  const finding = report.findings.find((item: any) => item.component === "launchd:com.tracer.unbacked-work-monitor.plist" && item.severity === "warning");
+
+  expect(finding).toMatchObject({ severity: "warning" });
+  expect(finding?.observed).toContain("stale configured launcher path");
+});
+
+test("stale launchd script paths still surface review-gate environment errors", () => {
+  const repo = makeRepoRoot();
+  const legacy = makeRepoRoot();
+  writeCleanBaseline(repo.repoRoot);
+  writeCleanBaseline(legacy.repoRoot);
+  makeRuntimeSymlink(repo.home, join(repo.repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(repo.home, repo.repoRoot);
+
+  const stalePath = join(legacy.repoRoot, "tooling/review-gate-poller/poller.ts");
+  writeText(stalePath, "#!/usr/bin/env bun\n");
+  writePlist(
+    join(repo.home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
+    stalePath,
+    {
+      RG_REPO: "ptstory/themarkergirl.com",
+      PATH: `${join(repo.repoRoot, ".bun/bin")}:/usr/bin:/bin`,
+      HOME: repo.home,
+    },
+    join(repo.repoRoot, ".bun/bin/bun"),
+  );
+
+  const report = (buildDoctorReport as any)([repo.repoRoot], repo.home, makeDoctorDeps());
+
+  expect(report.findings.some((item: any) => item.component === "launchd:com.tracer.review-gate-poller.plist" && item.severity === "warning")).toBe(true);
+  expect(report.findings.some((item: any) => item.component === "launchd:com.tracer.review-gate-poller.plist" && item.observed.includes("RG_WORKDIR"))).toBe(true);
+  expect(report.summary.errors).toBeGreaterThan(0);
 });
 
 test("doctor findings use exactly one action each", () => {
@@ -511,6 +600,7 @@ test("review-gate poller reports a missing RG_WORKDIR separately from its script
       PATH: `${opencodeBin}:/usr/bin:/bin`,
       HOME: home,
     },
+    join(repoRoot, ".bun/bin/bun"),
   );
 
   const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
@@ -521,7 +611,7 @@ test("review-gate poller reports a missing RG_WORKDIR separately from its script
   expect(finding?.observed).toContain("missing");
 });
 
-test("review-gate poller reports missing opencode on PATH separately from its script path", () => {
+test("review-gate poller reports missing gh on PATH separately from its script path", () => {
   const { repoRoot, home } = makeRepoRoot();
   writeCleanBaseline(repoRoot);
   makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
@@ -533,16 +623,17 @@ test("review-gate poller reports missing opencode on PATH separately from its sc
     {
       RG_REPO: "ptstory/themarkergirl.com",
       RG_WORKDIR: repoRoot,
-      PATH: "/usr/bin:/bin",
+      PATH: `${join(repoRoot, ".bun/bin")}:/usr/bin:/bin`,
       HOME: home,
     },
+    join(repoRoot, ".bun/bin/bun"),
   );
 
   const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
-  const finding = report.findings.find((item: any) => item.component === "launchd:com.tracer.review-gate-poller.plist" && item.expected.includes("PATH"));
+  const finding = report.findings.find((item: any) => item.component === "launchd:com.tracer.review-gate-poller.plist" && item.expected.includes("gh"));
 
   expect(finding).toMatchObject({ severity: "error" });
-  expect(finding?.expected).toContain("PATH");
+  expect(finding?.expected).toContain("gh");
   expect(finding?.observed).toContain("PATH=");
 });
 
@@ -567,10 +658,11 @@ test("filesystem inspection failures stay scoped and later checks still run", ()
 
 test("CLI json mode emits structured output", () => {
   const { repoRoot, home } = makeRepoRoot();
+  const canonicalRepoRoot = realpathSync(repoRoot);
   const doctorScript = fileURLToPath(new URL("./doctor.ts", import.meta.url));
   const stubBin = sandbox();
   writeSkills(
-    repoRoot,
+    canonicalRepoRoot,
     `---
 name: next
 description: >
@@ -582,10 +674,10 @@ description: >
 Pick the next ready-for-agent issue.
 `,
   );
-  writeContracts(repoRoot);
-  writeTooling(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
-  writeInstalledLaunchdTargets(home, repoRoot);
+  writeContracts(canonicalRepoRoot);
+  writeTooling(canonicalRepoRoot);
+  makeRuntimeSymlink(home, join(canonicalRepoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, canonicalRepoRoot);
   writeExecutable(join(stubBin, "git"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' 'git@github.com:ptstory/tracer-workflow.git'
@@ -595,8 +687,8 @@ set -euo pipefail
 printf '%s\n' '[{"name":"needs-triage"},{"name":"needs-info"},{"name":"ready-for-agent"},{"name":"ready-for-human"},{"name":"wontfix"},{"name":"bug"},{"name":"enhancement"}]'
 `);
 
-  const result = spawnSync("bun", [doctorScript, "--json", "--repo-root", repoRoot, "--home", home], {
-    cwd: repoRoot,
+  const result = spawnSync("bun", [doctorScript, "--json", "--repo-root", canonicalRepoRoot, "--home", home], {
+    cwd: canonicalRepoRoot,
     encoding: "utf8",
     env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ""}` },
   });
@@ -604,6 +696,42 @@ printf '%s\n' '[{"name":"needs-triage"},{"name":"needs-info"},{"name":"ready-for
   expect(result.status).toBe(0);
   expect(JSON.parse(result.stdout).summary).toEqual({ errors: 0, warnings: 0 });
   expect(result.stderr).toBe("");
+});
+
+test("CLI keeps tracer checks when one downstream repo root is supplied", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  const downstream = makeRepoRoot();
+  const canonicalRepoRoot = realpathSync(repoRoot);
+  const canonicalDownstreamRoot = realpathSync(downstream.repoRoot);
+  const doctorScript = fileURLToPath(new URL("./doctor.ts", import.meta.url));
+  const stubBin = sandbox();
+  writeCleanBaseline(canonicalRepoRoot);
+  writeCleanBaseline(canonicalDownstreamRoot);
+  makeRuntimeSymlink(home, join(canonicalRepoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, canonicalRepoRoot);
+  rmSync(join(canonicalRepoRoot, "AGENTS.md"), { force: true });
+  writeExecutable(join(stubBin, "git"), `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' 'git@github.com:ptstory/tracer-workflow.git'
+`);
+  writeExecutable(join(stubBin, "gh"), `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' '[{"name":"needs-triage"},{"name":"needs-info"},{"name":"ready-for-agent"},{"name":"ready-for-human"},{"name":"wontfix"},{"name":"bug"},{"name":"enhancement"}]'
+`);
+
+  const result = spawnSync("bun", [doctorScript, "--json", "--repo-root", canonicalDownstreamRoot, "--home", home], {
+    cwd: canonicalRepoRoot,
+    encoding: "utf8",
+    env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ""}` },
+  });
+
+  expect(result.status).toBe(1);
+  const parsed = JSON.parse(result.stdout);
+  expect(parsed.repoRoot).toBe(canonicalRepoRoot);
+  expect(parsed.repoRoots).toContain(canonicalRepoRoot);
+  expect(parsed.repoRoots).toContain(canonicalDownstreamRoot);
+  expect(parsed.findings.some((item: any) => item.component === `repo-contract:${basename(canonicalRepoRoot)}`)).toBe(true);
+  expect(parsed.findings.some((item: any) => item.component === `repo-contract:${basename(canonicalDownstreamRoot)}`)).toBe(false);
 });
 
 test("missing GitHub labels are reported for a repo with access", () => {
