@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execFileSync } from "node:child_process";
-import { collectGateStates } from "../gate-state/gate-state";
+import { collectGateStates, type GateState } from "../gate-state/gate-state";
 import { parseGateComment } from "../lib/verdict";
 
 type PRDetails = {
@@ -24,6 +24,10 @@ type ParsedArgs = {
   limit: number;
   budget: number;
   stdout: boolean;
+};
+
+type BuildableGateState = GateState & {
+  gateState: "ungated" | "stale";
 };
 
 function gh(args: string[]): string {
@@ -86,7 +90,9 @@ function latestGateComment(comments: Array<{ body: string; createdAt: string }>)
   }
 
   if (!latest) return null;
-  return parseGateComment([latest]) ? latest : null;
+
+  const parsed = parseGateComment([latest]);
+  return parsed.kind === "parsed" ? latest : null;
 }
 
 function warn(message: string): void {
@@ -156,6 +162,10 @@ function buildPacket(row: {
     priorVerdictText,
     diffText,
   };
+}
+
+function isBuildableGateState(row: GateState): row is BuildableGateState {
+  return !row.isDraft && (row.gateState === "ungated" || row.gateState === "stale");
 }
 
 function renderPacket(packet: Packet): string {
@@ -255,9 +265,9 @@ function applyBudget(packets: Packet[], budget: number): { packets: Packet[]; om
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
-  const rows = collectGateStates().filter((row) => !row.isDraft && (row.gateState === "ungated" || row.gateState === "stale"));
+  const rows = collectGateStates().filter(isBuildableGateState);
   const selected = rows.slice(0, args.limit);
-  const packets = selected.map(buildPacket);
+  const packets = selected.map((row) => buildPacket(row));
   const { packets: fitted, omitted } = applyBudget(packets, args.budget);
   const output = renderOutput(fitted, omitted);
 

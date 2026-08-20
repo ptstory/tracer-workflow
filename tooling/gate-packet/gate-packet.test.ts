@@ -268,6 +268,46 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     expect(result.stdout).toContain("head: aaaaaaa   gate: stale");
   });
 
+  test("renders no prior verdict for a marked but non-conforming gate comment", () => {
+    const state = emptyStubState();
+    const repo = REPOS[0];
+
+    state.listByRepo[repo] = [
+      {
+        number: 8,
+        title: "invalid prior verdict",
+        headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        comments: [
+          {
+            body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreviewed-files: 1\n",
+            createdAt: "2026-01-02T00:00:00Z",
+          },
+        ],
+        isDraft: false,
+      },
+    ];
+    state.prViews[`${repo}#8`] = {
+      body: "Closes #78",
+      comments: [
+        {
+          body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreviewed-files: 1\n",
+          createdAt: "2026-01-02T00:00:00Z",
+        },
+      ],
+    };
+    state.issueViews[`${repo}#78`] = { text: "issue #78 — invalid prior verdict\nbody:\nissue body 78" };
+    state.diffs[`${repo}#8`] = { text: "diff --git a/x.txt b/x.txt\n+payload\n" };
+    writeGhStub(harness, state);
+
+    const result = runGatePacket(harness, ["--stdout"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("=== ptstory/core-tweaks#8 — invalid prior verdict");
+    expect(result.stdout).toContain("--- prior verdict ---\nnone");
+    expect(result.stdout).not.toContain("--- prior verdict ---\n## review-gate: needs-fix");
+  });
+
   test("truncates diffs largest first and preserves issue and verdict sections", () => {
     const state = emptyStubState();
     const repo = REPOS[0];
