@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execFileSync } from "node:child_process";
-import { collectGateStates } from "../gate-state/gate-state";
+import { collectGateStates, type GateState } from "../gate-state/gate-state";
 import { parseGateComment } from "../lib/verdict";
 
 type PRDetails = {
@@ -24,6 +24,11 @@ type ParsedArgs = {
   limit: number;
   budget: number;
   stdout: boolean;
+};
+
+type PacketCandidate = GateState & {
+  isDraft: false;
+  gateState: "ungated" | "stale";
 };
 
 function gh(args: string[]): string {
@@ -93,6 +98,10 @@ function warn(message: string): void {
   process.stderr.write(`warning: ${message}\n`);
 }
 
+function isPacketCandidate(row: GateState): row is PacketCandidate {
+  return !row.isDraft && (row.gateState === "ungated" || row.gateState === "stale");
+}
+
 function loadPrDetails(repo: string, number: number): PRDetails {
   try {
     const out = gh(["pr", "view", String(number), "--repo", repo, "--json", "body,comments"]);
@@ -132,13 +141,7 @@ function loadDiffText(repo: string, number: number): string {
   }
 }
 
-function buildPacket(row: {
-  repo: string;
-  number: number;
-  title: string;
-  headRefOid: string;
-  gateState: "ungated" | "stale";
-}): Packet {
+function buildPacket(row: PacketCandidate): Packet {
   const details = loadPrDetails(row.repo, row.number);
   const issueNumber = parseIssueNumber(details.body);
   const issueText = issueNumber === null ? "none" : loadIssueText(row.repo, issueNumber).trimEnd() || "none";
@@ -255,7 +258,7 @@ function applyBudget(packets: Packet[], budget: number): { packets: Packet[]; om
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
-  const rows = collectGateStates().filter((row) => !row.isDraft && (row.gateState === "ungated" || row.gateState === "stale"));
+  const rows = collectGateStates().filter(isPacketCandidate);
   const selected = rows.slice(0, args.limit);
   const packets = selected.map(buildPacket);
   const { packets: fitted, omitted } = applyBudget(packets, args.budget);

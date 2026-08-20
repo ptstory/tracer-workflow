@@ -158,7 +158,10 @@ function runGatePacket(h: Harness, args: string[] = []) {
 }
 
 function gateComment(headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
-  return { body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\n`, createdAt: at };
+  return {
+    body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreview-round: 1\nreviewed-files: 1\n`,
+    createdAt: at,
+  };
 }
 
 describe("tooling/gate-packet/gate-packet.ts", () => {
