@@ -158,7 +158,17 @@ function runGatePacket(h: Harness, args: string[] = []) {
 }
 
 function gateComment(headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
-  return { body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\n`, createdAt: at };
+  return {
+    body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreview-round: 1\nreviewed-files: 1\n`,
+    createdAt: at,
+  };
+}
+
+function invalidGateComment(headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
+  return {
+    body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreviewed-files: 1\n`,
+    createdAt: at,
+  };
 }
 
 describe("tooling/gate-packet/gate-packet.ts", () => {
@@ -266,6 +276,35 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     expect(result.stdout).toContain("=== ptstory/core-tweaks#7 — packet");
     expect(result.stdout).toContain("issue #77 — packet");
     expect(result.stdout).toContain("head: aaaaaaa   gate: stale");
+  });
+
+  test("renders no prior verdict when the latest marked comment is non-conforming", () => {
+    const state = emptyStubState();
+    const repo = REPOS[0];
+
+    state.listByRepo[repo] = [
+      {
+        number: 8,
+        title: "invalid verdict",
+        headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        comments: [],
+        isDraft: false,
+      },
+    ];
+    state.prViews[`${repo}#8`] = {
+      body: "Closes #78",
+      comments: [invalidGateComment("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "needs-fix", "2026-01-02T00:00:00Z")],
+    };
+    state.issueViews[`${repo}#78`] = { text: "issue #78 — invalid verdict\nbody:\nissue body 78" };
+    state.diffs[`${repo}#8`] = { text: "diff --git a/x.txt b/x.txt\n+payload\n" };
+    writeGhStub(harness, state);
+
+    const result = runGatePacket(harness, ["--stdout"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("=== ptstory/core-tweaks#8 — invalid verdict");
+    expect(result.stdout).toContain("--- prior verdict ---\nnone");
   });
 
   test("truncates diffs largest first and preserves issue and verdict sections", () => {
