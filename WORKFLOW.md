@@ -50,7 +50,7 @@ whose blockers are both closed and contract-satisfying.
 | `from-issue` | Tracer custom skill | one `ready-for-agent` issue → branch → smallest safe slice → PR with a closing issue reference + evidence bundle. One issue, one PR. |
 | `requesting-code-review` | adopted (REPOZY) | reviewer side. Security pass, severity-blocks-merge, produces a merge-readiness verdict. |
 | `from-pr-review` | Tracer custom skill | **plumbing** for the return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, emit handoff. Delegates every judgment call to `receiving-code-review`. |
-| `receiving-code-review` | adopted (REPOZY) | **judgment**. Per review item: fix now / scope creep / follow-up issue / defer. Forbids "good catch" / agreeing before verification. |
+| `receiving-code-review` | adopted (REPOZY) | **judgment**. Uses the canonical verdict contract in `skills/review-gate/references/verdict-contract.md`. Forbids "good catch" / agreeing before verification. |
 | `next` | Tracer custom skill | loop-closer. After merge, lists open `ready-for-agent` issues with no open blockers → hand one to `from-issue`. Read-only. |
 
 ## Triage depth rule

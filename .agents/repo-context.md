@@ -44,6 +44,9 @@ unbacked-work monitoring.
 # Run the repository's Bun tests (test files use bun:test).
 bun test
 
+# Run the repository's TypeScript check.
+bun run typecheck
+
 # Review-gate poller smoke run (requires authenticated gh and opencode).
 cd tooling/review-gate-poller
 RG_REPO=<owner/repo> RG_WORKDIR=<repo-working-dir> bun poller.ts
@@ -55,9 +58,9 @@ UNBACKED_WORK_OUTPUT_DIR=<output-dir> \
 bun tooling/unbacked-work-monitor/unbacked-work-monitor.ts
 ```
 
-TODO: confirm the preferred repository-wide test command and whether any future
-lint, typecheck, build, or CI commands should be added; no package scripts or CI
-workflow were detected.
+Preferred repository-wide verification commands currently present: `bun test`
+for Bun tests and `bun run typecheck` for TypeScript checks. TODO: add future
+lint or build commands here if the repository introduces them.
 
 ## Runtime and tooling
 
@@ -67,8 +70,8 @@ workflow were detected.
   `opencode`.
 - The repository targets macOS launchd for documented background jobs; TODO:
   confirm supported operating systems beyond macOS.
-- No package manifest or lockfile was detected, so no package-manager install
-  command or pinned dependency set is defined.
+- `package.json` and `bun.lock` are present; CI installs dependencies with
+  `bun install --frozen-lockfile`.
 - No required env file was detected. Tooling uses explicit environment variables
   documented in its README files.
 - Test runner: Bun's built-in test runner is inferred from `bun:test` imports.
@@ -148,8 +151,8 @@ workflow were detected.
 - launchd runs with minimal `PATH`; documented jobs use absolute paths and pinned
   environment values.
 - `gh` must be authenticated for the review-gate poller and GitHub mutations.
-- The repository has no package scripts, lockfiles, or CI workflows to serve as
-  automatic authoritative checks.
+- `bun test` currently runs only locally; a green check-run gate does not mean
+  the repository's 35-test Bun suite passed.
 
 ## Branch and PR expectations
 
@@ -160,8 +163,9 @@ workflow were detected.
   to the reviewed head SHA.
 - Prefer draft PRs unless the workflow or maintainer says otherwise.
 - Merge is manual by default; the current check-run gate is authoritative.
-- No GitHub Actions workflows or required-check names were detected. TODO:
-  confirm branch protection and required reviewers/checks in GitHub.
+- A GitHub Actions workflow exists at `.github/workflows/ci.yml` and currently
+  runs `bun run typecheck`. TODO: confirm branch protection and required
+  reviewers/checks in GitHub.
 
 ## Evidence requirements
 
