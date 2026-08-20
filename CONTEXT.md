@@ -28,6 +28,9 @@ written by the review stage, and it goes stale when the head moves. Where a
 verdict value and a label share a word, they are still different objects — the
 `gate:` prefix marks the labels that mirror a verdict.
 
+Each verdict also carries a review round, so the same verdict value means one
+review outcome at one head SHA in one numbered round.
+
 The authoritative verdict vocabulary is
 `skills/review-gate/references/verdict-contract.md`.
 
@@ -48,7 +51,9 @@ nothing.
 
 Merge readiness read from actual check-run state at the current head, never from
 a report that tests passed. A pending or red required check means not ready,
-independent of diff quality.
+independent of diff quality. Review-gate findings that can block that merge
+decision are limited by the binding scope defined in the verdict contract: the
+issue body plus brief clarifications explicitly marked as derived from it.
 
 ## Slice contract
 
