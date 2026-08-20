@@ -40,6 +40,11 @@ function expectNoFragments(text: string, fragments: string[] = []): void {
   }
 }
 
+function expectManagedBlock(text: string, fragments: string[]): void {
+  expectFragments(text, fragments);
+  expectNoFragments(text, ["<<<<<<<", "=======", ">>>>>>>"]);
+}
+
 function docText(doc: ContractDoc): string {
   return read(docs[doc]);
 }
@@ -61,19 +66,19 @@ describe("from-issue contract", () => {
     const gitignore = read(".gitignore");
     const ignore = read(".ignore");
 
-    expect(gitignore.trim()).toBe(`
-# BEGIN oh-my-opencode-slim worktrees
-.slim/worktrees/
-.slim/worktrees.json
-# END oh-my-opencode-slim worktrees
-`.trim());
-    expect(ignore.trim()).toBe(`
-# BEGIN oh-my-opencode-slim worktrees
-!.slim/
-!.slim/worktrees.json
-!.slim/worktrees/
-!.slim/worktrees/**
-# END oh-my-opencode-slim worktrees
-`.trim());
+    expectManagedBlock(gitignore, [
+      "# BEGIN oh-my-opencode-slim worktrees",
+      ".slim/worktrees/",
+      ".slim/worktrees.json",
+      "# END oh-my-opencode-slim worktrees",
+    ]);
+    expectManagedBlock(ignore, [
+      "# BEGIN oh-my-opencode-slim worktrees",
+      "!.slim/",
+      "!.slim/worktrees.json",
+      "!.slim/worktrees/",
+      "!.slim/worktrees/**",
+      "# END oh-my-opencode-slim worktrees",
+    ]);
   });
 });

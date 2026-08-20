@@ -1,12 +1,7 @@
-<<<<<<< HEAD
 .slim/
 .serena/
 node_modules/
-||||||| parent of fe4d16f (fix(workflow): prevent from-issue handoff recursion)
-.slim/
-=======
 # BEGIN oh-my-opencode-slim worktrees
 .slim/worktrees/
 .slim/worktrees.json
 # END oh-my-opencode-slim worktrees
->>>>>>> fe4d16f (fix(workflow): prevent from-issue handoff recursion)
