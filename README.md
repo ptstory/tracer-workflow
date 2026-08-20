@@ -34,7 +34,7 @@ flowchart LR
     tq --> ab[agent-brief]
     ab -->|ready-for-agent| nx[next]
     nx --> fi[from-issue]
-    fi -->|"PR + Closes #N"| rg[review-gate]
+    fi -->|"verify, then create PR + Closes #N"| rg[review-gate]
     rg -->|verdict on PR| fpr[from-pr-review]
     fpr -->|delegates judgment| rec[receiving-code-review]
     rec -->|disposition| fpr
@@ -50,8 +50,10 @@ flowchart LR
 ```
 
 Teal = custom (owned here). Gray = adopted (upstream copies, consumed not
-authored). `review-gate` runs `requesting-code-review` inside a fresh session and
-posts the verdict to the PR.
+authored). `from-issue` owns PR creation directly after successful verification;
+no branch-outcome menu, optional router, or review tooling may override or
+replace that path. `review-gate` runs `requesting-code-review` inside a fresh
+session and posts the verdict to the PR.
 
 The same flow as text, with each stage marked:
 

@@ -10,7 +10,8 @@ If you're reading this because you forgot what the workflow was: the chain is
 below, the skills are in `skills/`, the plain reusable prompts are in `prompts/`,
 and the repo-owned rules are the evidence-bundle contract, the slice-contract
 rule, and the check-run gate. `using-superpowers` is optional guardrail context,
-not a global router that overrides this workflow.
+not a global router that overrides this workflow or the direct `from-issue` → PR
+path.
 
 ## The chain
 
@@ -38,6 +39,10 @@ threads, not agent briefs.
 
 `next` is the state-machine selector after merge: it lists ready-for-agent issues
 whose blockers are both closed and contract-satisfying.
+
+Router coupling must be tested empirically. A run is evidence only when its
+repository, issue or PR, enabled optional tooling, commands, and outcome are
+recorded durably; a numbered anecdote or closed PR alone is insufficient.
 
 | Skill / prompt | Owner | Role |
 |---|---|---|
@@ -76,6 +81,10 @@ output — the narrated-confidence failure mode. These exist to close that.
 exact local commands run and their output, anchored to a specific head SHA. Prose
 claims ("tests pass") are an index, not evidence. The bundle is what
 `requesting-code-review` audits.
+
+`from-issue` owns PR creation immediately after successful verification; no
+branch-outcome menu, optional router, or review tooling may override or replace
+that direct path.
 
 **2. Check-run gate.** Merge-readiness may not be asserted "ready" while any
 required check is pending or red for the current head SHA — regardless of diff
