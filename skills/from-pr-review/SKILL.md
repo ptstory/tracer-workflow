@@ -33,7 +33,7 @@ against actual check-run state, and hand back.
   state for the head SHA you just pushed, read via `gh`/API. A local "tests pass"
   is evidence for the bundle, not a readiness verdict.
 - Do not open follow-up issues silently — only when `receiving-code-review`
-  returns a "follow-up issue" verdict, and record the created issue number in the
+  returns a `follow-up-issue` verdict, and record the created issue number in the
   handoff.
 
 ## Steps
@@ -49,19 +49,35 @@ against actual check-run state, and hand back.
    review comment via `gh pr view <N> --json reviews,comments` plus the
    review-thread GraphQL query (REST does not expose thread resolution state —
    see `references/gh-review-threads.md`). One ledger row per actionable item:
-   thread id, file/area, the reviewer's ask, current state. Non-actionable
-   chatter is marked and skipped, not dropped.
+   thread id, file/area, the reviewer's ask, current state. Before building the
+   ledger, read `review-round:` from the latest verdict comment and apply the
+   round-aware rules in
+   `skills/review-gate/references/verdict-contract.md`. On `needs-human`, stop
+   and hand back; do not run a fix pass at any SHA. On round `N > 0`, apply the
+   contract's stale-finding rule and its correctness/security exception.
+   Non-actionable chatter is marked and skipped, not dropped.
 
-4. **Delegate judgment.** For each ledger row, hand the item to
-   `receiving-code-review`. Capture its verdict: fix-now / scope-creep /
-   follow-up-issue / defer / reject. Do not override it. Do not add "good catch"
-   framing — `receiving-code-review` forbids it and so does this skill.
+4. **Delegate judgment and record the disposition ledger.** For each ledger row,
+   hand the item to `receiving-code-review` and record the returned disposition
+   ledger entry before any fix work begins. Each row must preserve the finding as
+   the reviewer stated it, the severity the reviewer assigned, the returned
+   disposition, and one line of reasoning for that disposition. Reviewer severity
+   is input to judgment, not the judgment itself; a reviewer-marked fix-now may
+   come back `follow-up-issue`. Use the canonical disposition vocabulary from
+   `skills/review-gate/references/verdict-contract.md`: `fix-now`,
+   `follow-up-issue`, `defer`, `reject`, `needs-human`. Do not override the
+   returned disposition. Do not add "good catch" framing — `receiving-code-review`
+   forbids it and so does this skill.
 
-5. **Plan the minimal response pass.** Group fix-now items into the smallest set
-   of coherent changes. Do not expand scope beyond what the verdicts authorize.
+5. **Plan the minimal response pass.** Build the fixer batch ONLY from rows whose
+   returned disposition is `fix-now`. Every other row is excluded from the batch
+   and carried through to the reply and handoff. Passing review findings straight
+   to a fixer without a returned disposition per row is a contract violation; this
+   is the observed failure mode. Do not expand scope beyond what the
+   dispositions authorize.
 
-6. **Apply fixes.** Implement only the fix-now verdicts. Keep each change
-   traceable to its ledger row (which thread it answers).
+6. **Apply fixes.** Implement only the `fix-now` rows in the fixer batch. Keep
+   each change traceable to its ledger row (which thread it answers).
 
 7. **Verify locally.** Run the repo's test/build/lint commands. Capture exact
    command + output for the evidence bundle. This is evidence, not a readiness
@@ -79,12 +95,12 @@ against actual check-run state, and hand back.
    check-run gate.
 
 10. **Reply to review threads.** For each ledger row, post a threaded reply that
-    states what was done (commit SHA) or the deferral/follow-up verdict and its
-    issue number. Resolve threads that are genuinely resolved. Leave open the ones
-    the verdict said to defer, with the reason.
+    states what was done (commit SHA) or the returned disposition and its issue
+    number / reason. Resolve threads that are genuinely resolved. Leave open the
+    ones the verdict said to defer, with the reason.
 
 11. **Handoff.** Emit a structured handoff (see `references/handoff-shape.md`):
-    PR, new head SHA, per-item disposition table, check-run gate result as data,
+    PR, new head SHA, the disposition ledger from step 4, check-run gate result as data,
     any follow-up issues created, and the single readiness line — **ready** only
     if the gate is green, otherwise **blocked-on:** with the specific red/pending
     checks or open deferrals. Never "looks good" prose in place of the gate
@@ -96,5 +112,8 @@ against actual check-run state, and hand back.
 - Do not merge.
 - Do not claim readiness off local or reported output.
 - Do not resolve threads you did not address.
+- Do not send review findings to a fixer without a returned disposition per row.
+- Do not use non-canonical disposition scope-creep language; use the contract's
+  disposition vocabulary.
 - Do not rewrite or delete existing code or comments beyond what a fix-now verdict
   requires.
