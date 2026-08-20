@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { REPOS } from "./gate-state";
+import { REPOS, classifyGateState } from "./gate-state";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -101,7 +101,7 @@ function gateRows(draft: boolean): unknown[] {
       headRefOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       comments: [
         {
-          body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",
+          body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\n",
           createdAt: "2026-01-01T00:00:00Z",
         },
       ],
@@ -113,7 +113,7 @@ function gateRows(draft: boolean): unknown[] {
       headRefOid: "cccccccccccccccccccccccccccccccccccccccc",
       comments: [
         {
-          body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\n",
+          body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
           createdAt: "2026-01-02T00:00:00Z",
         },
       ],
@@ -170,6 +170,27 @@ describe("tooling/gate-state/gate-state.ts", () => {
     );
   });
 
+  test("keeps a PR classified from an older conforming verdict when a newer gate comment is malformed", () => {
+    expect(
+      classifyGateState("ptstory/core-tweaks", {
+        number: 99,
+        title: "malformed latest",
+        headRefOid: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        isDraft: false,
+        comments: [
+          {
+            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreview-round: 0\nreviewed-files: 1\n",
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+          {
+            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreviewed-files: 1\n",
+            createdAt: "2026-01-02T00:00:00Z",
+          },
+        ],
+      }).gateState,
+    ).toBe("current");
+  });
+
   test("--count-open excludes drafts", () => {
     const responses = Object.fromEntries(
       REPOS.map((repo) => [
@@ -188,7 +209,7 @@ describe("tooling/gate-state/gate-state.ts", () => {
             headRefOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             comments: [
               {
-                body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",
+                body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\n",
                 createdAt: "2026-01-01T00:00:00Z",
               },
             ],
@@ -200,7 +221,7 @@ describe("tooling/gate-state/gate-state.ts", () => {
             headRefOid: "cccccccccccccccccccccccccccccccccccccccc",
             comments: [
               {
-                body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\n",
+                body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
                 createdAt: "2026-01-02T00:00:00Z",
               },
             ],

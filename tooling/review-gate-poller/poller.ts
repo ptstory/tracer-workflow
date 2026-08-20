@@ -89,7 +89,13 @@ function latestVerdict(n: number): GateComment | null {
   const authoredComments = comments
     .filter((comment) => !REVIEWER_LOGIN || comment.author.login === REVIEWER_LOGIN)
     .map((comment) => ({ body: comment.body, createdAt: comment.createdAt }));
-  return parseGateComment(authoredComments);
+  const parsed = parseGateComment(authoredComments);
+  if (parsed.kind === "parsed") return parsed.verdict;
+  if (parsed.kind === "invalid") {
+    const reason = parsed.comment.body.split(/\r?\n/).find((line) => line.trim()) ?? parsed.comment.body;
+    console.warn(`PR #${n}: review-gate comment is unparseable (${reason.trim()}); skipping`);
+  }
+  return null;
 }
 
 // --- state --------------------------------------------------------------------
@@ -322,11 +328,21 @@ function main(): void {
     const v = latestVerdict(pr.number);
     if (!v) continue;
 
-    // SHA-staleness rule: verdict only valid on current head.
-    if (v.headSha !== pr.headRefOid) continue;
+    if (v.verdict === "needs-human") {
+      console.log(
+        `PR #${pr.number}: needs-human for verdict SHA ${v.headSha} (current head ${pr.headRefOid}), not launching fix pass`,
+      );
+      continue;
+    }
 
-    // Only needs-fix triggers autonomous action. merge-candidate/needs-human/
-    // blocked surface to the human — the poller does not merge or escalate.
+    // SHA-staleness rule: verdict only valid on current head.
+    if (v.headSha !== pr.headRefOid) {
+      console.log(`PR #${pr.number}: verdict SHA ${v.headSha} is stale for current head ${pr.headRefOid}; skipping`);
+      continue;
+    }
+
+    // Only needs-fix triggers autonomous action. merge-candidate/blocked surface
+    // to the human — the poller does not merge or escalate.
     if (v.verdict !== "needs-fix") continue;
 
     const key = String(pr.number);

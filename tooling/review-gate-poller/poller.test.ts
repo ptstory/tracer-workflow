@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -157,7 +157,7 @@ describe("tooling/review-gate-poller/poller.ts", () => {
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+            body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -203,6 +203,31 @@ esac
     });
   });
 
+  test("does not launch a fix pass for needs-human even when the SHA is current", () => {
+    writeGhStub(
+      harness,
+      JSON.stringify([{ number: 13, headRefOid: "cccccccccccccccccccccccccccccccccccccccc" }]),
+      JSON.stringify({
+        comments: [
+          {
+            author: { login: "review-bot" },
+            body: "## review-gate: needs-human\nhead-sha: cccccccccccccccccccccccccccccccccccccccc\nreview-round: 1\nreviewed-files: 2\n",
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    writeOpencodeStub(harness, `printf 'unexpected launch\n' >&2`, 91);
+
+    const result = runPoller(harness);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(readFileSync(harness.opencodeLog, "utf8")).toBe("");
+    expect(existsSync(harness.statePath)).toBe(false);
+  });
+
   test("persists state even when opencode exits nonzero", () => {
     writeGhStub(
       harness,
@@ -211,7 +236,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",
+            body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -235,6 +260,36 @@ esac
     });
   });
 
+  test("stops on an unparseable verdict instead of defaulting review-round to zero", () => {
+    writeGhStub(
+      harness,
+      JSON.stringify([{ number: 14, headRefOid: "dddddddddddddddddddddddddddddddddddddddd" }]),
+      JSON.stringify({
+        comments: [
+          {
+            author: { login: "review-bot" },
+            body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+          {
+            author: { login: "review-bot" },
+            body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreviewed-files: 1\n",
+            createdAt: "2026-01-02T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    writeOpencodeStub(harness, `printf 'unexpected relaunch\n' >&2`, 91);
+
+    const result = runPoller(harness);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("unparseable");
+    expect(readFileSync(harness.opencodeLog, "utf8")).toBe("");
+    expect(existsSync(harness.statePath)).toBe(false);
+  });
+
   test("sanitizes noisy stderr to a single line", () => {
     writeGhStub(
       harness,
@@ -243,7 +298,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: ffffffffffffffffffffffffffffffffffffffff\n",
+            body: "## review-gate: needs-fix\nhead-sha: ffffffffffffffffffffffffffffffffffffffff\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -275,7 +330,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 1111111111111111111111111111111111111111\n",
+            body: "## review-gate: needs-fix\nhead-sha: 1111111111111111111111111111111111111111\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -307,7 +362,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 3333333333333333333333333333333333333333\n",
+            body: "## review-gate: needs-fix\nhead-sha: 3333333333333333333333333333333333333333\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -339,7 +394,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 4444444444444444444444444444444444444444\n",
+            body: "## review-gate: needs-fix\nhead-sha: 4444444444444444444444444444444444444444\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -434,7 +489,7 @@ esac
           comments: [
             {
               author: { login: "review-bot" },
-              body: "## review-gate: needs-fix\nhead-sha: 8888888888888888888888888888888888888888\n",
+              body: "## review-gate: needs-fix\nhead-sha: 8888888888888888888888888888888888888888\nreview-round: 0\nreviewed-files: 1\n",
               createdAt: "2026-01-01T00:00:00Z",
             },
           ],
@@ -475,7 +530,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+            body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -512,7 +567,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: cccccccccccccccccccccccccccccccccccccccc\n",
+            body: "## review-gate: needs-fix\nhead-sha: cccccccccccccccccccccccccccccccccccccccc\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -549,7 +604,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 6666666666666666666666666666666666666666\n",
+            body: "## review-gate: needs-fix\nhead-sha: 6666666666666666666666666666666666666666\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -596,7 +651,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 7777777777777777777777777777777777777777\n",
+            body: "## review-gate: needs-fix\nhead-sha: 7777777777777777777777777777777777777777\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -661,7 +716,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n",
+            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreview-round: 0\nreviewed-files: 1\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],

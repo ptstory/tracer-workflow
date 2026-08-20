@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execFileSync } from "node:child_process";
-import { parseGateComment, type GateComment } from "../lib/verdict";
+import { latestConformingGateComment, type GateComment } from "../lib/verdict";
 
 const REPOS = [
   "ptstory/core-tweaks",
@@ -61,7 +61,7 @@ function listOpenPRs(repo: string): OpenPR[] {
 }
 
 function classifyGateState(repo: string, pr: OpenPR): GateState {
-  const gate: GateComment | null = parseGateComment(pr.comments);
+  const gate: GateComment | null = latestConformingGateComment(pr.comments);
   if (!gate) {
     return {
       repo,

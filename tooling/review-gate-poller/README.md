@@ -1,12 +1,15 @@
 # review-gate-poller
 
-Polls open PRs for a `review-gate` verdict comment whose `head-sha` matches the
-PR's current head. On a fresh `needs-fix`, it shells `opencode run` to apply the
-fix pass via `from-pr-review`. Pushing moves the head SHA, which invalidates the
-verdict by construction, and the cycle repeats until `merge-candidate`.
+Polls open PRs for the latest conforming `review-gate` verdict comment — a gate
+comment with `head-sha`, `review-round`, and `reviewed-files` — whose
+`head-sha` matches the PR's current head. On a fresh `needs-fix`, it shells
+`opencode run` to apply the fix pass via `from-pr-review`. Pushing moves the
+head SHA, which invalidates the verdict by construction, and the cycle repeats
+until `merge-candidate`.
 
 Only `needs-fix` triggers autonomous action. `merge-candidate`, `needs-human`,
-and `blocked` are left for a human — merge stays manual.
+and `blocked` are left for a human — merge stays manual. Malformed gate-marked
+comments are logged and never trigger a fix pass.
 
 ## Setup
 
