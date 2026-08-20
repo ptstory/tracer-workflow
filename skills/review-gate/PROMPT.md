@@ -15,8 +15,11 @@ Do this:
 1. Resolve the PR's current head SHA. Every verdict you post is tied to this SHA.
 2. Get the actual changed-file list from the PR (the GitHub connector's file list,
    NOT the PR body's prose list — the body is often stale after rebase).
-3. Run the review with two independent axes, preserving each axis's own order:
-   Standards and Spec. Do not rerank or merge findings across axes.
+3. Run the review with two independent axes — Standards and Spec — preserving
+   each axis's own order, without reranking or merging findings across axes.
+   Within those axes, cover severity-tagged findings, a security pass where the
+   diff touches auth/input/endpoints/secrets/crypto/infra, spec alignment
+   against the issue's acceptance criteria, and coverage gaps.
 4. Classify findings only with the contract dispositions: `fix-now`,
    `follow-up-issue`, `defer`, `reject`, `needs-human`.
 5. Post the result as a PR comment in the exact format below. Do not attempt a

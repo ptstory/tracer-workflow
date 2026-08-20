@@ -109,4 +109,13 @@ describe("verdict examples", () => {
       });
     });
   }
+
+  test("keeps review-round contract semantics aligned with verdict state", () => {
+    for (const block of blocks) {
+      const parsed = parseGateBody(block);
+      if (!parsed) throw new Error("expected conforming verdict block");
+
+      expect(parsed.reviewRound < 3 || parsed.verdict === "needs-human").toBe(true);
+    }
+  });
 });
