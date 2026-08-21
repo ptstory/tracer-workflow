@@ -1,209 +1,180 @@
-export type ContractDoc = "skill" | "workflow" | "readme" | "prompt";
-
-export type ContractCheck = {
-  doc: ContractDoc;
-  section?: string;
-  fragments: string[];
-  forbidden?: string[];
-};
-
-export type ContractScenario = {
+export type RegressionCase = {
+  id: number;
   name: string;
-  checks: ContractCheck[];
+  input: {
+    summary: string;
+    pastedArtifact?: string;
+    shouldRecognizePastedArtifact?: boolean;
+  };
+  assistantResponse: string;
+  expectedOutcomes: Array<
+    | "create-or-reuse-worktree"
+    | "execution-in-place"
+    | "resume-existing-worktree"
+    | "explicit-blocker"
+    | "generic-approval-gate"
+  >;
+  valid: boolean;
+  mustMention?: string[];
+  mustNotMention?: string[];
+  requireNamedBlocker?: boolean;
 };
 
-export const docs: Record<ContractDoc, string> = {
-  skill: "skills/from-issue/SKILL.md",
-  workflow: "WORKFLOW.md",
-  readme: "README.md",
-  prompt: "prompts/agent-brief.md",
-};
+export const completeHandoff = `Issue #20 handoff
 
-export const contractScenarios: ContractScenario[] = [
+Goal
+- Continue execution in the same session.
+
+Files
+- skills/from-issue/SKILL.md
+- skills/from-issue/from-issue-contract.test.ts
+
+Constraints
+- Create or reuse the dedicated issue worktree when the primary checkout is dirty.
+
+Acceptance criteria
+- A complete handoff enters execution instead of producing another handoff.
+
+Verification
+- bun run typecheck
+- bun test
+`;
+
+export const incompleteHandoff = `Issue #20 handoff
+
+Goal
+- Continue execution in the same session.
+
+Files
+- skills/from-issue/SKILL.md
+
+Constraints
+- Preserve existing work.
+
+Acceptance criteria
+- Enter execution when safe.
+`;
+
+export const regressionCases: RegressionCase[] = [
   {
-    name: "validated execution inputs can come from issue, pasted implementation handoff, or pasted durable brief",
-    checks: [
-      {
-        doc: "skill",
-        section: "## Inputs",
-        fragments: [
-          "A GitHub issue URL or number plus its durable `ready-for-agent` brief.",
-          "A validated complete pasted implementation handoff for that issue.",
-          "A validated pasted durable agent brief.",
-        ],
-      },
-      {
-        doc: "workflow",
-        fragments: [
-          "validated pasted implementation handoff / durable agent brief",
-          "The durable issue brief, a validated pasted implementation handoff, or a validated pasted durable agent brief are all execution inputs once validated",
-        ],
-      },
-      {
-        doc: "readme",
-        fragments: [
-          "`ready-for-agent` issue, or for a validated pasted implementation handoff / durable agent brief",
-          "accepted as equivalent execution input",
-        ],
-      },
-      {
-        doc: "prompt",
-        fragments: [
-          "The authoritative execution input may be one of three validated sources",
-          "a complete pasted implementation handoff",
-          "equivalent execution input",
-        ],
-      },
-    ],
+    id: 1,
+    name: "complete handoff still drives execution",
+    input: {
+      summary: "A validated complete pasted handoff arrives for issue #20 and the run must move into execution.",
+      pastedArtifact: completeHandoff,
+      shouldRecognizePastedArtifact: true,
+    },
+    assistantResponse:
+      "Validated Issue #20 handoff. Create or reuse the dedicated issue branch/worktree, continue execution there, and implement the smallest safe slice.",
+    expectedOutcomes: ["create-or-reuse-worktree", "execution-in-place"],
+    valid: true,
+    mustMention: ["validated issue #20 handoff", "create or reuse", "continue execution"],
+    mustNotMention: ["Handoff draft", "Approve this direction"],
   },
   {
-    name: "nested brainstorming and planning remain subordinate to outer-stage execution",
-    checks: [
-      {
-        doc: "skill",
-        section: "## Contract",
-        fragments: [
-          "Once action-ready input is accepted, any nested `using-superpowers`, brainstorming, or planning step is a subordinate subroutine and must return control to execution.",
-          "An ordinary `Approve this direction` / design-approval checkpoint does not end the run unless it explicitly names a concrete unresolved blocker",
-          "Multi-file scope, UI impact, a desire for planning, or a nested skill's default approval checkpoint are not blockers by themselves.",
-        ],
-      },
-      {
-        doc: "workflow",
-        fragments: [
-          "Once it accepts action-ready input, nested brainstorming/planning/`using-superpowers` steps are subordinate subroutines and must return control to execution.",
-          "An ordinary `Approve this direction` / design-approval checkpoint only ends the run if it names a concrete unresolved blocker",
-          "Multi-file scope, UI impact, a desire for planning, or a nested skill's default approval checkpoint are not blockers by themselves.",
-        ],
-      },
-      {
-        doc: "readme",
-        fragments: [
-          "nested brainstorming/planning/`using-superpowers` steps are subordinate subroutines",
-          "ordinary approval gate does not end the run unless it names a concrete unresolved blocker",
-          "Multi-file scope, UI impact, a desire for planning, or a nested skill's default approval checkpoint are not blockers by themselves.",
-        ],
-      },
-      {
-        doc: "prompt",
-        fragments: [
-          "those steps must return control to execution",
-          "A generic `Approve this direction` or design-approval checkpoint does not end the run unless it names a concrete unresolved blocker",
-          "Multi-file scope, UI impact, a desire for planning, or a nested skill's default approval checkpoint are not blockers by themselves.",
-        ],
-      },
-    ],
+    id: 2,
+    name: "complete handoff does not degrade into a terminal Handoff draft",
+    input: {
+      summary: "The contract must not collapse a valid pasted handoff into a nested Handoff draft terminal response.",
+      pastedArtifact: completeHandoff,
+      shouldRecognizePastedArtifact: true,
+    },
+    assistantResponse:
+      "Validated the pasted handoff and implement the smallest safe slice in the current issue lane instead of drafting another handoff.",
+    expectedOutcomes: ["execution-in-place"],
+    valid: true,
+    mustMention: ["validated the pasted handoff", "implement the smallest safe slice"],
+    mustNotMention: ["Handoff draft"],
   },
   {
-    name: "generic approval-gate regression is rejected unless the blocker is explicit",
-    checks: [
-      {
-        doc: "skill",
-        section: "## Contract",
-        fragments: [
-          "An ordinary `Approve this direction` / design-approval checkpoint does not end the run unless it explicitly names a concrete unresolved blocker that is absent from the issue or brief.",
-        ],
-        forbidden: [
-          "Stop for approval because the task is multi-file.",
-          "Stop for approval because planning would be useful.",
-        ],
-      },
-      {
-        doc: "prompt",
-        fragments: [
-          "A generic `Approve this direction` or design-approval checkpoint does not end the run unless it names a concrete unresolved blocker",
-        ],
-        forbidden: [
-          "Ask for approval solely because the task affects UI.",
-        ],
-      },
-    ],
+    id: 3,
+    name: "dirty primary checkout creates or reuses an isolated worktree",
+    input: {
+      summary: "The main checkout is dirty and the issue needs isolation before continuing.",
+    },
+    assistantResponse:
+      "The primary checkout is dirty and isolation is required. Create or reuse the dedicated issue branch/worktree and continue execution there.",
+    expectedOutcomes: ["create-or-reuse-worktree"],
+    valid: true,
+    mustMention: ["primary checkout is dirty", "create or reuse", "worktree"],
+    mustNotMention: ["stop and emit a blocker handoff only"],
   },
   {
-    name: "genuinely unresolved product or architecture decisions stop only as named blockers",
-    checks: [
-      {
-        doc: "skill",
-        section: "## Contract",
-        fragments: [
-          "Explicit durable blocker naming the exact missing prerequisite or decision.",
-        ],
-      },
-      {
-        doc: "workflow",
-        fragments: [
-          "explicit durable blocker naming the exact missing prerequisite or decision",
-        ],
-      },
-      {
-        doc: "readme",
-        fragments: [
-          "explicit durable blocker naming the exact missing prerequisite or decision",
-        ],
-      },
-    ],
+    id: 4,
+    name: "genuinely incomplete input is allowed to stop as a durable blocker",
+    input: {
+      summary: "The brief is missing an unresolved prerequisite that prevents execution.",
+      pastedArtifact: incompleteHandoff,
+      shouldRecognizePastedArtifact: false,
+    },
+    assistantResponse:
+      "Blocked: missing Verification section in the pasted handoff. Persist the exact missing prerequisite durably before execution continues.",
+    expectedOutcomes: ["explicit-blocker"],
+    valid: true,
+    mustMention: ["blocked:", "missing verification section", "persist"],
+    requireNamedBlocker: true,
   },
   {
-    name: "terminal outcomes are explicitly limited to the four accepted results",
-    checks: [
-      {
-        doc: "skill",
-        section: "## Contract",
-        fragments: [
-          "The terminal completion result is one of four outcomes:",
-          "PR opened with a closing issue reference plus an evidence bundle.",
-          "Existing PR/worktree resumed and advanced.",
-          "Explicit durable blocker naming the exact missing prerequisite or decision.",
-          "Verified failure with the exact recovery state persisted.",
-        ],
-      },
-      {
-        doc: "workflow",
-        fragments: [
-          "The terminal outcomes are limited to: PR opened with closing issue reference + evidence bundle; existing PR/worktree resumed and advanced; explicit durable blocker naming the exact missing prerequisite or decision; verified failure with the exact recovery state persisted.",
-        ],
-      },
-      {
-        doc: "readme",
-        fragments: [
-          "The allowed terminal outcomes are: PR opened with closing issue reference + evidence bundle; existing PR/worktree resumed and advanced; explicit durable blocker naming the exact missing prerequisite or decision; verified failure with the exact recovery state persisted.",
-        ],
-      },
-      {
-        doc: "prompt",
-        fragments: [
-          "The allowed terminal outcomes are:",
-          "verified failure with the exact recovery state persisted",
-        ],
-      },
-    ],
+    id: 5,
+    name: "existing issue worktree resumes instead of spawning another lane",
+    input: {
+      summary: "The same issue already has an active branch or worktree.",
+    },
+    assistantResponse:
+      "Resume the existing issue/worktree, continue execution in that lane, and do not recreate the handoff or branch.",
+    expectedOutcomes: ["resume-existing-worktree"],
+    valid: true,
+    mustMention: ["resume the existing issue/worktree", "do not recreate"],
+    mustNotMention: ["start another session"],
   },
   {
-    name: "resuming a live worktree and persisting verified failure recovery remain first-class outcomes",
-    checks: [
-      {
-        doc: "skill",
-        section: "## Steps",
-        fragments: [
-          "Validate the input artifact if it was pasted, then resume the same issue/worktree when present; do not recreate the handoff or branch.",
-          "If blocked or a verified failure cannot be recovered locally, stop with a blocker handoff that names the blocker, the failure, and the next required recovery contract.",
-        ],
-      },
-      {
-        doc: "workflow",
-        fragments: [
-          "resumes the same issue/worktree when present",
-          "verified failure with the exact recovery state persisted",
-          "If a blocker is durable or a failure is verified and cannot be recovered in the current worktree",
-        ],
-      },
-      {
-        doc: "readme",
-        fragments: [
-          "existing issue/worktree when one exists",
-          "handoff-only result is allowed only for genuine blockers or verified failures that cannot be recovered locally",
-        ],
-      },
-    ],
+    id: 6,
+    name: "from-issue plus ready-for-agent input keeps using-superpowers subordinate",
+    input: {
+      summary: "A ready-for-agent brief arrives with no blocker; nested using-superpowers must not become a terminal gate.",
+    },
+    assistantResponse:
+      "The ready-for-agent brief is sufficient. Run using-superpowers as a subordinate step, return control to execution, and implement the slice without stopping for approval.",
+    expectedOutcomes: ["execution-in-place"],
+    valid: true,
+    mustMention: ["using-superpowers as a subordinate step", "return control to execution"],
+    mustNotMention: ["Approve this direction"],
+  },
+  {
+    id: 7,
+    name: "nested brainstorming or planning returns control in the same session",
+    input: {
+      summary: "The outer from-issue run asks for brainstorming or planning as a nested step.",
+    },
+    assistantResponse:
+      "Use brainstorming or planning internally if needed, then return control to execution in the same session and implement the smallest safe slice.",
+    expectedOutcomes: ["execution-in-place"],
+    valid: true,
+    mustMention: ["return control to execution in the same session", "implement the smallest safe slice"],
+    mustNotMention: ["another handoff"],
+  },
+  {
+    id: 8,
+    name: "Approve this direction without a named blocker is rejected",
+    input: {
+      summary: "A nested approval asks to stop even though no unresolved blocker is named.",
+    },
+    assistantResponse: "Approve this direction before implementation.",
+    expectedOutcomes: ["generic-approval-gate"],
+    valid: false,
+    mustMention: ["approve this direction"],
+  },
+  {
+    id: 9,
+    name: "unresolved product or architecture decisions may block explicitly",
+    input: {
+      summary: "The issue or brief still omits a real product or architecture decision.",
+    },
+    assistantResponse:
+      "Blocked: unresolved architecture decision for the wire format is absent from the issue brief. Persist that exact missing decision durably instead of implementing guessed behavior.",
+    expectedOutcomes: ["explicit-blocker"],
+    valid: true,
+    mustMention: ["blocked:", "unresolved architecture decision", "persist"],
+    requireNamedBlocker: true,
   },
 ];
