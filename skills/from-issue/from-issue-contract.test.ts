@@ -30,48 +30,35 @@ function expectRejections(text: string, fragments: string[] = []): void {
   }
 }
 
+function normalizeHeading(heading: string): string {
+  return heading.trim().toLowerCase();
+}
+
+function readSection(text: string, heading: string): string {
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((line) => normalizeHeading(line) === `## ${normalizeHeading(heading)}`);
+
+  if (start === -1) {
+    throw new Error(`Missing ## ${heading} section in SKILL.md`);
+  }
+
+  let end = lines.length;
+
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (lines[index].startsWith("## ")) {
+      end = index;
+      break;
+    }
+  }
+
+  return lines.slice(start + 1, end).join("\n");
+}
+
 function recognizePastedHandoff(text: string): boolean {
   const requiredSections = ["Goal", "Files", "Constraints", "Acceptance criteria", "Verification"];
 
   return /Issue\s+#\d+\s+handoff/i.test(text)
     && requiredSections.every((section) => new RegExp(`^${section}$`, "im").test(text));
-}
-
-function classifyAssistantResponse(response: string):
-  | "create-or-reuse-worktree"
-  | "execution-in-place"
-  | "resume-existing-worktree"
-  | "explicit-blocker"
-  | "generic-approval-gate"
-  | "unknown" {
-  const text = normalize(response).toLowerCase();
-
-  if (text.includes("approve this direction") && !text.includes("blocked:")) {
-    return "generic-approval-gate";
-  }
-
-  if (text.includes("resume the existing issue/worktree") || text.includes("resume the same issue/worktree")) {
-    return "resume-existing-worktree";
-  }
-
-  if (text.includes("blocked:")) {
-    return "explicit-blocker";
-  }
-
-  if (text.includes("create or reuse") && text.includes("worktree")) {
-    return "create-or-reuse-worktree";
-  }
-
-  if (text.includes("continue execution") || text.includes("implement the smallest safe slice") || text.includes("implement the slice")) {
-    return "execution-in-place";
-  }
-
-  return "unknown";
-}
-
-function hasNamedBlocker(response: string): boolean {
-  const text = normalize(response).toLowerCase();
-  return text.includes("blocked:") && (text.includes("missing ") || text.includes("unresolved "));
 }
 
 function assertRegressionCase(regressionCase: RegressionCase): void {
@@ -84,26 +71,14 @@ function assertRegressionCase(regressionCase: RegressionCase): void {
     );
   }
 
-  expectBehaviors(regressionCase.assistantResponse, regressionCase.mustMention);
-  expectRejections(regressionCase.assistantResponse, regressionCase.mustNotMention);
+  const skillDoc = read("skills/from-issue/SKILL.md");
 
-  const outcome = classifyAssistantResponse(regressionCase.assistantResponse);
-  expect(outcome).not.toBe("unknown");
+  for (const assertion of regressionCase.skillMatches) {
+    const section = normalize(readSection(skillDoc, assertion.heading)).toLowerCase();
 
-  if (outcome === "unknown") {
-    throw new Error(`Unclassified response for regression case ${regressionCase.id}`);
-  }
-
-  expect(regressionCase.expectedOutcomes).toContain(outcome);
-
-  if (regressionCase.valid) {
-    expect(outcome).not.toBe("generic-approval-gate");
-  } else {
-    expect(outcome).toBe("generic-approval-gate");
-  }
-
-  if (regressionCase.requireNamedBlocker) {
-    expect(hasNamedBlocker(regressionCase.assistantResponse)).toBe(true);
+    for (const fragment of assertion.mustContain) {
+      expect(section).toContain(normalize(fragment).toLowerCase());
+    }
   }
 }
 

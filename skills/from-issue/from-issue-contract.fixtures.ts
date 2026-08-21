@@ -6,18 +6,10 @@ export type RegressionCase = {
     pastedArtifact?: string;
     shouldRecognizePastedArtifact?: boolean;
   };
-  assistantResponse: string;
-  expectedOutcomes: Array<
-    | "create-or-reuse-worktree"
-    | "execution-in-place"
-    | "resume-existing-worktree"
-    | "explicit-blocker"
-    | "generic-approval-gate"
-  >;
-  valid: boolean;
-  mustMention?: string[];
-  mustNotMention?: string[];
-  requireNamedBlocker?: boolean;
+  skillMatches: Array<{
+    heading: "Inputs" | "Dirty checkout" | "Contract" | "Steps" | "Do not";
+    mustContain: string[];
+  }>;
 };
 
 export const completeHandoff = `Issue #20 handoff
@@ -64,12 +56,21 @@ export const regressionCases: RegressionCase[] = [
       pastedArtifact: completeHandoff,
       shouldRecognizePastedArtifact: true,
     },
-    assistantResponse:
-      "Validated Issue #20 handoff. Create or reuse the dedicated issue branch/worktree, continue execution there, and implement the smallest safe slice.",
-    expectedOutcomes: ["create-or-reuse-worktree", "execution-in-place"],
-    valid: true,
-    mustMention: ["validated issue #20 handoff", "create or reuse", "continue execution"],
-    mustNotMention: ["Handoff draft", "Approve this direction"],
+    skillMatches: [
+      {
+        heading: "Inputs",
+        mustContain: [
+          "validate a pasted handoff by matching a bounded shape",
+          "issue #n handoff",
+          "goal",
+          "files",
+          "constraints",
+          "acceptance criteria",
+          "verification",
+          "otherwise treat it as an incomplete contract and stop only as an explicit blocker",
+        ],
+      },
+    ],
   },
   {
     id: 2,
@@ -79,12 +80,16 @@ export const regressionCases: RegressionCase[] = [
       pastedArtifact: completeHandoff,
       shouldRecognizePastedArtifact: true,
     },
-    assistantResponse:
-      "Validated the pasted handoff and implement the smallest safe slice in the current issue lane instead of drafting another handoff.",
-    expectedOutcomes: ["execution-in-place"],
-    valid: true,
-    mustMention: ["validated the pasted handoff", "implement the smallest safe slice"],
-    mustNotMention: ["Handoff draft"],
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "do not emit another implementation handoff for the same issue",
+          "update or resume the existing lane instead",
+          "a handoff-only result is allowed only for genuine blockers or verified failures",
+        ],
+      },
+    ],
   },
   {
     id: 3,
@@ -92,12 +97,14 @@ export const regressionCases: RegressionCase[] = [
     input: {
       summary: "The main checkout is dirty and the issue needs isolation before continuing.",
     },
-    assistantResponse:
-      "The primary checkout is dirty and isolation is required. Create or reuse the dedicated issue branch/worktree and continue execution there.",
-    expectedOutcomes: ["create-or-reuse-worktree"],
-    valid: true,
-    mustMention: ["primary checkout is dirty", "create or reuse", "worktree"],
-    mustNotMention: ["stop and emit a blocker handoff only"],
+    skillMatches: [
+      {
+        heading: "Dirty checkout",
+        mustContain: [
+          "if the primary checkout is dirty and isolation is required, create or reuse the dedicated issue branch/worktree and continue execution there",
+        ],
+      },
+    ],
   },
   {
     id: 4,
@@ -107,12 +114,14 @@ export const regressionCases: RegressionCase[] = [
       pastedArtifact: incompleteHandoff,
       shouldRecognizePastedArtifact: false,
     },
-    assistantResponse:
-      "Blocked: missing Verification section in the pasted handoff. Persist the exact missing prerequisite durably before execution continues.",
-    expectedOutcomes: ["explicit-blocker"],
-    valid: true,
-    mustMention: ["blocked:", "missing verification section", "persist"],
-    requireNamedBlocker: true,
+    skillMatches: [
+      {
+        heading: "Inputs",
+        mustContain: [
+          "otherwise treat it as an incomplete contract and stop only as an explicit blocker",
+        ],
+      },
+    ],
   },
   {
     id: 5,
@@ -120,12 +129,22 @@ export const regressionCases: RegressionCase[] = [
     input: {
       summary: "The same issue already has an active branch or worktree.",
     },
-    assistantResponse:
-      "Resume the existing issue/worktree, continue execution in that lane, and do not recreate the handoff or branch.",
-    expectedOutcomes: ["resume-existing-worktree"],
-    valid: true,
-    mustMention: ["resume the existing issue/worktree", "do not recreate"],
-    mustNotMention: ["start another session"],
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "resume the existing issue/worktree if it already exists",
+          "do not emit another implementation handoff for the same issue",
+        ],
+      },
+      {
+        heading: "Steps",
+        mustContain: [
+          "validate the input artifact if it was pasted, then resume the same issue/worktree when present",
+          "do not recreate the handoff or branch",
+        ],
+      },
+    ],
   },
   {
     id: 6,
@@ -133,12 +152,14 @@ export const regressionCases: RegressionCase[] = [
     input: {
       summary: "A ready-for-agent brief arrives with no blocker; nested using-superpowers must not become a terminal gate.",
     },
-    assistantResponse:
-      "The ready-for-agent brief is sufficient. Run using-superpowers as a subordinate step, return control to execution, and implement the slice without stopping for approval.",
-    expectedOutcomes: ["execution-in-place"],
-    valid: true,
-    mustMention: ["using-superpowers as a subordinate step", "return control to execution"],
-    mustNotMention: ["Approve this direction"],
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "once action-ready input is accepted, any nested `using-superpowers`, brainstorming, or planning step is a subordinate subroutine and must return control to execution",
+        ],
+      },
+    ],
   },
   {
     id: 7,
@@ -146,12 +167,15 @@ export const regressionCases: RegressionCase[] = [
     input: {
       summary: "The outer from-issue run asks for brainstorming or planning as a nested step.",
     },
-    assistantResponse:
-      "Use brainstorming or planning internally if needed, then return control to execution in the same session and implement the smallest safe slice.",
-    expectedOutcomes: ["execution-in-place"],
-    valid: true,
-    mustMention: ["return control to execution in the same session", "implement the smallest safe slice"],
-    mustNotMention: ["another handoff"],
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "once action-ready input is accepted, any nested `using-superpowers`, brainstorming, or planning step is a subordinate subroutine and must return control to execution",
+          "do not emit another implementation handoff for the same issue",
+        ],
+      },
+    ],
   },
   {
     id: 8,
@@ -159,10 +183,15 @@ export const regressionCases: RegressionCase[] = [
     input: {
       summary: "A nested approval asks to stop even though no unresolved blocker is named.",
     },
-    assistantResponse: "Approve this direction before implementation.",
-    expectedOutcomes: ["generic-approval-gate"],
-    valid: false,
-    mustMention: ["approve this direction"],
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "an ordinary `approve this direction` / design-approval checkpoint does not end the run unless it explicitly names a concrete unresolved blocker that is absent from the issue or brief",
+          "multi-file scope, ui impact, a desire for planning, or a nested skill's default approval checkpoint are not blockers by themselves",
+        ],
+      },
+    ],
   },
   {
     id: 9,
@@ -170,11 +199,14 @@ export const regressionCases: RegressionCase[] = [
     input: {
       summary: "The issue or brief still omits a real product or architecture decision.",
     },
-    assistantResponse:
-      "Blocked: unresolved architecture decision for the wire format is absent from the issue brief. Persist that exact missing decision durably instead of implementing guessed behavior.",
-    expectedOutcomes: ["explicit-blocker"],
-    valid: true,
-    mustMention: ["blocked:", "unresolved architecture decision", "persist"],
-    requireNamedBlocker: true,
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "an ordinary `approve this direction` / design-approval checkpoint does not end the run unless it explicitly names a concrete unresolved blocker that is absent from the issue or brief",
+          "explicit durable blocker naming the exact missing prerequisite or decision",
+        ],
+      },
+    ],
   },
 ];
