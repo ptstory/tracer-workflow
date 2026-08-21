@@ -11,14 +11,33 @@ linked context, and repository workflow docs before writing the brief.
 
 Prepare a durable agent brief for `<ISSUE_OR_PR_URL>`.
 
+The authoritative execution input may be one of three validated sources: a GitHub
+issue URL/number with its durable ready-for-agent brief, a complete pasted
+implementation handoff, or a pasted durable agent brief. Once validated, treat
+it as equivalent execution input.
+
 For a GitHub issue, the brief specifies what an AFK agent should build from the
-issue. This is the path consumed by `from-issue` once the issue is labeled
-`ready-for-agent`.
+issue. This is the durable execution input consumed by `from-issue` once the
+issue is labeled `ready-for-agent`; chat history is not required after the
+brief is posted.
 
 For a GitHub PR, the brief specifies what remains to do on the existing diff:
 finish it, close gaps, address review points, or stop for human judgment. PR
 briefs are for maintainer/human coordination unless a downstream workflow is
 explicitly wired to consume them.
+
+If the execution path needs brainstorming, planning, or `using-superpowers` help,
+that help is subordinate to `from-issue`: once action-ready input is accepted,
+those steps must return control to execution. A generic `Approve this direction`
+or design-approval checkpoint does not end the run unless it names a concrete
+unresolved blocker that is absent from the issue or brief.
+Multi-file scope, UI impact, a desire for planning, or a nested skill's default
+approval checkpoint are not blockers by themselves.
+
+The allowed terminal outcomes are: PR opened with closing issue reference +
+evidence bundle; existing PR/worktree resumed and advanced; explicit durable
+blocker naming the exact missing prerequisite or decision; verified failure with
+the exact recovery state persisted.
 
 Do this:
 
@@ -27,7 +46,8 @@ Do this:
 2. Determine whether this is a `bug` or `enhancement`.
 3. Recommend the target state: `ready-for-agent`, `ready-for-human`,
    `needs-info`, or `wontfix`.
-4. For `ready-for-agent`, write a durable agent brief.
+4. For `ready-for-agent`, write a durable agent brief that `from-issue` can
+   execute without chat-memory context.
 5. For `ready-for-human`, write the same structure, but explain why it cannot
    safely be delegated.
 6. For `needs-info`, write specific questions, not vague "please provide more

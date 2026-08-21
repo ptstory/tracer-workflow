@@ -23,8 +23,9 @@ warrants — it earns its cost when work spans sessions, needs review, or would 
 expensive to misremember.
 
 Vocabulary is defined once in [CONTEXT.md](./CONTEXT.md). Doctrine — the HITL/AFK
-rule, the evidence-bundle contract, the slice contract, and the check-run gate —
-lives in [WORKFLOW.md](./WORKFLOW.md), along with the full stage table.
+rule, the evidence-bundle contract, the slice contract, the check-run gate, and
+the `from-issue` execution-stage contract — lives in
+[WORKFLOW.md](./WORKFLOW.md), along with the full stage table.
 
 ## One issue, end to end
 
@@ -34,9 +35,24 @@ recommends what to look at; `agent-brief` then reads one issue deeply and
 produces the durable triage comment that makes the issue safe to hand to an
 agent. `next` reports which of those issues have no open blockers.
 
-`from-issue` takes one of them, cuts a branch, implements the slice, and opens a
-PR carrying `Closes #N` and an evidence bundle — exact commands and their output,
-anchored to the head SHA, rather than a prose claim that things work.
+`from-issue` is the execution stage for a `ready-for-agent` issue, or for a
+validated pasted implementation handoff / durable agent brief that has been
+accepted as equivalent execution input. It resumes the existing issue/worktree
+when one exists, otherwise it cuts a branch, implements the slice, and opens a
+PR carrying `Closes #N` and an evidence bundle — exact commands and their
+output, anchored to the head SHA, rather than a prose claim that things work.
+
+Once action-ready input is accepted, nested brainstorming/planning/`using-superpowers`
+steps are subordinate subroutines and must return control to execution. An
+ordinary approval gate does not end the run unless it names a concrete
+unresolved blocker that is absent from the issue or brief. Multi-file scope, UI
+impact, a desire for planning, or a nested skill's default approval checkpoint
+are not blockers by themselves. A handoff-only result is allowed only for
+genuine blockers or verified failures that cannot be recovered locally. The
+allowed terminal outcomes are: PR opened with closing issue reference + evidence
+bundle; existing PR/worktree resumed and advanced; explicit durable blocker
+naming the exact missing prerequisite or decision; verified failure with the
+exact recovery state persisted.
 
 `review-gate` is pasted into a fresh web session with a GitHub connector. It runs
 `requesting-code-review`, classifies findings through `receiving-code-review`

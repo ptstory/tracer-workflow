@@ -11,9 +11,7 @@ the source of truth, not any chat transcript.
 
 If you're reading this because you forgot what the workflow was: the chain is
 below, the skills are in `skills/`, the plain reusable prompts are in `prompts/`,
-and the repo-owned rules are the evidence-bundle contract, the slice-contract
-rule, and the check-run gate. `using-superpowers` is optional guardrail context,
-not a global router that overrides this workflow.
+and the repo-owned rules are the evidence-bundle contract, the slice-contract rule, and the check-run gate. `using-superpowers` is optional guardrail context, not a global router that overrides this workflow. `from-issue` is the execution stage for a `ready-for-agent` issue, or for a validated pasted implementation handoff / durable agent brief that has been accepted as equivalent execution input; it resumes the same issue/worktree when present, and completes at PR + evidence bundle. Once it accepts action-ready input, nested brainstorming/planning/`using-superpowers` steps are subordinate subroutines and must return control to execution. An ordinary `Approve this direction` / design-approval checkpoint only ends the run if it names a concrete unresolved blocker absent from the issue or brief. Multi-file scope, UI impact, a desire for planning, or a nested skill's default approval checkpoint are not blockers by themselves. Review, check-run, and merge stay downstream in subordinate lanes. Handoff-only only for genuine blockers or verified failures that cannot be recovered locally.
 
 ## The chain
 
@@ -47,7 +45,7 @@ whose blockers are both closed and contract-satisfying.
 | `to-issues` | adopted (Matt Pocock) | messy idea → scoped GitHub issues, one vertical slice each. Tags each issue HITL or AFK **at creation**. |
 | `triage-queue` | Tracer custom prompt | repository-wide shallow issue/PR pass; recommends states for maintainer selection only. |
 | `agent-brief` | Tracer custom prompt | deep single issue/PR triage; writes the durable handoff comment for delegation or human stop. |
-| `from-issue` | Tracer custom skill | one `ready-for-agent` issue → branch → smallest safe slice → PR with a closing issue reference + evidence bundle. One issue, one PR. |
+| `from-issue` | Tracer custom skill | execution stage: one `ready-for-agent` issue, validated pasted implementation handoff, or validated pasted durable agent brief → durable brief + issue worktree → smallest safe slice → PR with a closing issue reference + evidence bundle. Review, check-run, and merge remain downstream. Handoff-only only for genuine blockers or verified failures that cannot be recovered locally; no duplicate implementation handoff for the same issue. |
 | `requesting-code-review` | adopted (REPOZY) | reviewer side. Security pass, severity-blocks-merge, produces a merge-readiness verdict. |
 | `from-pr-review` | Tracer custom skill | **plumbing** for the return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, emit handoff. Delegates every judgment call to `receiving-code-review`. |
 | `receiving-code-review` | adopted (REPOZY) | **judgment**. Uses the canonical verdict contract in `skills/review-gate/references/verdict-contract.md`. Forbids "good catch" / agreeing before verification. |
@@ -68,7 +66,10 @@ Low-confidence queue recommendations are not action-ready. They must route to
 
 This preserves the workflow invariant that `from-issue` consumes one durable
 GitHub artifact whose contract is specific enough to execute without relying on
-chat memory.
+chat memory. The durable issue brief, a validated pasted implementation handoff,
+or a validated pasted durable agent brief are all execution inputs once
+validated; the later review lanes are separate contracts, not nested inside
+`from-issue`.
 
 ## The two rules that are yours
 
@@ -90,6 +91,8 @@ blocker supplies the exact data/API/behavior/file contract it consumes. A closed
 blocker is not sufficient by itself. If the contract is missing, ambiguous,
 stale, or weaker than needed, stop planning or implementation and request that
 contract first.
+
+**4. Durable blocker / verified-failure recovery.** If a blocker is durable or a failure is verified and cannot be recovered in the current worktree, `from-issue` stops with a blocker handoff that names the blocker, the failure, and the next recovery contract. It does not flatten that recovery into review, check-run, or merge. The terminal outcomes are limited to: PR opened with closing issue reference + evidence bundle; existing PR/worktree resumed and advanced; explicit durable blocker naming the exact missing prerequisite or decision; verified failure with the exact recovery state persisted.
 
 > Case study: Issue 6 / PR 8 failed because the downstream slice was allowed to
 > proceed before the upstream contract it depended on was made explicit.
@@ -118,9 +121,12 @@ Two limits:
 
 - **Resumable between stages, not within one.** A stage that died half-done with
   uncommitted local work has no GitHub artifact to resume from — the work is only
-  in the worktree. Re-run the stage; `from-issue`'s dirty-tree handling makes that
-  restart clean rather than a collision. This is why stages commit incrementally:
-  the more each stage persists, the smaller this dead zone.
+  in the worktree. Re-run the stage; `from-issue` inspects dirty checkout/worktree
+  state explicitly and resumes the same issue/worktree when it is safe to do so,
+  rather than spawning a fresh implementation handoff. If the dirtiness is
+  unrelated or genuinely blocks execution, or a failure is verified and cannot be
+  recovered locally, it stops with a blocker handoff. This is why stages commit
+  incrementally: the more each stage persists, the smaller this dead zone.
 - **SHA-staleness bounds fix-pass resume.** A verdict is valid only on its head
   SHA. If head moved since the verdict, resuming `from-pr-review` correctly does
   nothing until a fresh review runs against current head.
