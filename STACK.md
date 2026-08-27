@@ -2,6 +2,111 @@
 
 Durable append-only record of agent-stack configuration changes and breakage findings, because diagnoses that live only in chat transcripts get re-derived from scratch weeks later.
 
+## 2026-08-26
+
+Entry format note: each finding below carries a source class — (disk) verified
+by reading the file on this machine, (session) observed in a session
+transcript, (reported) stated but not independently checked. Claims of class
+(reported) should be re-verified before being used as a premise. See
+tracer-workflow issue on recorded-state freshness.
+
+Failure observed:
+- Three OpenCode sessions on one implementation task (displacement pipeline in
+  the messages repo) produced zero code. (session) Session 1: an implementation
+  prompt with acceptance criteria ran 971,231 tokens and 3,390 seconds, then
+  marked its own goal unmet with the blocker "planning-only/not the executor"
+  and emitted a handoff spec. Session 2: that spec was re-fed and became a
+  build checklist written to docs/superpowers-optimized/plans/ inside the
+  product repo. Session 3: a docs-only AGENTS.md append — which that repo's own
+  policy marks as DO: — loaded three skills before touching anything.
+
+Root cause:
+- superpowers-optimized loads via a registered OpenCode plugin at
+  ~/.config/opencode/plugins/superpowers-optimized.js, symlinked into the clone
+  at ~/.config/opencode/superpowers. (disk) Its
+  experimental.chat.system.transform hook pushes lib/compact-bootstrap.js into
+  the system prompt on every request, wrapped in EXTREMELY_IMPORTANT. That
+  bootstrap carried a workflow router with the rows "Complex/unclear decision
+  -> deliberation -> brainstorming -> writing-plans" and "New behavior
+  (well-framed) -> brainstorming -> writing-plans", plus a complexity
+  classifier ending in "Full — everything else, or when in doubt".
+- Skill trigger conditions were not the loader. (disk) Nothing under
+  ~/.config/opencode invokes using-superpowers; every grep hit is inside the
+  bundle or its .bak twin. Moving skill directories would have left the router
+  injected and pointing at absent skills.
+- No config on this machine states "planning-only" or "not the executor".
+  (disk) The model coined that phrase to describe the state brainstorming's
+  hard gate ("Do not write code, edit files, or invoke implementation skills
+  until design approval is explicit") and writing-plans' terminal handoff
+  question had already put it in.
+
+Changes applied 2026-08-26 (all in ~/.config/opencode/superpowers):
+- lib/compact-bootstrap.js: replaced the complexity classifier and the planning
+  rows of the router with an implementation-is-default rule stating that a plan,
+  spec, checklist, ticket set, or handoff document is not a substitute for
+  implementation and does not close the task, plus an explicit line that
+  premise-check, deliberation, brainstorming, writing-plans,
+  subagent-driven-development and executing-plans load only when the user names
+  one. Kept the debugging, refactoring, performance, dependency, worktree,
+  branch-integration and verification rows.
+- Six SKILL.md descriptions rewritten to opt-in: using-superpowers,
+  brainstorming, writing-plans, premise-check, deliberation, executing-plans.
+  These matter independently of the bootstrap because the skill tool exposes
+  descriptions to the model. using-superpowers previously read "BLOCKING
+  REQUIREMENT — invoke this skill BEFORE writing any code"; premise-check read
+  "Invoke BEFORE designing, planning, or building anything non-trivial".
+- writing-plans output path moved from docs/superpowers-optimized/plans/ to
+  docs/plans/. The old path is the fork's own internal convention and was being
+  created inside whatever product repo happened to be open.
+
+Side effects of those edits:
+- The plugin auto-updates: it runs git fetch plus merge --ff-only origin/main
+  every 24 hours, gated on a cache file. (disk) The clone sat at b78fc17
+  because REPOZY/superpowers-optimized is dead, not because it was pinned. The
+  plugin skips updating when the clone is dirty, so these edits now pin it as a
+  side effect. `git checkout .` in that directory reverts everything above and
+  re-arms auto-update.
+- The same plugin runs a tool.execute.before safety layer blocking rm -rf ~,
+  git reset --hard, git clean -f, curl piped to shell, reads of .env and
+  private keys, and writes containing hardcoded AWS/GitHub/Anthropic/Stripe
+  keys. (disk) Removing the plugin outright would remove that too. Editing the
+  bootstrap keeps it.
+
+Verification:
+- (session) 2026-08-26 13:50, after OpenCode restart, the same implementation
+  prompt run unprefixed: using-superpowers, brainstorming, writing-plans,
+  premise-check and deliberation did not fire. token-efficiency did not preload
+  either, since it was step 1 of the entry sequence that no longer runs. The
+  session loaded using-git-worktrees (the prompt asked for a worktree) and
+  test-driven-development, both retained router rows, created branch
+  codex/displacement with a worktree at .worktrees/displacement, and dispatched
+  an implementation brief — first state change roughly four minutes in.
+
+Corrections to prior records:
+- A handoff doc recorded a superpowers vendoring PR into
+  tracer-workflow/skills/vendor/ that never happened; skills/vendor/ does not
+  exist on main. (disk) That false line propagated through several sessions.
+  De facto, the runtime clone is now a fork owned locally, since upstream is
+  dead and the edits above are local-only.
+- agent-failure-recovery is a standalone directory under
+  ~/.config/opencode/skills/ dated 2026-06-06, not part of the superpowers
+  bundle. (disk) AGENTS.md files that invoke it by name are unaffected by
+  anything done to superpowers.
+- ~/.codex/superpowers is a second, different bundle: real obra/superpowers
+  v4.1.1, 14 skills. (disk) Codex runs upstream; OpenCode runs the dead fork.
+  Nothing above touches the Codex side.
+
+E5 impact:
+- 2026-08-26 is another window boundary. Every session before this date routed
+  through the planning-first bootstrap; every session after does not. Do not
+  compare delegation, retriesPerEdit or oneShotRate across it.
+- Sessions producing zero edits are currently invisible to costPerEdit — they
+  either divide by zero or dissolve into an aggregate. The 971k-token session
+  above is the most expensive single failure recorded in this log and would not
+  appear in any current metric. Count zero-artifact sessions separately. This
+  is the measurement E2 already defers pending "orchestrator input tokens per
+  completed task" — same blind spot, empty denominator.
+
 ## 2026-08-20
 
 No config changes. Audit only.
