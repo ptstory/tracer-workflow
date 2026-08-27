@@ -616,6 +616,9 @@ test("review-gate poller reports missing gh on PATH separately from its script p
   writeCleanBaseline(repoRoot);
   makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
+  const toolBin = join(home, ".local/test-bin");
+  writeExecutable(join(toolBin, "opencode"), "#!/usr/bin/env bash\nexit 0\n");
+  writeExecutable(join(toolBin, "git"), "#!/usr/bin/env bash\nexit 0\n");
 
   writePlist(
     join(home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
@@ -623,7 +626,7 @@ test("review-gate poller reports missing gh on PATH separately from its script p
     {
       RG_REPO: "ptstory/themarkergirl.com",
       RG_WORKDIR: repoRoot,
-      PATH: `${join(repoRoot, ".bun/bin")}:/usr/bin:/bin`,
+      PATH: `${toolBin}:${join(repoRoot, ".bun/bin")}`,
       HOME: home,
     },
     join(repoRoot, ".bun/bin/bun"),
