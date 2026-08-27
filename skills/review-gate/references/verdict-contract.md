@@ -140,15 +140,15 @@ termination condition.
 
 ## Circuit breaker
 
-The breaker counts corrective rounds where a fix commit landed, not total
-conforming verdicts.
+The breaker counts corrective rounds, not total conforming verdicts.
 
-A corrective round is a post-baseline review on a head SHA that differs from
-the previously reviewed head SHA because a fix commit landed. A rerun on an
-unchanged head does not increment the breaker.
+A corrective round is a post-baseline review whose diff since the previously
+reviewed SHA touches at least one file named in the prior blocking set. A rerun
+on an unchanged head does not increment the breaker. A merge or rebase whose
+diff touches none of those files is not corrective and does not increment the
+breaker.
 
-After two corrective rounds, any later review on a new fix head yields
-`needs-human`.
+After two corrective rounds, any later corrective review yields `needs-human`.
 
 In that same verdict the reviewer records a disposition for every surviving
 finding:
