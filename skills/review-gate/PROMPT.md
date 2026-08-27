@@ -72,9 +72,10 @@ reviewed-files: <n>
 Rules:
 - The `head-sha`, `review-round`, and `reviewed-files` lines are mandatory.
   Emit them exactly in that parser shape.
-- Derive `review-round` as the number of prior conforming verdict comments on
-  the PR — comments carrying the marker and all required fields. The first
-  review emits `review-round: 0`.
+- Derive `review-round` as the number of prior conforming verdict comments for
+  the current spec baseline — comments carrying the marker and all required
+  fields. A rebaseline resets the count, and the first review after that emits
+  `review-round: 0`.
 - Non-conforming comments are not verdicts and do not increment the round.
   Review responses, disposition comments, and any other PR comment do not
   increment the round.
@@ -91,15 +92,15 @@ Rules:
     verdict, rebaseline and emit round `0` with the complete current blocking
     set in one verdict comment
   - only five dispositions exist: `fix-now`, `follow-up-issue`, `defer`,
-     `reject`, `needs-human`
+    `reject`, `needs-human`
   - `scope-creep` must not appear
   - binding scope is the issue body plus brief clarifications explicitly marked as
-     derived from it
+    derived from it
   - unmarked brief additions are reportable, never blocking
   - if the issue body and the brief genuinely contradict each other, emit
-     `needs-human` for contract reconciliation
+    `needs-human` for contract reconciliation
   - round `N > 0` unchanged-since-round-0 findings become `follow-up-issue`
-     unless they are correctness or security regressions
+    unless they are correctness or security regressions
   - an unmet acceptance criterion of the binding issue stays `fix-now` at any
     round while the PR still closes that issue; `follow-up-issue` is available
     only if the closing linkage changes in the same pass
