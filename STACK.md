@@ -50,7 +50,35 @@ Cost per changed step, window 2026-08-18 onward:
 - Not established: edit equivalence, selection effects on which work reaches
   the orchestrator, dispatch overhead. (disk) This window is thin and is
   tracer-workflow work, which the 2026-08-20 entry already flags as bash-heavy
-  and delegation-light. Re-run on product code before concluding.
+  and delegation-light. Re-run attempted; it did not produce a denominator; see
+  scoped re-run subsection below.
+
+Scoped re-run, attempted 2026-08-30:
+- Seat metrics above were computed with no project filter. (disk)
+  session.project_id exists with a foreign key to project, and
+  session.directory is indexed. Any seat metric without project_id in the
+  WHERE clause pools every project.
+- About 25 synthetic projects exist under
+  ~/.local/state/tracer/model-routing-audit/ (route-A/B/C x task-1/9/11 x
+  work-v2/v3/v4). (disk) These are benchmark-harness runs, not real work. They
+  fall outside the post-08-18 window but are present in all-history cuts and
+  must be excluded there.
+- In the post-08-18 window, tracer-workflow is the largest single project at 60
+  of 195 sessions, 31 percent. (disk) The pooled table above is more
+  self-referential than the 2026-08-20 bash-heavy caveat implies.
+- session.summary_additions, summary_deletions, summary_files and summary_diffs
+  are not an alternative denominator. (disk) All 195 sessions in the window
+  are non-null on the first three only because the column default is 0, and
+  every value is 0; summary_diffs is null throughout. Patch parts remain the
+  only denominator.
+- The re-run on the messages project could not be completed. (disk) That
+  project has 1,306 patch parts spanning 2026-04-23 to 2026-08-26,
+  second-highest in the database, but exactly one after 2026-08-16. On
+  2026-08-27 it ran 28 sessions across five seats with 54 fixer apply_patch
+  calls and 11 orchestrator apply_patch calls, and produced zero patch parts.
+  Other projects kept emitting through the same dates. Cause unknown — tracked
+  separately. Seat cost per edit cannot currently be scoped to that project,
+  and the pooled table is blind to it.
 
 Process note:
 - This session re-derived four findings already recorded in STACK.md before
