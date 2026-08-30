@@ -2,6 +2,60 @@
 
 Durable append-only record of agent-stack configuration changes and breakage findings, because diagnoses that live only in chat transcripts get re-derived from scratch weeks later.
 
+## 2026-08-30
+
+No config changes. Telemetry only.
+
+Findings:
+- Seat token distribution, all history, input tokens: orchestrator 280.0M / 890
+  sessions, NULL 226.7M / 1521, executor 89.1M / 2984, fixer 88.4M / 1090,
+  oracle 21.3M / 520, explorer 13.7M / 250. 724.9M total. (disk)
+  Orchestrator is 38.6 percent of input tokens at 315k per session, about 10x
+  executor. Executor is 41 percent of sessions and 12 percent of tokens.
+- The NULL bucket resolves into two populations. (disk) 1333 children (54.4M)
+  are lost subagent identity, recoverable via parent_id. 188 roots (172.3M,
+  917k each) are pre-instrumentation: 115 in 2026-04, 71 in 2026-05, 2 in
+  2026-07, none since. The agent column began being written around 2026-06.
+  105 of the 188 carry a patch part, so these are ordinary large sessions, not
+  zero-output failures. Seat-aware metrics can only run from 2026-06 forward.
+- New telemetry grain: part.data type step-finish carries
+  `{tokens:{total,input,output,reasoning,cache:{write,read}}}` with cost always
+  0 — the per-call grain. (disk) part.data type patch carries a hash and
+  `files[]` and marks a model step that changed the filesystem.
+- Patch-hash resolution: the patch part hash is a git tree object, not a
+  commit. (disk) Verified by `cat-file -t` against the bare per-project
+  snapshot store under `~/.local/share/opencode/snapshot/`. So "changed step"
+  means a model step with a non-empty patch part, and
+  `sum(json_array_length(files))` counts file-step touches within a changed step
+  rather than individual edit operations.
+- Caveat: a patch part records any filesystem mutation in the step, including
+  shell writes, so it overstates edits on bash-heavy seats. (disk)
+
+Corrections to prior records:
+- The 2026-08-20 entry line "oracle shows one session across all history"
+  names the wrong failure mode. (disk) Oracle has 520 sessions and 21.3M input
+  tokens; exactly one carries a nonzero cost. The original line was almost
+  certainly written from a cost-filtered query. Per-seat counts are still floors
+  for the child-NULL reason, but not for the reason recorded there.
+- The 2026-08-20 utilization shares are stale. (disk) That post-08-18 window
+  was ~1.9k tool calls when written and now holds 6,995 tool parts. Re-run
+  before citing.
+
+Cost per changed step, window 2026-08-18 onward:
+- Input Mtok per changed step: fixer 0.028 (34 sessions, 3.4M, 120 patches),
+  orchestrator 0.117 (72 sessions, 12.8M, 109 patches), executor 0.350 (49
+  sessions, 2.1M, 6 patches), explorer 0.667 (27, 2.0M, 3). (disk) Fixer is
+  4.2x cheaper per changed step than the orchestrator, and the shell-inflation
+  caveat widens rather than narrows that gap.
+- Not established: edit equivalence, selection effects on which work reaches
+  the orchestrator, dispatch overhead. (disk) This window is thin and is
+  tracer-workflow work, which the 2026-08-20 entry already flags as bash-heavy
+  and delegation-light. Re-run on product code before concluding.
+
+Process note:
+- This session re-derived four findings already recorded in STACK.md before
+  anyone read it. (session) Read STACK.md before diagnosing, not after.
+
 ## 2026-08-26
 
 Entry format note: each finding below carries a source class — (disk) verified
