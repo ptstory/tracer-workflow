@@ -17,7 +17,7 @@ Changes applied:
 
 ## 2026-08-30
 
-No config changes. Telemetry only.
+This entry covers telemetry findings and the thirty-lite orchestrator model change.
 
 Findings:
 - Seat token distribution, all history, input tokens: orchestrator 280.0M / 890
@@ -43,6 +43,10 @@ Findings:
   rather than individual edit operations.
 - Caveat: a patch part records any filesystem mutation in the step, including
   shell writes, so it overstates edits on bash-heavy seats. (disk)
+- (disk) A raw query of `session.model` against `opencode.db` shows: `gpt-5.4-mini` through 2026-08-12; both mini and `gpt-5.4` on 2026-08-14; `gpt-5.6-luna-fast` from 2026-08-16 through 2026-08-18; `gpt-5.4` from 2026-08-18 onward; and mini again on 2026-08-28, 2026-08-29, and 2026-08-31. Quick-switching makes the seat model non-stable; date-bucketed telemetry is contaminated, so model—not date—must be the grouping key.
+- (disk) The 2026-08-20 claim that the pre-2026-08-18 orchestrator was `gpt-5.5-fast` is false and superseded by this entry. No `gpt-5.5-fast` sessions exist anywhere in August; the model exists and is available but was never run on this seat; the false claim propagated across several sessions before discovery.
+- (disk) For sessions from 2026-08-13 onward, model-grouped telemetry records parent-seat read/session, children/session, percent spawning a child, and child-inclusive end-to-end read/session: `gpt-5.4`: 80 sessions, 2,648,590 parent read, 1.96 children, 59 percent, 4,542,341 end-to-end; `gpt-5.4-mini`: 14 sessions, 1,397,159 parent read, 1.36 children, 43 percent, 2,730,314 end-to-end; `gpt-5.6-luna-fast`: 9 sessions, 1,843,276 parent read, 3.44 children, 56 percent, 4,021,862 end-to-end. Mini and luna-fast are both ruled out: mini’s lower cost comes with less delegation and fewer filesystem changes; luna-fast’s parent-seat advantage vanishes when children are counted. Figures count direct children only and therefore are floors.
+- (session) Earlier patch-part counts used as a work proxy and their cost-per-edit figures are retracted: delegated patch parts land on child sessions, include bookkeeping files such as `.agent/status.snapshot.json`, and vary with session granularity.
 
 Corrections to prior records:
 - The 2026-08-20 entry line "oracle shows one session across all history"
@@ -68,6 +72,12 @@ Cost per changed step, window 2026-08-18 onward:
 Process note:
 - This session re-derived four findings already recorded in STACK.md before
   anyone read it. (session) Read STACK.md before diagnosing, not after.
+
+Changes applied:
+- The thirty-lite orchestrator changed from `openai/gpt-5.4` to `openai/gpt-5.6-terra` at `medium` variant. MCPs and all other seats are unchanged. Backup: `~/.config/opencode/oh-my-opencode-slim.json.bak-2026-09-01`.
+- Plan: accumulate roughly a week of sessions, then re-run the child-inclusive per-model comparison against the `gpt-5.4` baseline above.
+
+Note: Sol, Terra, and Luna are capability tiers rather than speed variants, so the earlier luna-fast sessions were already the cheapest tier.
 
 ## 2026-08-26
 
@@ -313,19 +323,3 @@ Findings recorded at the time. All four remained unfixed until 2026-08-18:
   2.2.8.
 - NORTH_STAR.md, revised 2026-07-23, was confirmed absent from disk anywhere
   under ~/Code. The document governing stage sequencing is lost.
-
-## 2026-08-30
-
-This is a model audit and thirty-lite orchestrator change entry.
-
-Findings:
-- (disk) A raw query of `session.model` against `opencode.db` shows: `gpt-5.4-mini` through 2026-08-12; both mini and `gpt-5.4` on 2026-08-14; `gpt-5.6-luna-fast` from 2026-08-16 through 2026-08-18; `gpt-5.4` from 2026-08-18 onward; and mini again on 2026-08-28, 2026-08-29, and 2026-08-31. Quick-switching makes the seat model non-stable; date-bucketed telemetry is contaminated, so model—not date—must be the grouping key.
-- (disk) The 2026-08-20 claim that the pre-2026-08-18 orchestrator was `gpt-5.5-fast` is false and superseded by this entry. No `gpt-5.5-fast` sessions exist anywhere in August; the model exists and is available but was never run on this seat; the false claim propagated across several sessions before discovery.
-- (disk) For sessions from 2026-08-13 onward, model-grouped telemetry records parent-seat read/session, children/session, percent spawning a child, and child-inclusive end-to-end read/session: `gpt-5.4`: 80 sessions, 2,648,590 parent read, 1.96 children, 59 percent, 4,542,341 end-to-end; `gpt-5.4-mini`: 14 sessions, 1,397,159 parent read, 1.36 children, 43 percent, 2,730,314 end-to-end; `gpt-5.6-luna-fast`: 9 sessions, 1,843,276 parent read, 3.44 children, 56 percent, 4,021,862 end-to-end. Mini and luna-fast are both ruled out: mini’s lower cost comes with less delegation and fewer filesystem changes; luna-fast’s parent-seat advantage vanishes when children are counted. Figures count direct children only and therefore are floors.
-- (session) Earlier patch-part counts used as a work proxy and their cost-per-edit figures are retracted: delegated patch parts land on child sessions, include bookkeeping files such as `.agent/status.snapshot.json`, and vary with session granularity.
-
-Changes applied:
-- The thirty-lite orchestrator changed from `openai/gpt-5.4` to `openai/gpt-5.6-terra` at `medium` variant. MCPs and all other seats are unchanged. Backup: `~/.config/opencode/oh-my-opencode-slim.json.bak-2026-09-01`.
-- Plan: accumulate roughly a week of sessions, then re-run the child-inclusive per-model comparison against the `gpt-5.4` baseline above.
-
-Note: Sol, Terra, and Luna are capability tiers rather than speed variants, so the earlier luna-fast sessions were already the cheapest tier.
