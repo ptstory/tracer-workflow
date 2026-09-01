@@ -1,89 +1,87 @@
 # CONTEXT.md
 
-Glossary for tracer-workflow. Terms only — no steps, no rules, no file layout.
-Doctrine lives in WORKFLOW.md.
+Glossary for tracer-workflow. This file defines terms. [WORKFLOW.md](./WORKFLOW.md)
+contains steps, rules, and file layout.
 
-Current label names are read from `gh label list`, never from this file. What a
-label *means* is defined here; which labels exist is a property of the repo.
+Current label names come from `gh label list`. This file defines what each label
+means; the repository determines which labels exist.
 
 ## Plane
 
-Where a stage runs. Three of them: the **planning plane** (ChatGPT/Claude web),
-the **execution plane** (OpenCode), and the **coordination plane** (GitHub).
-Only the coordination plane is durable. A stage may move between the other two
-without changing the workflow, because every stage reads and writes GitHub
-artifacts rather than session state.
+Where a stage runs. There are three planes: the **planning plane** (ChatGPT/Claude
+web), **execution plane** (OpenCode), and **coordination plane** (GitHub). Only
+the coordination plane is durable. A stage may move between the other two
+without changing the workflow because every stage reads and writes GitHub
+artifacts instead of session state.
 
 ## GitHub label
 
-A mutable tag on an issue or PR, carrying queue state. Applied by a human or by a
-triage stage after a durable brief exists. Labels are the workflow's routing
-state, and they are read from GitHub, never from a document.
+A mutable tag on an issue or PR that carries queue state. A human or triage stage
+applies it after a durable brief exists. Labels provide workflow routing state
+and are read from GitHub.
 
 ## Verdict value
 
-A string inside a review-gate verdict comment, naming the outcome of one review
-at one head SHA. A verdict value is not a label: it lives in comment text, it is
-written by the review stage, and it goes stale when the head moves. Where a
-verdict value and a label share a word, they are still different objects — the
-`gate:` prefix marks the labels that mirror a verdict.
+A string inside a review-gate verdict comment naming the outcome of one review at
+one head SHA. Verdict values live in comment text and become stale when the head
+moves. They are separate from labels even when they share a word; the `gate:`
+prefix marks labels that mirror verdict values.
 
-Each verdict also carries a review round, so the same verdict value means one
-review outcome at one head SHA in one numbered round.
+Each verdict also carries a review round, so the same verdict value identifies
+one review outcome at one head SHA in one numbered round.
 
 The authoritative verdict vocabulary is
 `skills/review-gate/references/verdict-contract.md`.
 
 ## Evidence bundle
 
-The body of a from-issue PR: exact commands run and their literal output,
-anchored to a specific head SHA. Prose claims about the work are an index to the
-bundle, not the bundle. The bundle is the artifact review audits.
+The body of a `from-issue` PR containing the exact commands run and their literal
+output, anchored to a specific head SHA. Prose claims about the work only index
+that evidence. Review audits the bundle.
 
 ## Head SHA / SHA-staleness
 
-Every review verdict is valid only against the commit it reviewed. Pushing moves
-the head SHA and invalidates the verdict by construction — not by anyone
-noticing. This is why a fix pass that runs against a stale verdict correctly does
-nothing.
+Every review verdict is valid only for the commit it reviewed. Pushing moves the
+head SHA, so the verdict becomes stale automatically. A fix pass correctly does
+nothing when its verdict targets an older head.
 
 ## Check-run gate
 
-Merge readiness read from actual check-run state at the current head, never from
-a report that tests passed. A pending or red required check means not ready,
-independent of diff quality. Review-gate findings that can block that merge
-decision are limited by the binding scope defined in the verdict contract: the
-issue body plus brief clarifications explicitly marked as derived from it.
+Merge readiness comes from actual check-run state at the current head. A pending
+or red required check means the PR is not ready, regardless of diff quality or a
+report that tests passed. Review-gate findings that can block that merge decision
+are limited by the binding scope in the verdict contract: the issue body plus
+brief clarifications explicitly marked as derived from it.
 
 ## Slice contract
 
-What a downstream issue consumes from its upstream blocker: the exact data, API,
-behavior, or file boundary. A closed blocker does not by itself satisfy the
-contract. Missing, ambiguous, or stale contract means stop and request it.
+The exact data, API, behavior, or file boundary that a downstream issue consumes
+from its upstream blocker. Closing the blocker does not satisfy the contract by
+itself. If the contract is missing, ambiguous, or stale, stop and request it.
 
 ## Queue recommendation vs deep-triage decision
 
-A **queue recommendation** is the output of a shallow repository-wide pass. It
-suggests how an item should move and changes nothing on GitHub. A **deep-triage
-decision** is the output of reading one item closely, and it is what makes a
-durable label safe to apply. A recommendation is never action-ready on its own.
+A **queue recommendation** comes from a shallow repository-wide pass. It suggests
+how an item should move and changes nothing on GitHub. A **deep-triage decision**
+comes from reading one item closely and makes a durable label safe to apply. A
+recommendation alone is not action-ready.
 
 ## Durable brief
 
-The GitHub comment produced by deep triage, containing the context, scope
+The GitHub comment produced by deep triage. It contains the context, scope
 boundaries, and acceptance criteria an agent needs to execute without chat
-memory. Its existence is what a ready-for-agent label asserts.
+memory. A `ready-for-agent` label asserts that this brief exists.
 
 ## HITL / AFK
 
-The autonomy call, made at issue creation in the planning plane with full
-context, never inferred mid-session by a worker. **AFK** pre-authorizes the
+The autonomy decision made at issue creation in the planning plane with full
+context. Workers do not infer it mid-session. **AFK** pre-authorizes the
 autonomous path through merge once the check-run gate is green. **HITL** means
 the human owns the merge button; agents may still push fixes, reply to threads,
 and report a green gate.
 
 ## Custom vs adopted
 
-**Custom** stages are authored here and this repo is their canonical source.
-**Adopted** stages are upstream copies, consumed as-is — extended through a
-config seam or routed around, never edited in place.
+**Custom** stages are authored here, and this repo is their canonical source.
+**Adopted** stages are upstream copies consumed as-is. They can be extended
+through a config seam or routed around, but are never edited in place.
