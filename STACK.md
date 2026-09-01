@@ -2,6 +2,14 @@
 
 Durable append-only record of agent-stack configuration changes and breakage findings, because diagnoses that live only in chat transcripts get re-derived from scratch weeks later.
 
+## 2026-09-01
+
+Findings and changes:
+- The top-level preset key in `~/.config/opencode/oh-my-opencode-slim.json` read `go-lite` while ocslim exports `thirty-lite`; non-shell invocations—specifically `execFileSync("opencode", ["run", ...])` in `tooling/review-gate-poller/poller.ts` under launchd, which inherits only `PATH` and `HOME`—would silently resolve to `go-lite` with no warning because the name resolves. Changed to `thirty-lite`, verified by JSON parse.
+- `ast_grep_replace` and `serena_replace_content` under `agent.orchestrator.permission` in `opencode.json` are not valid OpenCode permission keys and are silently ignored; observed on 2026-09-01 when the orchestrator's `serena_replace_content` call reached the Serena MCP server and returned a Serena-side error rather than a permission denial. The only working control is the per-seat MCPs allowlist, which has no per-tool granularity.
+- No `thirty-lite/` directory exists under `~/.config/opencode/oh-my-opencode-slim/`, and there are no `_append.md` files at the fallback level, so the orchestrator, oracle, explorer, and fixer prompt appends in `thirty/`—executor delegation, source-edit routing to fixer, Serena-before-grep, oracle escalation—do not load on the running preset. Explicitly mark this finding UNVERIFIED against live slim 2.2.15 because the resolver was read from stale 1.0.4 bundle.
+- `~/.config/opencode` is not a git repository, so git diff acceptance criteria on files there are unmeetable.
+
 ## 2026-08-30
 
 No config changes. Telemetry only.
