@@ -92,6 +92,15 @@ describe("from-issue contract", () => {
     expect(regressionCases).toHaveLength(9);
   });
 
+  test("regression case 1 asserts the execution transition into the documented Steps", () => {
+    const regressionCase = regressionCases[0];
+    const steps = regressionCase.skillMatches.find(({ heading }) => heading === "Steps");
+
+    expect(steps).toBeDefined();
+    expect(steps?.mustContain).toContain("validate the input artifact if it was pasted, then resume the same issue/worktree when present");
+    expect(steps?.mustContain).toContain("implement the smallest safe slice");
+  });
+
   for (const regressionCase of regressionCases) {
     test(`${regressionCase.id}. ${regressionCase.name}`, () => {
       expect(regressionCase.input.summary).toBeTruthy();

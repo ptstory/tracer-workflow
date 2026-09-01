@@ -52,7 +52,7 @@ export const regressionCases: RegressionCase[] = [
     id: 1,
     name: "complete handoff still drives execution",
     input: {
-      summary: "A validated complete pasted handoff arrives for issue #20 and the run must move into execution.",
+      summary: "A validated complete pasted handoff arrives for issue #20 and the run must move into execution through the documented worktree and implementation steps.",
       pastedArtifact: completeHandoff,
       shouldRecognizePastedArtifact: true,
     },
@@ -68,6 +68,14 @@ export const regressionCases: RegressionCase[] = [
           "acceptance criteria",
           "verification",
           "otherwise treat it as an incomplete contract and stop only as an explicit blocker",
+        ],
+      },
+      {
+        heading: "Steps",
+        mustContain: [
+          "validate the input artifact if it was pasted, then resume the same issue/worktree when present",
+          "implement the smallest safe slice",
+          "continue execution there",
         ],
       },
     ],
