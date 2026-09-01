@@ -20,6 +20,14 @@ Required fields immediately below the marker:
 - `head-sha:` — full 40-character commit SHA
 - `review-round:` — integer, 0-based
 - `reviewed-files:` — integer
+- `blocking-set:` — comma-separated repo-relative file paths naming the files
+  that the round's blocking findings are against; empty when the verdict state
+  is not `needs-fix`
+
+Conditional marker immediately below the required fields:
+
+- `rebaseline:` — literal `yes` only on the fresh round-0 verdict after a
+  late-created or materially amended binding issue; omitted otherwise
 
 A comment missing any required field is not a verdict and readers ignore it.
 
@@ -29,6 +37,13 @@ The reviewer posts comments. It never pushes, merges, edits refs, or changes
 labels. GitHub blocks a formal REQUEST_CHANGES review on a self-authored PR anyway,
 so the state lives in comment text, not in `reviewDecision`. Do not read
 `gh pr view --json reviewDecision` for the verdict — read the comment body.
+
+## Verdict comments are append-only
+
+Verdict comments are append-only. Do not edit a prior gate comment in place,
+including to repair malformed fields or missing lines. If a verdict comment is
+malformed, post a new verdict comment; round derivation depends on the count and
+order of conforming verdict comments.
 
 ## SHA-staleness rule (load-bearing)
 
@@ -58,9 +73,16 @@ the brief merely adding — the verdict is `needs-human` for contract
 reconciliation. The reviewer does not resolve that contradiction by choosing the
 larger scope.
 
+If the binding issue is created or materially amended after a verdict has
+already been emitted, the next review is a re-baselined round 0 against the new
+spec. That review emits the complete current blocking set in one verdict
+comment, carries `rebaseline: yes`, and later round numbers derive from
+verdicts emitted after that rebaseline.
+
 ## Review rounds
 
-Round 0 is the first review of a PR: full review against the binding contract.
+Round 0 is the first review of a PR for the current spec baseline: full review
+against the binding contract.
 
 Round `N > 0` reviews:
 
@@ -72,12 +94,16 @@ Round `N > 0` reviews:
 Derive `review-round` as follows:
 
 - `review-round` equals the number of prior conforming verdict comments on the
-  PR — comments carrying the marker and all required fields.
+  PR for the current spec baseline — comments carrying the marker and all
+  required fields.
 - The first review of a PR therefore emits `review-round: 0`.
 - Non-conforming comments (missing marker or any required field) are not
   verdicts and do not increment the round.
 - Review responses, disposition comments, and any other PR comment do not
   increment the round.
+- A rebaseline caused by a late-created or materially amended binding issue
+  resets the round counter; the next conforming verdict emits `review-round: 0`
+  and `rebaseline: yes`.
 - If the count cannot be determined, the reviewer emits `blocked` rather than
   guessing a round number.
 
@@ -112,13 +138,26 @@ On round `N > 0`, a finding against code that has not changed since round 0 is
 `follow-up-issue`, not `fix-now` — unless it is a correctness or security
 regression, which stays `fix-now` at any round.
 
+Acceptance-criteria carve-out: an unmet acceptance criterion of the binding
+issue stays `fix-now` at any round while the PR still closes that issue. It may
+move to `follow-up-issue` only if the closing linkage changes in that same pass
+so the PR no longer closes the issue. This carve-out resolves the round-1 /
+round-2 conflict seen on `ptstory/thread-atlas#94`.
+
 Rationale: a gate that can raise pre-existing conditions at any round has no
 termination condition.
 
 ## Circuit breaker
 
-After two corrective rounds, any review at `review-round: 3` or higher yields
-`needs-human`.
+The breaker counts corrective rounds, not total conforming verdicts.
+
+A corrective round is a post-baseline review whose diff since the previously
+reviewed SHA touches at least one file named in the prior blocking set. A rerun
+on an unchanged head does not increment the breaker. A merge or rebase whose
+diff touches none of those files is not corrective and does not increment the
+breaker.
+
+After two corrective rounds, any later corrective review yields `needs-human`.
 
 In that same verdict the reviewer records a disposition for every surviving
 finding:
@@ -130,6 +169,16 @@ finding:
 The breaker never silently waives a finding and never auto-files an issue
 itself.
 
+## Readiness and evidence continuity
+
+`merge-candidate` requires that at least one green required check exercises the
+changed paths. If no green required check covers the changed paths, the gate
+reports that gap as `blocked` rather than green.
+
+On round `N > 0`, the reviewer compares the current evidence bundle against the
+prior round's evidence bundle. An unchanged test count alongside a claim of
+added coverage is an evidence inconsistency and must be reported as `blocked`.
+
 ## What the reader does per state
 
 - `merge-candidate` + SHA current → eligible to merge; human still owns the
@@ -138,7 +187,8 @@ itself.
   `receiving-code-review`; any push invalidates this verdict and requires a
   fresh review.
 - `needs-human` → stop. No automatic fix pass may be launched, at any SHA.
-- `blocked` → stop, surface the blocker.
+- `blocked` → stop, surface the blocker (for example parse failure,
+  required-check coverage gap, or evidence inconsistency).
 - SHA stale (any state) → do nothing; wait for a verdict on current head.
 
 `needs-human` is a hard stop for automated actors.

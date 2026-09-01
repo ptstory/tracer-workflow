@@ -8,6 +8,7 @@
 head-sha: 0123456789abcdef0123456789abcdef01234567
 review-round: 0
 reviewed-files: 4
+blocking-set:
 
 ### Standards
 - [low] [defer] src/logger.ts — logging is noisy but not blocking.
@@ -30,8 +31,10 @@ reviewed-files: 4
 ## review-gate: needs-fix
 
 head-sha: 89abcdef0123456789abcdef0123456789abcdef
-review-round: 1
+review-round: 0
 reviewed-files: 7
+blocking-set: src/auth.ts
+rebaseline: yes
 
 ### Standards
 - [high] [fix-now] src/auth.ts — missing auth guard on write path.
@@ -56,6 +59,7 @@ reviewed-files: 7
 head-sha: fedcba9876543210fedcba9876543210fedcba98
 review-round: 3
 reviewed-files: 9
+blocking-set:
 
 ### Standards
 - [high] [fix-now] src/api.ts — regression in the write path remains the human's blocking set.
@@ -80,6 +84,7 @@ reviewed-files: 9
 head-sha: 00112233445566778899aabbccddeeff00112233
 review-round: 0
 reviewed-files: 2
+blocking-set:
 
 ### Standards
 - [high] [needs-human] src/integration.ts — the blocker is external and cannot be resolved here.
