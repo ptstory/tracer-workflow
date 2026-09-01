@@ -49,6 +49,10 @@ jobs:
             [scan("(?i)(?:Fixes|Closes|Resolves)[[:space:]]+(?:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#\\d+")]
             | if length == 0 then "none" else join(", ") end
           ')"
+          has_closing_ref="false"
+          if [ "$closing_refs" != "none" ]; then
+            has_closing_ref="true"
+          fi
 
           comments_json="$(gh api "repos/$repo/issues/$pr_number/comments" --paginate | jq -s 'add // []')"
 
@@ -101,11 +105,16 @@ jobs:
             fi
           fi
 
+          # Exact selection rule: ignore only GitHub Actions check-runs from this workflow job
+          # (name: gate-readiness, app.slug: github-actions). They can be in-progress on the
+          # active run or failed/successful on a stale rerun for the same SHA; all other checks
+          # and all commit statuses for the head SHA still participate in readiness gating.
           check_runs_json="$(gh api "repos/$repo/commits/$head_sha/check-runs" --paginate | jq -s '[.[].check_runs[]?]')"
+          signal_check_runs_json="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.app.slug != "github-actions" or .name != "gate-readiness")]')"
           statuses_json="$(gh api "repos/$repo/commits/$head_sha/statuses" --paginate | jq -s 'add // []')"
 
-          check_run_total="$(printf '%s' "$check_runs_json" | jq 'length')"
-          check_run_completed="$(printf '%s' "$check_runs_json" | jq '[.[] | select(.status == "completed")] | length')"
+          check_run_total="$(printf '%s' "$signal_check_runs_json" | jq 'length')"
+          check_run_completed="$(printf '%s' "$signal_check_runs_json" | jq '[.[] | select(.status == "completed")] | length')"
           status_total="$(printf '%s' "$statuses_json" | jq 'length')"
           status_success="$(printf '%s' "$statuses_json" | jq '[.[] | select(.state == "success")] | length')"
 
@@ -121,6 +130,11 @@ jobs:
             else
               failures+=("review gate is ungated (no valid review-gate verdict for current head $head_sha)")
             fi
+          elif [ "$review_gate_verdict" != "merge-candidate" ]; then
+            failures+=("current review gate verdict is $review_gate_verdict; only merge-candidate is ready")
+          fi
+          if [ "$has_closing_ref" != "true" ]; then
+            failures+=("PR body has no closing reference; add a Fixes/Closes/Resolves reference to make readiness actionable")
           fi
           if [ "$has_completable_signal" != "true" ]; then
             failures+=("no completed check runs or commit statuses found for head $head_sha")
@@ -128,7 +142,7 @@ jobs:
 
           while IFS= read -r line; do
             [ -n "$line" ] && failures+=("$line")
-          done < <(printf '%s' "$check_runs_json" | jq -r '
+          done < <(printf '%s' "$signal_check_runs_json" | jq -r '
             .[]
             | select(.status != "completed" or (.conclusion // "") != "success")
             | if .status != "completed" then
@@ -158,6 +172,7 @@ jobs:
             "- PR: #$pr_number"
             "- head-sha: $head_sha"
             "- review gate state: $review_gate_state"
+            "- review gate verdict: $review_gate_verdict"
             "- latest marker parse: $marker_parse_status"
           )
           if [ "$latest_conforming_json" != "null" ]; then
