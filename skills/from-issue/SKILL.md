@@ -72,7 +72,7 @@ artifact is the execution input.
 6. Verify locally.
 7. Commit, push, open or update the PR, and include the evidence bundle. Stop
    there; review, check-run, and merge remain downstream.
-8. If blocked or a verified failure cannot be recovered locally, stop with a blocker handoff that names the blocker, the failure, and the next required recovery contract.
+8. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the failure, and the next required recovery contract.
 
 ## Do not
 

@@ -129,6 +129,13 @@ export const regressionCases: RegressionCase[] = [
           "otherwise treat it as an incomplete contract and stop only as an explicit blocker",
         ],
       },
+      {
+        heading: "Steps",
+        mustContain: [
+          "first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment",
+          "then stop with a blocker handoff",
+        ],
+      },
     ],
   },
   {
