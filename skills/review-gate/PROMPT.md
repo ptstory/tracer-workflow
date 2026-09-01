@@ -36,9 +36,10 @@ Do this:
    finding outside them. Within that constraint, review regressions introduced
    by the labeled diff and anything in the binding contract that the labeled
    diff newly violates.
-5. Compare the current evidence bundle against the prior round's evidence
-   bundle. If the test count is unchanged while the new bundle claims added
-   coverage, emit `blocked` and name the evidence inconsistency.
+5. If this is round `N > 0`, compare the current evidence bundle against the
+   prior round's evidence bundle. If the test count is unchanged while the new
+   bundle claims added coverage, emit `blocked` and name the evidence
+   inconsistency.
 6. Classify findings only with the contract dispositions: `fix-now`,
    `follow-up-issue`, `defer`, `reject`, `needs-human`.
 7. Post the result as a PR comment in the exact format below. Do not attempt a
