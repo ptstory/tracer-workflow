@@ -62,10 +62,6 @@ issues whose blockers are closed and contract-satisfying.
 | `from-pr-review` | Tracer custom skill | **plumbing** for the return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, emit handoff. Delegates every judgment call to `receiving-code-review`. |
 | `receiving-code-review` | adopted (REPOZY) | **judgment**. Uses the canonical verdict contract in `skills/review-gate/references/verdict-contract.md`. Forbids "good catch" / agreeing before verification. |
 | `next` | Tracer custom skill | loop-closer. After merge, lists open `ready-for-agent` issues with no open blockers → hand one to `from-issue`. Read-only. |
-| `requesting-code-review` | adopted (REPOZY) | reviewer side. Runs the security pass, treats severity as merge-blocking, and produces a merge-readiness verdict. |
-| `from-pr-review` | Tracer custom skill | return-leg plumbing. Reads review threads, applies fixes, verifies real check runs, replies per thread, re-pushes, and emits a handoff. Delegates judgment to `receiving-code-review`. |
-| `receiving-code-review` | adopted (REPOZY) | judgment. Uses the canonical verdict contract in `skills/review-gate/references/verdict-contract.md` and forbids agreeing with feedback before verification. |
-| `next` | Tracer custom skill | loop closer. After merge, lists open `ready-for-agent` issues with no open blockers and hands one to `from-issue`. Read-only. |
 
 ## Triage depth rule
 
