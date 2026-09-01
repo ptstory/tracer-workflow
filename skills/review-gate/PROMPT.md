@@ -53,6 +53,8 @@ Comment format (post verbatim, filling in):
 head-sha: <full 40-char SHA you reviewed>
 review-round: <0-based integer>
 reviewed-files: <n>
+blocking-set: <comma-separated repo-relative file paths; empty unless needs-fix>
+rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 
 ### Standards
 - [<severity>] [<disposition>] <file/area> — <finding>
@@ -70,12 +72,17 @@ reviewed-files: <n>
 ```
 
 Rules:
-- The `head-sha`, `review-round`, and `reviewed-files` lines are mandatory.
-  Emit them exactly in that parser shape.
+- The `head-sha`, `review-round`, `reviewed-files`, and `blocking-set` lines are
+  mandatory. Emit them exactly in that parser shape.
+- Emit `blocking-set:` on every verdict. It is empty unless the verdict is
+  `needs-fix`, in which case it lists the repo-relative file paths named by the
+  round's blocking findings.
+- Emit `rebaseline: yes` only on the fresh round-0 verdict after a late-created
+  or materially amended binding issue. Omit it otherwise.
 - Derive `review-round` as the number of prior conforming verdict comments for
   the current spec baseline — comments carrying the marker and all required
   fields. A rebaseline resets the count, and the first review after that emits
-  `review-round: 0`.
+  `review-round: 0` and `rebaseline: yes`.
 - Non-conforming comments are not verdicts and do not increment the round.
   Review responses, disposition comments, and any other PR comment do not
   increment the round.
@@ -90,7 +97,7 @@ Rules:
     those labeled inputs; do not use the full tree to discover new findings
   - if the binding issue was created or materially amended after a prior
     verdict, rebaseline and emit round `0` with the complete current blocking
-    set in one verdict comment
+    set in one verdict comment, plus `rebaseline: yes`
   - only five dispositions exist: `fix-now`, `follow-up-issue`, `defer`,
     `reject`, `needs-human`
   - `scope-creep` must not appear

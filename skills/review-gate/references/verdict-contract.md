@@ -20,6 +20,14 @@ Required fields immediately below the marker:
 - `head-sha:` — full 40-character commit SHA
 - `review-round:` — integer, 0-based
 - `reviewed-files:` — integer
+- `blocking-set:` — comma-separated repo-relative file paths naming the files
+  that the round's blocking findings are against; empty when the verdict state
+  is not `needs-fix`
+
+Conditional marker immediately below the required fields:
+
+- `rebaseline:` — literal `yes` only on the fresh round-0 verdict after a
+  late-created or materially amended binding issue; omitted otherwise
 
 A comment missing any required field is not a verdict and readers ignore it.
 
@@ -68,8 +76,8 @@ larger scope.
 If the binding issue is created or materially amended after a verdict has
 already been emitted, the next review is a re-baselined round 0 against the new
 spec. That review emits the complete current blocking set in one verdict
-comment, and later round numbers derive from verdicts emitted after that
-rebaseline.
+comment, carries `rebaseline: yes`, and later round numbers derive from
+verdicts emitted after that rebaseline.
 
 ## Review rounds
 
@@ -94,7 +102,8 @@ Derive `review-round` as follows:
 - Review responses, disposition comments, and any other PR comment do not
   increment the round.
 - A rebaseline caused by a late-created or materially amended binding issue
-  resets the round counter; the next conforming verdict emits `review-round: 0`.
+  resets the round counter; the next conforming verdict emits `review-round: 0`
+  and `rebaseline: yes`.
 - If the count cannot be determined, the reviewer emits `blocked` rather than
   guessing a round number.
 
