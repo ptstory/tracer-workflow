@@ -1,0 +1,207 @@
+name: Gate Readiness
+
+on:
+  workflow_call:
+    inputs:
+      # workflow_call has no pull_request payload, so callers must provide the PR number explicitly.
+      pr-number:
+        description: PR number to evaluate.
+        required: true
+        type: number
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  issues: write
+  pull-requests: read
+  checks: read
+  statuses: read
+
+jobs:
+  gate-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate readiness
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            pr_number="${PR_NUMBER:?}"
+          else
+            pr_number="${INPUT_PR_NUMBER:?}"
+          fi
+          repo="${REPOSITORY:?}"
+          marker='<!-- gate-readiness:bot -->'
+          comment_marker='## gate-readiness'
+
+          pr_json="$(gh api "repos/$repo/pulls/$pr_number")"
+          head_sha="$(printf '%s' "$pr_json" | jq -r '.head.sha')"
+          pr_body="$(printf '%s' "$pr_json" | jq -r '.body // ""')"
+          has_ready_label="$(printf '%s' "$pr_json" | jq -r '([(.labels // [])[] | .name] | index("gate:ready")) != null')"
+
+          closing_refs="$(printf '%s' "$pr_body" | jq -Rs -r '
+            [scan("(?i)(?:Fixes|Closes|Resolves)[[:space:]]+(?:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#\\d+")]
+            | if length == 0 then "none" else join(", ") end
+          ')"
+
+          comments_json="$(gh api "repos/$repo/issues/$pr_number/comments" --paginate | jq -s 'add // []')"
+
+          latest_marker_json="$(printf '%s' "$comments_json" | jq -c '
+            map(select(.body | startswith("## review-gate:")))
+            | sort_by(.created_at)
+            | last // null
+          ')"
+
+          latest_conforming_json="$(printf '%s' "$comments_json" | jq -c '
+            map(select(.body | startswith("## review-gate:")))
+            | map(select(.body | test("^## review-gate:\\s*(merge-candidate|needs-fix|needs-human|blocked)\\s*$"; "m")))
+            | map(select(.body | test("^head-sha:\\s*[0-9a-f]{40}\\s*$"; "m")))
+            | map(select(.body | test("^review-round:\\s*\\d+\\s*$"; "m")))
+            | map(select(.body | test("^reviewed-files:\\s*\\d+\\s*$"; "m")))
+            | sort_by(.created_at)
+            | last // null
+          ')"
+
+          if [ "$latest_marker_json" = "null" ]; then
+            marker_parse_status="none"
+          elif [ "$latest_conforming_json" != "null" ] && [ "$(printf '%s' "$latest_marker_json" | jq -r '.id')" = "$(printf '%s' "$latest_conforming_json" | jq -r '.id')" ]; then
+            marker_parse_status="valid"
+          else
+            marker_parse_status="invalid"
+          fi
+
+          review_gate_state="ungated"
+          review_gate_verdict="none"
+          review_gate_head_sha=""
+          review_gate_round=""
+          review_gate_files=""
+          if [ "$latest_conforming_json" != "null" ]; then
+            review_gate_details="$(printf '%s' "$latest_conforming_json" | jq -c '
+              {
+                verdict: (.body | capture("^## review-gate:\\s*(?<verdict>\\S+)").verdict),
+                head_sha: (.body | capture("(?m)^head-sha:\\s*(?<head_sha>[0-9a-f]{40})\\s*$").head_sha),
+                review_round: (.body | capture("(?m)^review-round:\\s*(?<review_round>\\d+)\\s*$").review_round | tonumber),
+                reviewed_files: (.body | capture("(?m)^reviewed-files:\\s*(?<reviewed_files>\\d+)\\s*$").reviewed_files | tonumber)
+              }
+            ')"
+            review_gate_verdict="$(printf '%s' "$review_gate_details" | jq -r '.verdict')"
+            review_gate_head_sha="$(printf '%s' "$review_gate_details" | jq -r '.head_sha')"
+            review_gate_round="$(printf '%s' "$review_gate_details" | jq -r '.review_round')"
+            review_gate_files="$(printf '%s' "$review_gate_details" | jq -r '.reviewed_files')"
+            if [ "$review_gate_head_sha" = "$head_sha" ]; then
+              review_gate_state="current"
+            else
+              review_gate_state="stale"
+            fi
+          fi
+
+          check_runs_json="$(gh api "repos/$repo/commits/$head_sha/check-runs" --paginate | jq -s '[.[].check_runs[]?]')"
+          statuses_json="$(gh api "repos/$repo/commits/$head_sha/statuses" --paginate | jq -s 'add // []')"
+
+          check_run_total="$(printf '%s' "$check_runs_json" | jq 'length')"
+          check_run_completed="$(printf '%s' "$check_runs_json" | jq '[.[] | select(.status == "completed")] | length')"
+          status_total="$(printf '%s' "$statuses_json" | jq 'length')"
+          status_success="$(printf '%s' "$statuses_json" | jq '[.[] | select(.state == "success")] | length')"
+
+          has_completable_signal="false"
+          if [ "$check_run_completed" -gt 0 ] || [ "$status_total" -gt 0 ]; then
+            has_completable_signal="true"
+          fi
+
+          failures=()
+          if [ "$review_gate_state" != "current" ]; then
+            if [ "$review_gate_state" = "stale" ]; then
+              failures+=("review gate is stale (latest valid verdict head $review_gate_head_sha does not match current head $head_sha)")
+            else
+              failures+=("review gate is ungated (no valid review-gate verdict for current head $head_sha)")
+            fi
+          fi
+          if [ "$has_completable_signal" != "true" ]; then
+            failures+=("no completed check runs or commit statuses found for head $head_sha")
+          fi
+
+          while IFS= read -r line; do
+            [ -n "$line" ] && failures+=("$line")
+          done < <(printf '%s' "$check_runs_json" | jq -r '
+            .[]
+            | select(.status != "completed" or (.conclusion // "") != "success")
+            | if .status != "completed" then
+                "check run \((.name // .check_suite.app.slug // "unknown")) is \(.status)"
+              else
+                "check run \((.name // .check_suite.app.slug // "unknown")) completed with conclusion \((.conclusion // "none"))"
+              end
+          ')
+
+          while IFS= read -r line; do
+            [ -n "$line" ] && failures+=("$line")
+          done < <(printf '%s' "$statuses_json" | jq -r '
+            .[]
+            | select(.state != "success")
+            | "commit status \((.context // "unknown")) is \(.state)"
+          ')
+
+          ready="false"
+          if [ "$review_gate_state" = "current" ] && [ "$has_completable_signal" = "true" ] && [ "${#failures[@]}" -eq 0 ]; then
+            ready="true"
+          fi
+
+          comment_lines=(
+            "$marker"
+            "$comment_marker"
+            ""
+            "- PR: #$pr_number"
+            "- head-sha: $head_sha"
+            "- review gate state: $review_gate_state"
+            "- latest marker parse: $marker_parse_status"
+          )
+          if [ "$latest_conforming_json" != "null" ]; then
+            comment_lines+=("- latest valid verdict: $review_gate_verdict (head-sha: $review_gate_head_sha, review-round: $review_gate_round, reviewed-files: $review_gate_files)")
+          else
+            comment_lines+=("- latest valid verdict: none")
+          fi
+          comment_lines+=(
+            "- closing refs: $closing_refs"
+            "- check runs: $check_run_completed/$check_run_total completed"
+            "- commit statuses: $status_success/$status_total successful"
+            "- readiness: $ready"
+            ""
+            "### Failed readiness conditions"
+          )
+
+          if [ "${#failures[@]}" -eq 0 ]; then
+            comment_lines+=("- none")
+          else
+            for failure in "${failures[@]}"; do
+              comment_lines+=("- $failure")
+            done
+          fi
+
+          comment_body="$(printf '%s\n' "${comment_lines[@]}")"
+          existing_comment_id="$(printf '%s' "$comments_json" | jq -r --arg marker "$marker" '
+            [ .[] | select(.body | contains($marker)) | {id, created_at} ]
+            | sort_by(.created_at)
+            | last
+            | .id // empty
+          ')"
+
+          if [ -n "$existing_comment_id" ]; then
+            gh api -X PATCH "repos/$repo/issues/comments/$existing_comment_id" -f body="$comment_body" >/dev/null
+          else
+            gh api -X POST "repos/$repo/issues/$pr_number/comments" -f body="$comment_body" >/dev/null
+          fi
+
+          if [ "$ready" = "true" ]; then
+            if [ "$has_ready_label" != "true" ]; then
+              gh api -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="gate:ready" >/dev/null
+            fi
+          else
+            if [ "$has_ready_label" = "true" ]; then
+              gh api -X DELETE "repos/$repo/issues/$pr_number/labels/gate:ready" >/dev/null || true
+            fi
+          fi
