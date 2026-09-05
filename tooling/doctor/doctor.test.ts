@@ -17,6 +17,16 @@ const CANONICAL_LABELS = [
   "enhancement",
 ];
 const CANONICAL_REMOTE_URL = "git@github.com:ptstory/tracer-workflow.git";
+const CANONICAL_NO_AI_SLOP_SKILL = `---
+name: no-ai-slop
+description: >
+  Edit drafts into sharper, more human writing while preserving the writer's voice.
+---
+
+# No AI slop
+
+Keep the writer's point and voice.
+`;
 type DoctorFixture = { remoteUrl: string; labels: string[]; ghFailure?: string };
 
 const sandboxDirs: string[] = [];
@@ -74,6 +84,7 @@ ${environmentXml}</dict>
 
 function writeSkills(repoRoot: string, nextSkillContents: string): void {
   writeText(join(repoRoot, "skills/next/SKILL.md"), nextSkillContents);
+  writeText(join(repoRoot, "skills/no-ai-slop/SKILL.md"), CANONICAL_NO_AI_SLOP_SKILL);
   writeText(
     join(repoRoot, "skills/review-gate/references/verdict-contract.md"),
     "# review-gate verdict contract\n\n## review-gate: <state>\nhead-sha: 0123456789abcdef0123456789abcdef01234567\n",
@@ -195,10 +206,14 @@ function makeDoctorDeps(fixtures: Record<string, { remoteUrl?: string; labels?: 
   };
 }
 
-function makeRuntimeSymlink(home: string, targetSkillDir: string): void {
+function makeCanonicalRuntimeSymlinks(home: string, targetSkillDir: string): void {
   const runtimePath = join(home, ".agents/skills/next");
   mkdirSync(dirname(runtimePath), { recursive: true });
   symlinkSync(targetSkillDir, runtimePath, "dir");
+
+  const noAiSlopRuntimePath = join(home, ".agents/skills/no-ai-slop");
+  mkdirSync(dirname(noAiSlopRuntimePath), { recursive: true });
+  symlinkSync(join(dirname(targetSkillDir), "no-ai-slop"), noAiSlopRuntimePath, "dir");
 }
 
 function writeInstalledLaunchdPlist(home: string, plistRelativePath: string, scriptPath: string, launcherPath: string): void {
@@ -259,7 +274,7 @@ Pick the next ready-for-agent issue.
   );
   writeContracts(repoRoot);
   writeTooling(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
 
   const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
@@ -272,7 +287,7 @@ Pick the next ready-for-agent issue.
 test("runtime skill directory symlink to the canonical checkout passes", () => {
   const { repoRoot, home } = makeRepoRoot();
   writeCleanBaseline(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
 
   const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
@@ -297,7 +312,7 @@ Turn messy implementation state into something that can be handed off or reviewe
   );
   writeContracts(repoRoot);
   writeTooling(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
 
   const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
@@ -345,7 +360,7 @@ Pick the next ready-for-agent issue.
   writeContracts(other.repoRoot);
   writeTooling(clean.repoRoot);
   writeTooling(other.repoRoot);
-  makeRuntimeSymlink(clean.home, join(other.repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(clean.home, join(other.repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(clean.home, clean.repoRoot);
 
   const report = (buildDoctorReport as any)([clean.repoRoot], clean.home, makeDoctorDeps());
@@ -386,7 +401,7 @@ Pick the next ready-for-agent issue.
   );
   writeTooling(canonicalRoot);
   writeTooling(worktreeRoot);
-  makeRuntimeSymlink(home, join(canonicalRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(canonicalRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, canonicalRoot);
 
   writePlist(
@@ -446,7 +461,7 @@ Pick the next ready-for-agent issue.
   writeContracts(clean.repoRoot);
   writeTooling(clean.repoRoot);
   writeTooling(bad.repoRoot);
-  makeRuntimeSymlink(clean.home, join(clean.repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(clean.home, join(clean.repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(clean.home, clean.repoRoot);
 
   const report = (buildDoctorReport as any)([clean.repoRoot, bad.repoRoot], clean.home, makeDoctorDeps({
@@ -491,7 +506,7 @@ Pick the next ready-for-agent issue.
   writeContracts(repo.repoRoot);
   writeTooling(repo.repoRoot);
   writeTooling(legacy.repoRoot);
-  makeRuntimeSymlink(repo.home, join(repo.repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(repo.home, join(repo.repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(repo.home, repo.repoRoot);
 
   const stalePath = join(legacy.repoRoot, "tooling/unbacked-work-monitor/unbacked-work-monitor.ts");
@@ -509,7 +524,7 @@ Pick the next ready-for-agent issue.
 test("launchd jobs report a missing Bun launcher when the script path is correct", () => {
   const { repoRoot, home } = makeRepoRoot();
   writeCleanBaseline(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
   rmSync(join(repoRoot, ".bun/bin/bun"), { force: true });
 
@@ -524,7 +539,7 @@ test("launchd jobs report a stale Bun launcher when the script path is correct",
   const { repoRoot, home } = makeRepoRoot();
   const stale = makeRepoRoot();
   writeCleanBaseline(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
   writeExecutable(join(stale.repoRoot, ".bun/bin/bun"), "#!/usr/bin/env bash\nexit 0\n");
 
@@ -547,7 +562,7 @@ test("stale launchd script paths still surface review-gate environment errors", 
   const legacy = makeRepoRoot();
   writeCleanBaseline(repo.repoRoot);
   writeCleanBaseline(legacy.repoRoot);
-  makeRuntimeSymlink(repo.home, join(repo.repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(repo.home, join(repo.repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(repo.home, repo.repoRoot);
 
   const stalePath = join(legacy.repoRoot, "tooling/review-gate-poller/poller.ts");
@@ -573,7 +588,7 @@ test("stale launchd script paths still surface review-gate environment errors", 
 test("doctor findings use exactly one action each", () => {
   const { repoRoot, home } = makeRepoRoot();
   writeCleanBaseline(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
 
   const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
 
@@ -587,7 +602,7 @@ test("review-gate poller reports a missing RG_WORKDIR separately from its script
   const { repoRoot, home } = makeRepoRoot();
   const opencodeBin = sandbox();
   writeCleanBaseline(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
   writeExecutable(join(opencodeBin, "opencode"), "#!/usr/bin/env bash\nexit 0\n");
 
@@ -614,7 +629,7 @@ test("review-gate poller reports a missing RG_WORKDIR separately from its script
 test("review-gate poller reports missing gh on PATH separately from its script path", () => {
   const { repoRoot, home } = makeRepoRoot();
   writeCleanBaseline(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
   const toolBin = join(home, ".local/test-bin");
   writeExecutable(join(toolBin, "opencode"), "#!/usr/bin/env bash\nexit 0\n");
@@ -643,7 +658,7 @@ test("review-gate poller reports missing gh on PATH separately from its script p
 test("filesystem inspection failures stay scoped and later checks still run", () => {
   const { repoRoot, home } = makeRepoRoot();
   writeCleanBaseline(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
   rmSync(join(repoRoot, "AGENTS.md"), { force: true });
   mkdirSync(join(repoRoot, "AGENTS.md"));
@@ -679,7 +694,7 @@ Pick the next ready-for-agent issue.
   );
   writeContracts(canonicalRepoRoot);
   writeTooling(canonicalRepoRoot);
-  makeRuntimeSymlink(home, join(canonicalRepoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(canonicalRepoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, canonicalRepoRoot);
   writeExecutable(join(stubBin, "git"), `#!/usr/bin/env bash
 set -euo pipefail
@@ -710,7 +725,7 @@ test("CLI keeps tracer checks when one downstream repo root is supplied", () => 
   const stubBin = sandbox();
   writeCleanBaseline(canonicalRepoRoot);
   writeCleanBaseline(canonicalDownstreamRoot);
-  makeRuntimeSymlink(home, join(canonicalRepoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(canonicalRepoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, canonicalRepoRoot);
   rmSync(join(canonicalRepoRoot, "AGENTS.md"), { force: true });
   writeExecutable(join(stubBin, "git"), `#!/usr/bin/env bash
@@ -740,7 +755,7 @@ printf '%s\n' '[{"name":"needs-triage"},{"name":"needs-info"},{"name":"ready-for
 test("missing GitHub labels are reported for a repo with access", () => {
   const { repoRoot, home } = makeRepoRoot();
   writeCleanBaseline(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
 
   const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
@@ -759,7 +774,7 @@ test("missing GitHub labels are reported for a repo with access", () => {
 test("GitHub access failure is reported distinctly when repo label lookup fails", () => {
   const { repoRoot, home } = makeRepoRoot();
   writeCleanBaseline(repoRoot);
-  makeRuntimeSymlink(home, join(repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(home, repoRoot);
 
   const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
@@ -781,7 +796,7 @@ test("one repo failing label access does not block another repo's label comparis
   const blocked = makeRepoRoot();
   writeCleanBaseline(clean.repoRoot);
   writeCleanBaseline(blocked.repoRoot);
-  makeRuntimeSymlink(clean.home, join(clean.repoRoot, "skills/next"));
+  makeCanonicalRuntimeSymlinks(clean.home, join(clean.repoRoot, "skills/next"));
   writeInstalledLaunchdTargets(clean.home, clean.repoRoot);
 
   const report = (buildDoctorReport as any)([clean.repoRoot, blocked.repoRoot], clean.home, makeDoctorDeps({
