@@ -24,7 +24,7 @@ jobs:
       - name: Evaluate readiness
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           INPUT_PR_NUMBER: ${{ inputs.pr-number }}
           REPOSITORY: ${{ github.repository }}
@@ -112,11 +112,21 @@ jobs:
           check_runs_json="$(gh api "repos/$repo/commits/$head_sha/check-runs" --paginate | jq -s '[.[].check_runs[]?]')"
           signal_check_runs_json="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.app.slug != "github-actions" or .name != "gate-readiness")]')"
           statuses_json="$(gh api "repos/$repo/commits/$head_sha/statuses" --paginate | jq -s 'add // []')"
+          current_check_runs_json="$(printf '%s' "$signal_check_runs_json" | jq -c '
+            sort_by(.name, .completed_at // .started_at // .created_at)
+            | group_by(.name)
+            | map(last)
+          ')"
+          current_statuses_json="$(printf '%s' "$statuses_json" | jq -c '
+            sort_by(.context, .created_at)
+            | group_by(.context)
+            | map(last)
+          ')"
 
-          check_run_total="$(printf '%s' "$signal_check_runs_json" | jq 'length')"
-          check_run_completed="$(printf '%s' "$signal_check_runs_json" | jq '[.[] | select(.status == "completed")] | length')"
-          status_total="$(printf '%s' "$statuses_json" | jq 'length')"
-          status_success="$(printf '%s' "$statuses_json" | jq '[.[] | select(.state == "success")] | length')"
+          check_run_total="$(printf '%s' "$current_check_runs_json" | jq 'length')"
+          check_run_completed="$(printf '%s' "$current_check_runs_json" | jq '[.[] | select(.status == "completed")] | length')"
+          status_total="$(printf '%s' "$current_statuses_json" | jq 'length')"
+          status_success="$(printf '%s' "$current_statuses_json" | jq '[.[] | select(.state == "success")] | length')"
 
           has_completable_signal="false"
           if [ "$check_run_completed" -gt 0 ] || [ "$status_total" -gt 0 ]; then
@@ -142,7 +152,7 @@ jobs:
 
           while IFS= read -r line; do
             [ -n "$line" ] && failures+=("$line")
-          done < <(printf '%s' "$signal_check_runs_json" | jq -r '
+          done < <(printf '%s' "$current_check_runs_json" | jq -r '
             .[]
             | select(.status != "completed" or (.conclusion // "") != "success")
             | if .status != "completed" then
@@ -154,7 +164,7 @@ jobs:
 
           while IFS= read -r line; do
             [ -n "$line" ] && failures+=("$line")
-          done < <(printf '%s' "$statuses_json" | jq -r '
+          done < <(printf '%s' "$current_statuses_json" | jq -r '
             .[]
             | select(.state != "success")
             | "commit status \((.context // "unknown")) is \(.state)"
