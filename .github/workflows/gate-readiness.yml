@@ -13,7 +13,7 @@ on:
 
 permissions:
   issues: write # issue comments + labels
-  pull-requests: read # workflow_call PR metadata lookup only
+  pull-requests: write # PR comment writeback; workflow_call metadata lookup stays read-only via gh api
   checks: read # check-runs lookup
   statuses: read # commit statuses lookup
 

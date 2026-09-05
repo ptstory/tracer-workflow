@@ -35,6 +35,14 @@ describe(".github/workflows/gate-readiness.yml", () => {
     expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
   });
 
+  test("requests write access for issue comment writeback and PR comment writeback while keeping metadata lookup separated", () => {
+    expect(workflow).toContain("issues: write # issue comments + labels");
+    expect(workflow).toContain("pull-requests: write # PR comment writeback; workflow_call metadata lookup stays read-only via gh api");
+    expect(workflow).toContain("issue comments + labels");
+    expect(workflow).toContain("PR comment writeback");
+    expect(workflow).toContain("workflow_call metadata lookup stays read-only via gh api");
+  });
+
   test("evaluates only the current relevant check/status instance before readiness decisions", () => {
     const script = runScript();
 
