@@ -27,6 +27,13 @@ type WorkflowFixture = {
   checkRunsJson: unknown[];
   statusesJson: unknown[];
   blockPulls?: boolean;
+  failure?: {
+    endpointIncludes: string;
+    method?: string;
+    exitCode?: number;
+    stdout?: string;
+    stderr?: string;
+  };
 };
 
 function makeHarness(): Harness {
@@ -82,6 +89,7 @@ const fixture = ${JSON.stringify({
     commentsJson: fixture.commentsJson,
     checkRunsJson: fixture.checkRunsJson,
     statusesJson: fixture.statusesJson,
+    failure: fixture.failure ?? null,
   })};
 
 const argv = process.argv.slice(2);
@@ -93,6 +101,16 @@ for (let i = 0; i < argv.length; i += 1) {
   if (argv[i].startsWith("body=")) body = argv[i].slice(5);
 }
 fs.appendFileSync(logPath, JSON.stringify({ argv, endpoint, method }) + "\\n");
+
+if (fixture.failure && endpoint.includes(fixture.failure.endpointIncludes) && (!fixture.failure.method || method === fixture.failure.method)) {
+  if (fixture.failure.stdout) {
+    process.stdout.write(fixture.failure.stdout);
+  }
+  if (fixture.failure.stderr) {
+    process.stderr.write(fixture.failure.stderr);
+  }
+  process.exit(fixture.failure.exitCode ?? 1);
+}
 
 if (body && (endpoint.includes("/issues/") || endpoint.includes("/labels"))) {
   fs.appendFileSync(commentPath, body + "\\n---\\n");
@@ -203,6 +221,35 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(ghLog).toContain("/pulls/98");
+  });
+
+  test("workflow_call reports the failing gh api invocation without leaking response bodies", () => {
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "workflow_call",
+      prNumber: 98,
+      pullJson: {
+        head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        body: "Fixes #97",
+        labels: [{ name: "gate:ready" }],
+      },
+      commentsJson: [],
+      checkRunsJson: [],
+      statusesJson: [],
+      failure: {
+        endpointIncludes: "/pulls/98",
+        stderr: "gh: Resource not accessible by integration (HTTP 403)\n",
+        exitCode: 1,
+      },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("gate-readiness: gh api GET repos/acme/repo/pulls/98 failed (http=403, exit=1)");
+    expect(result.stderr).not.toContain("Resource not accessible by integration");
+    expect(result.stderr).not.toContain("token");
+    expect(result.stdout).not.toContain("token");
+    expect(result.stdout).not.toContain("forbidden body");
+    expect(ghLog).toContain("/pulls/98");
+    expect(commentLog).toBe("");
   });
 
   test("a superseded failed rerun cannot override a newer success", () => {

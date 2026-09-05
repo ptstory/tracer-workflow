@@ -12,10 +12,10 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  issues: write
-  pull-requests: read
-  checks: read
-  statuses: read
+  issues: write # issue comments + labels
+  pull-requests: read # workflow_call PR metadata lookup only
+  checks: read # check-runs lookup
+  statuses: read # commit statuses lookup
 
 jobs:
   gate-readiness:
@@ -40,6 +40,58 @@ jobs:
           marker='<!-- gate-readiness:bot -->'
           comment_marker='## gate-readiness'
 
+          gh_api() {
+            local diagnostic="$1"
+            shift
+            local stdout_file stderr_file status http_status
+
+            stdout_file="$(mktemp)"
+            stderr_file="$(mktemp)"
+
+            if gh api "$@" >"$stdout_file" 2>"$stderr_file"; then
+              cat "$stdout_file"
+              rm -f "$stdout_file" "$stderr_file"
+              return 0
+            else
+              status=$?
+              http_status="$(grep -oE 'HTTP [0-9]{3}' "$stderr_file" | tail -n 1 | cut -d' ' -f2 || true)"
+              if [ -n "$http_status" ]; then
+                printf 'gate-readiness: gh api %s failed (http=%s, exit=%s)\n' "$diagnostic" "$http_status" "$status" >&2
+              else
+                printf 'gate-readiness: gh api %s failed (exit=%s)\n' "$diagnostic" "$status" >&2
+              fi
+              rm -f "$stdout_file" "$stderr_file"
+              return "$status"
+            fi
+          }
+
+          gh_api_capture() {
+            local __result_var="$1"
+            local diagnostic="$2"
+            shift 2
+            local stdout_file stderr_file status http_status payload
+
+            stdout_file="$(mktemp)"
+            stderr_file="$(mktemp)"
+
+            if gh api "$@" >"$stdout_file" 2>"$stderr_file"; then
+              payload="$(<"$stdout_file")"
+              printf -v "$__result_var" '%s' "$payload"
+              rm -f "$stdout_file" "$stderr_file"
+              return 0
+            else
+              status=$?
+              http_status="$(grep -oE 'HTTP [0-9]{3}' "$stderr_file" | tail -n 1 | cut -d' ' -f2 || true)"
+              if [ -n "$http_status" ]; then
+                printf 'gate-readiness: gh api %s failed (http=%s, exit=%s)\n' "$diagnostic" "$http_status" "$status" >&2
+              else
+                printf 'gate-readiness: gh api %s failed (exit=%s)\n' "$diagnostic" "$status" >&2
+              fi
+              rm -f "$stdout_file" "$stderr_file"
+              return "$status"
+            fi
+          }
+
           pr_metadata_source="workflow_call gh api"
           gh_token_source="secrets.GITHUB_TOKEN"
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
@@ -49,7 +101,9 @@ jobs:
             pr_body="$(printf '%s' "$pr_metadata_json" | jq -r '.pull_request.body // ""')"
             has_ready_label="$(printf '%s' "$pr_metadata_json" | jq -r '([(.pull_request.labels // [])[] | .name] | index("gate:ready")) != null')"
           else
-            pr_metadata_json="$(gh api "repos/$repo/pulls/$pr_number")"
+            if ! gh_api_capture pr_metadata_json "GET repos/$repo/pulls/$pr_number" "repos/$repo/pulls/$pr_number"; then
+              exit 1
+            fi
             head_sha="$(printf '%s' "$pr_metadata_json" | jq -r '.head.sha')"
             pr_body="$(printf '%s' "$pr_metadata_json" | jq -r '.body // ""')"
             has_ready_label="$(printf '%s' "$pr_metadata_json" | jq -r '([(.labels // [])[] | .name] | index("gate:ready")) != null')"
@@ -64,7 +118,10 @@ jobs:
             has_closing_ref="true"
           fi
 
-          comments_json="$(gh api "repos/$repo/issues/$pr_number/comments" --paginate | jq -s 'add // []')"
+          if ! gh_api_capture comments_json_raw "GET repos/$repo/issues/$pr_number/comments --paginate" "repos/$repo/issues/$pr_number/comments" --paginate; then
+            exit 1
+          fi
+          comments_json="$(printf '%s' "$comments_json_raw" | jq -s 'add // []')"
 
           latest_review_gate_json="$(printf '%s' "$comments_json" | jq -c '
             map(select(.body | startswith("## review-gate:")))
@@ -112,9 +169,15 @@ jobs:
           # (name: gate-readiness, app.slug: github-actions). They can be in-progress on the
           # active run or failed/successful on a stale rerun for the same SHA; all other checks
           # and all commit statuses for the head SHA still participate in readiness gating.
-          check_runs_json="$(gh api "repos/$repo/commits/$head_sha/check-runs" --paginate | jq -s '[.[].check_runs[]?]')"
+          if ! gh_api_capture check_runs_json_raw "GET repos/$repo/commits/$head_sha/check-runs --paginate" "repos/$repo/commits/$head_sha/check-runs" --paginate; then
+            exit 1
+          fi
+          check_runs_json="$(printf '%s' "$check_runs_json_raw" | jq -s '[.[].check_runs[]?]')"
           signal_check_runs_json="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.app.slug != "github-actions" or .name != "gate-readiness")]')"
-          statuses_json="$(gh api "repos/$repo/commits/$head_sha/statuses" --paginate | jq -s 'add // []')"
+          if ! gh_api_capture statuses_json_raw "GET repos/$repo/commits/$head_sha/statuses --paginate" "repos/$repo/commits/$head_sha/statuses" --paginate; then
+            exit 1
+          fi
+          statuses_json="$(printf '%s' "$statuses_json_raw" | jq -s 'add // []')"
           current_check_runs_json="$(printf '%s' "$signal_check_runs_json" | jq -c '
             sort_by((.app.slug // ""), (.name // ""), (.run_number // 0), (.run_attempt // 0), (.run_started_at // .started_at // .created_at // ""), (.id // 0))
             | group_by([(.app.slug // ""), (.name // "")])
@@ -221,17 +284,17 @@ jobs:
           ')"
 
           if [ -n "$existing_comment_id" ]; then
-            gh api -X PATCH "repos/$repo/issues/comments/$existing_comment_id" -f body="$comment_body" >/dev/null
+            gh_api "PATCH repos/$repo/issues/comments/$existing_comment_id" -X PATCH "repos/$repo/issues/comments/$existing_comment_id" -f body="$comment_body" >/dev/null
           else
-            gh api -X POST "repos/$repo/issues/$pr_number/comments" -f body="$comment_body" >/dev/null
+            gh_api "POST repos/$repo/issues/$pr_number/comments" -X POST "repos/$repo/issues/$pr_number/comments" -f body="$comment_body" >/dev/null
           fi
 
           if [ "$ready" = "true" ]; then
             if [ "$has_ready_label" != "true" ]; then
-              gh api -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="gate:ready" >/dev/null
+              gh_api "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="gate:ready" >/dev/null
             fi
           else
             if [ "$has_ready_label" = "true" ]; then
-              gh api -X DELETE "repos/$repo/issues/$pr_number/labels/gate:ready" >/dev/null || true
+              gh_api "DELETE repos/$repo/issues/$pr_number/labels/gate:ready" -X DELETE "repos/$repo/issues/$pr_number/labels/gate:ready" >/dev/null || true
             fi
           fi
