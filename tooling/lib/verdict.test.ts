@@ -83,9 +83,23 @@ describe("parseGateComment", () => {
 
 describe("verdict examples", () => {
   const blocks = extractVerdictBlocks(verdictExamples);
+  const mergeCandidateBlocks = blocks.filter((block) => /^## review-gate:\s*merge-candidate\s*$/m.test(block));
 
-  test("contains four conforming verdict blocks", () => {
-    expect(blocks).toHaveLength(4);
+  test("contains five conforming verdict blocks", () => {
+    expect(blocks).toHaveLength(5);
+  });
+
+  test("includes both merge-candidate examples and they parse", () => {
+    expect(mergeCandidateBlocks).toHaveLength(2);
+
+    expect(
+      mergeCandidateBlocks.map((block) => {
+        const parsed = parseGateBody(block);
+        if (!parsed) throw new Error("expected conforming verdict block");
+        expect(parsed.verdict).toBe("merge-candidate");
+        return parsed.reviewRound;
+      }),
+    ).toEqual([0, 1]);
   });
 
   for (const [index, block] of blocks.entries()) {

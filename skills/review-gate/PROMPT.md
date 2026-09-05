@@ -120,7 +120,14 @@ Rules:
   - after two corrective rounds, the next corrective review yields
     `needs-human`; regressions stay `fix-now` and are named as the human's
     blocking set, and everything else becomes `follow-up-issue`
-- `merge-candidate` only if zero `fix-now` findings remain and at least one
-  green required check exercises the changed paths.
-- If no green required check exercises the changed paths, emit `blocked` and
-  name the coverage gap rather than green.
+- `merge-candidate` only if zero `fix-now` findings remain and the target branch's
+  required status-check configuration satisfies one of these paths:
+  - configured path: all applicable required checks are green at the current
+    head, and at least one applicable required check exercises the changed paths
+  - no-required-check path: at least one green CI/check run on the current head
+    exercises the changed paths
+- If neither path is satisfied, or there is no current-head evidence, emit
+  `blocked` rather than green.
+- Older-head results never count.
+- Branch protection is not required.
+- Merge remains HITL.
