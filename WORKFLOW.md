@@ -93,10 +93,13 @@ commands run and their output, anchored to a specific head SHA. Prose claims suc
 as "tests pass" only index the evidence. `requesting-code-review` audits the
 bundle itself.
 
-**2. Check-run gate.** Merge readiness cannot be `ready` while any required
-check is pending or red for the current head SHA, regardless of diff quality or
-an agent's claim that tests passed. Readiness comes from actual check-run state
-(`gh pr checks` / GitHub API).
+**2. Check-run gate.** Merge readiness comes from the current head's required
+status-check configuration: if required checks are configured, all applicable
+required checks must be green at the current head and at least one applicable
+required check must exercise the changed paths; if no required checks are
+configured, at least one green CI/check run on the current head must exercise
+the changed paths. Older-head results never count. Readiness comes from actual
+check-run state (`gh pr checks` / GitHub API).
 
 **3. Slice-contract rule.** A downstream issue may start only when the upstream
 blocker supplies the exact data, API, behavior, or file contract it consumes. A

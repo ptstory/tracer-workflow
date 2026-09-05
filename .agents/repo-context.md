@@ -132,8 +132,11 @@ lint or build commands here if the repository introduces them.
   or edited here.
 - **Evidence bundle** — exact local commands and outputs anchored to a PR head
   SHA; prose alone is insufficient.
-- **Check-run gate** — merge readiness requires all required checks green for the
-  current PR head SHA.
+- **Check-run gate** — merge readiness follows the current head's required
+  status-check configuration: configured required checks must all be green at the
+  current head with path coverage, otherwise at least one green CI/check run on
+  the current head must exercise the changed paths. Older-head results never
+  count.
 - **Slice contract** — a downstream issue may start only when its blocker
   supplies the exact data/API/behavior/file contract it consumes.
 - **HITL / AFK** — human-in-the-loop versus pre-authorized autonomous work.
@@ -145,7 +148,7 @@ lint or build commands here if the repository introduces them.
 
 - A review verdict becomes stale after any push because the head SHA changes.
 - Local test output and PR prose do not establish merge readiness; inspect actual
-  GitHub check runs for the current SHA.
+  GitHub check runs for the current SHA, and ignore older-head results.
 - `skills/next/SKILL.md` is misleadingly named and must be interpreted by its
   contents.
 - launchd runs with minimal `PATH`; documented jobs use absolute paths and pinned

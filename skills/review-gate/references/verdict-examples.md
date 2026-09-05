@@ -1,6 +1,6 @@
 # review-gate verdict examples
 
-## merge-candidate
+## merge-candidate (configured required checks)
 
 ```verdict
 ## review-gate: merge-candidate
@@ -18,7 +18,34 @@ blocking-set:
 
 ### Merge preconditions
 - head is still 0123456789abcdef0123456789abcdef01234567
-- checks remain green
+- all applicable required checks are green on the current head
+- at least one applicable required check exercises the changed paths
+
+### Post-merge
+- confirm Closes #123 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## merge-candidate (no required checks configured)
+
+```verdict
+## review-gate: merge-candidate
+
+head-sha: 0123456789abcdef0123456789abcdef01234567
+review-round: 1
+reviewed-files: 4
+blocking-set:
+
+### Standards
+- [low] [defer] src/logger.ts — logging is noisy but not blocking.
+
+### Spec
+- [low] [reject] docs/readme.md — this note is outside the issue scope.
+
+### Merge preconditions
+- head is still 0123456789abcdef0123456789abcdef01234567
+- no required checks are configured on the target branch
+- at least one green CI/check run on the current head exercises the changed paths
 
 ### Post-merge
 - confirm Closes #123 closed the issue
@@ -76,7 +103,7 @@ blocking-set:
 - next eligible ready-for-agent issue
 ```
 
-## blocked
+## blocked (stale head)
 
 ```verdict
 ## review-gate: blocked
@@ -94,6 +121,7 @@ blocking-set:
 
 ### Merge preconditions
 - head is still 00112233445566778899aabbccddeeff00112233
+- only older-head results exist; no current-head evidence counts
 - blocker resolved outside this review
 
 ### Post-merge
