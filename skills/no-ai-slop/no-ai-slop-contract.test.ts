@@ -87,17 +87,30 @@ test("synthetic slop sample triggers supplemental Humanizer findings", () => {
 test("skill copy keeps the upstream minimum-edit and supplemental-audit guarantees", () => {
   const skill = read("skills/no-ai-slop/SKILL.md");
   const reference = read("skills/no-ai-slop/reference/humanizer-patterns.md");
+  const evalMd = read("skills/no-ai-slop/eval.md");
 
   expect(skill).toContain("This repo owns a downstream copy of `petergyang/no-ai-slop@000650b156983f5159695b441477f4e63b25dc85`.");
   expect(skill).toContain("The notes below are additive to the pinned upstream behavior, not a silent replacement for it.");
+  expect(skill).toContain("## Supplemental reference pack");
+  expect(skill).toContain("reference/humanizer-patterns.md");
   expect(skill).toContain("Humanizer is findings-only supplemental audit");
-  expect(skill).toContain("It is not a second rewrite pass, reorder stage, or delivery route.");
+  expect(skill).toContain("It is not a second rewrite pass, reorder stage, delivery route, or standalone Humanizer pass.");
   expect(skill).toContain("These are not bans: em dashes, emojis, title case, bold-label lists, passive voice, groups of three, repeated sentence openings, and rhetorical fragments.");
   expect(skill).toContain("minimum effective edit");
   expect(skill).toContain("delve, foster, leverage, utilize, facilitate, empower, streamline, robust");
   expect(reference).toContain("Humanizer v2.11.2");
   expect(reference).toContain("e2e92e7b4b8229253ed5c8e81dc65463fdeddda5");
   expect(reference).toContain("blader/humanizer");
+  expect(evalMd).toContain("No AI slop eval");
+  expect(evalMd).toContain("Does the final output include the full edited draft and a short **What changed** section?");
+});
+
+test("workflow section restores the upstream eval loop", () => {
+  const skill = read("skills/no-ai-slop/SKILL.md");
+
+  expect(skill).toContain("## Workflow");
+  expect(skill).toContain("check the edited draft against `eval.md` yourself");
+  expect(skill).toContain("run the supplemental `reference/humanizer-patterns.md` scan as findings-only support");
 });
 
 test("humanizer pattern reference keeps the pinned provenance and full 35-pattern taxonomy", () => {

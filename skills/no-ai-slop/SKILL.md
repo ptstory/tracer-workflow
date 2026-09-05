@@ -17,9 +17,14 @@ Rewrite AI-sounding text so it reads like the writer, not a chatbot. Do not chan
 This repo owns a downstream copy of `petergyang/no-ai-slop@000650b156983f5159695b441477f4e63b25dc85`.
 The notes below are additive to the pinned upstream behavior, not a silent replacement for it.
 
+## Supplemental reference pack
+
+When a draft needs a Humanizer check, consult `reference/humanizer-patterns.md` as a triggered supplemental findings-only scan.
+Use it to name and confirm patterns. Do not let it rewrite prose, reorder prose, or become a standalone Humanizer stage.
+
 ## Repo-specific addenda
 
-Humanizer is findings-only supplemental audit here. It is not a second rewrite pass, reorder stage, or delivery route.
+Humanizer is findings-only supplemental audit here. It is not a second rewrite pass, reorder stage, delivery route, or standalone Humanizer pass.
 
 These are not bans: em dashes, emojis, title case, bold-label lists, passive voice, groups of three, repeated sentence openings, and rhetorical fragments.
 Keep them when the writer uses them on purpose or when they fit the piece.
@@ -148,6 +153,15 @@ These details often carry the writer's voice. Keep them unless they hurt the mea
 **File mode.** When the user names a file, run the full rewrite process but write only the final text to the file. Change prose only. Keep code blocks, YAML metadata, data, and link targets unchanged. Then give the user a short summary.
 
 **Embedded mode.** When another task uses this skill for a pull request, commit message, or document, return only the final text.
+
+## Workflow
+
+1. Read the full draft before editing.
+2. Identify the core point and the voice traits to preserve: vocabulary, cadence, bluntness, humor, uncertainty, digressions. If you cannot identify the core point, ask the user.
+3. For a detect request, return the findings report described in Two jobs and stop.
+4. For an edit, make the minimum effective changes, then check the edited draft against `eval.md` yourself. If Humanizer patterns are in play, run the supplemental `reference/humanizer-patterns.md` scan as findings-only support.
+5. If any check fails, fix the draft and run the checks again.
+6. Output the full edited draft and a short **What changed** section.
 
 ## Source
 
