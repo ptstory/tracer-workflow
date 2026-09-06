@@ -42,6 +42,27 @@ function extractConditionalFieldsFromPrompt(text: string): string[] {
   return [];
 }
 
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function validateTextSnippets(
+  file: string,
+  text: string,
+  snippets: Array<{ field: string; snippet: string; message: string }>,
+): Issue[] {
+  const issues: Issue[] = [];
+  const normalizedText = normalizeWhitespace(text);
+
+  for (const { field, snippet, message } of snippets) {
+    if (!normalizedText.includes(normalizeWhitespace(snippet))) {
+      issues.push({ file, field, message });
+    }
+  }
+
+  return issues;
+}
+
 function parseCodeBlocks(text: string): string[] {
   const blocks: string[] = [];
   const pattern = /```verdict\n([\s\S]*?)```/g;
@@ -236,6 +257,44 @@ function validateVerdictBlock(block: string, index: number, requiredFields: stri
   return issues;
 }
 
+function validateReadinessExamples(blocks: string[]): Issue[] {
+  const issues: Issue[] = [];
+  const file = "skills/review-gate/references/verdict-examples.md";
+  const mergeCandidateBlocks = blocks.filter((block) => block.startsWith("## review-gate: merge-candidate"));
+
+  if (!mergeCandidateBlocks.some((block) => {
+    const normalizedBlock = normalizeWhitespace(block);
+    return normalizedBlock.includes("all applicable required checks are green on the current head") && normalizedBlock.includes("at least one applicable required check exercises the changed paths");
+  })) {
+    issues.push({
+      file,
+      field: "merge-candidate (configured required checks)",
+      message: "missing configured required-check readiness path",
+    });
+  }
+
+  if (!mergeCandidateBlocks.some((block) => {
+    const normalizedBlock = normalizeWhitespace(block);
+    return normalizedBlock.includes("no required checks are configured on the target branch") && normalizedBlock.includes("at least one green CI/check run on the current head exercises the changed paths");
+  })) {
+    issues.push({
+      file,
+      field: "merge-candidate (no required checks configured)",
+      message: "missing no-required-check readiness path",
+    });
+  }
+
+  if (!blocks.some((block) => normalizeWhitespace(block).includes("only older-head results exist; no current-head evidence counts"))) {
+    issues.push({
+      file,
+      field: "blocked (stale head)",
+      message: "missing current-head versus older-head evidence note",
+    });
+  }
+
+  return issues;
+}
+
 function main(): void {
   const contractText = readText(contractPath);
   const examplesText = readText(examplesPath);
@@ -254,6 +313,70 @@ function main(): void {
 
   const issues: Issue[] = [
     ...validateContractPrompt(requiredFields, conditionalFields, promptText),
+    ...validateTextSnippets("skills/review-gate/references/verdict-contract.md", contractText, [
+      {
+        field: "readiness",
+        snippet: "target branch's required status-check configuration",
+        message: "missing canonical readiness configuration language",
+      },
+      {
+        field: "readiness",
+        snippet: "Configured path: all applicable required checks are green at the current head",
+        message: "missing configured-path current-head readiness rule",
+      },
+      {
+        field: "readiness",
+        snippet: "No-required-check path: at least one green CI/check run on the current head",
+        message: "missing no-required-check current-head readiness rule",
+      },
+      {
+        field: "readiness",
+        snippet: "Older-head results never count.",
+        message: "missing older-head staleness rule",
+      },
+      {
+        field: "readiness",
+        snippet: "Branch protection is not required.",
+        message: "missing branch-protection clarification",
+      },
+      {
+        field: "readiness",
+        snippet: "Merge remains HITL.",
+        message: "missing HITL merge clarification",
+      },
+    ]),
+    ...validateTextSnippets("skills/review-gate/PROMPT.md", promptText, [
+      {
+        field: "readiness",
+        snippet: "target branch's required status-check configuration",
+        message: "missing canonical readiness configuration language",
+      },
+      {
+        field: "readiness",
+        snippet: "configured path: all applicable required checks are green at the current head",
+        message: "missing configured-path current-head readiness rule",
+      },
+      {
+        field: "readiness",
+        snippet: "no-required-check path: at least one green CI/check run on the current head",
+        message: "missing no-required-check current-head readiness rule",
+      },
+      {
+        field: "readiness",
+        snippet: "Older-head results never count.",
+        message: "missing older-head staleness rule",
+      },
+      {
+        field: "readiness",
+        snippet: "Branch protection is not required.",
+        message: "missing branch-protection clarification",
+      },
+      {
+        field: "readiness",
+        snippet: "Merge remains HITL.",
+        message: "missing HITL merge clarification",
+      },
+    ]),
   ];
 
   const blocks = parseCodeBlocks(examplesText);
@@ -268,6 +391,8 @@ function main(): void {
   blocks.forEach((block, index) => {
     issues.push(...validateVerdictBlock(block, index, requiredFields));
   });
+
+  issues.push(...validateReadinessExamples(blocks));
 
   if (issues.length > 0) {
     report(issues);
