@@ -8,14 +8,14 @@
     "views": [
       {"id": "main-state-cycle", "label": "PR to merge", "focus": ["implementation_in_progress", "pr_open", "unreviewed_head", "checks_pending", "checks_green", "reviewed_exact_sha", "human_merge_ready", "merged"], "note": "The merge path requires current-head CI evidence and a fresh verdict bound to that same head."},
       {"id": "stale-after-push", "label": "Why a push invalidates review", "focus": ["reviewed_exact_sha", "needs_fix", "repair_new_head", "stale_review", "checks_pending", "unreviewed_head"], "note": "A review is a statement about one commit. Any push changes the identity under review and forces a new round."},
-      {"id": "stop-states", "label": "Automation stop states", "focus": ["blocked", "needs_human", "human_merge_ready"], "note": "Blocked and needs-human stop automation; a merge-ready state still preserves the human merge gate in the current review contract."}
+      {"id": "stop-states", "label": "Automation stop states", "focus": ["blocked", "needs_human", "human_merge_ready"], "note": "Blocked and needs-human stop automation; merge-ready then follows the issue's AFK/HITL landing authority."}
     ]
   },
   "lanes": [
     {"id": "implementation", "label": "Implementation / Local Work"},
     {"id": "review_record", "label": "GitHub PR + Review Record"},
     {"id": "verification", "label": "Observed Current-Head Verification"},
-    {"id": "human_terminal", "label": "Human / Terminal"}
+    {"id": "human_terminal", "label": "Landing / Terminal"}
   ],
   "states": [
     {"id": "implementation_in_progress", "type": "start", "label": "Implementation In Progress", "sublabel": "local worktree / commits", "lane": "implementation", "col": 0, "step": "01", "tag": "not yet durable enough"},
@@ -29,7 +29,7 @@
     {"id": "repair_new_head", "type": "active", "label": "Repair / New Head", "sublabel": "from-pr-review fixes + push", "lane": "implementation", "col": 3, "tag": "new commit identity"},
     {"id": "blocked", "type": "failure", "label": "Blocked", "sublabel": "red/no coverage · malformed verdict · evidence inconsistency", "lane": "verification", "col": 4, "tag": "automation stops"},
     {"id": "needs_human", "type": "external", "label": "Needs Human", "sublabel": "scope contradiction · judgment · circuit breaker", "lane": "human_terminal", "col": 1, "tag": "hard stop"},
-    {"id": "human_merge_ready", "type": "waiting", "label": "Human Merge-Ready", "sublabel": "merge-candidate + gate current for same SHA", "lane": "human_terminal", "col": 3, "step": "05", "tag": "HITL button"},
+    {"id": "human_merge_ready", "type": "waiting", "label": "Merge-Ready", "sublabel": "merge-candidate + gate current for same SHA", "lane": "human_terminal", "col": 3, "step": "05", "tag": "AFK auto · HITL human"},
     {"id": "merged", "type": "success", "label": "Merged", "sublabel": "PR landed / issue closure can be confirmed", "lane": "human_terminal", "col": 4, "step": "06", "tag": "terminal"}
   ],
   "transitions": [
@@ -44,7 +44,7 @@
     {"id": "stale-checks", "from": "stale_review", "to": "checks_pending", "label": "new head must re-verify", "variant": "dashed"},
     {"id": "stale-unreviewed", "from": "stale_review", "to": "unreviewed_head", "label": "old verdict is void", "variant": "dashed"},
     {"id": "review-ready", "from": "reviewed_exact_sha", "to": "human_merge_ready", "label": "merge-candidate + same-head gate", "variant": "emphasis"},
-    {"id": "ready-merge", "from": "human_merge_ready", "to": "merged", "label": "human merge", "variant": "security"},
+    {"id": "ready-merge", "from": "human_merge_ready", "to": "merged", "label": "AFK auto-land / HITL human merge", "variant": "security"},
     {"id": "review-new-push", "from": "reviewed_exact_sha", "to": "stale_review", "label": "any later push invalidates verdict", "variant": "security"},
     {"id": "ready-new-push", "from": "human_merge_ready", "to": "stale_review", "label": "new push revokes readiness", "variant": "security"},
     {"id": "checks-block", "from": "checks_pending", "to": "blocked", "label": "red / missing current-head coverage", "variant": "security"},
