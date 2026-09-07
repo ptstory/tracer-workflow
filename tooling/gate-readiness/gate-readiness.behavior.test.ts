@@ -180,6 +180,13 @@ const currentReviewGateComment = {
   created_at: "2026-01-01T00:00:00Z",
 };
 
+function reviewGateComment(headSha: string, createdAt = "2026-01-01T00:00:00Z") {
+  return {
+    body: `## review-gate: merge-candidate\nhead-sha: ${headSha}\nreview-round: 1\nreviewed-files: 2\n`,
+    created_at: createdAt,
+  };
+}
+
 describe(".github/workflows/gate-readiness.yml behavior", () => {
   test("pull_request uses event payload data and never touches the pulls endpoint", () => {
     const { result, ghLog, commentLog } = runWorkflow({
@@ -372,5 +379,111 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(commentLog).toContain("- readiness: false");
+  });
+
+  test("classifies check-run evidence on the exact reviewed head SHA, including push-triggered runs", () => {
+    const reviewedHeadSha = "cccccccccccccccccccccccccccccccccccccccc";
+
+    const cases = [
+      {
+        label: "absent",
+        checkRunsJson: [],
+        expected: "absent",
+      },
+      {
+        label: "pending",
+        checkRunsJson: [
+          {
+            id: 21,
+            name: "build",
+            app: { slug: "github-actions" },
+            status: "in_progress",
+            run_started_at: "2026-01-07T00:00:00Z",
+            started_at: "2026-01-07T00:00:00Z",
+            check_suite: { pull_requests: [] },
+          },
+        ],
+        expected: "pending",
+      },
+      {
+        label: "failed",
+        checkRunsJson: [
+          {
+            id: 22,
+            name: "build",
+            app: { slug: "github-actions" },
+            status: "completed",
+            conclusion: "failure",
+            run_started_at: "2026-01-07T00:00:00Z",
+            started_at: "2026-01-07T00:00:00Z",
+            completed_at: "2026-01-07T00:03:00Z",
+            check_suite: { pull_requests: [] },
+          },
+        ],
+        expected: "failed/cancelled",
+      },
+      {
+        label: "cancelled",
+        checkRunsJson: [
+          {
+            id: 23,
+            name: "build",
+            app: { slug: "github-actions" },
+            status: "completed",
+            conclusion: "cancelled",
+            run_started_at: "2026-01-07T00:00:00Z",
+            started_at: "2026-01-07T00:00:00Z",
+            completed_at: "2026-01-07T00:03:00Z",
+            check_suite: { pull_requests: [] },
+          },
+        ],
+        expected: "failed/cancelled",
+      },
+      {
+        label: "passed",
+        checkRunsJson: [
+          {
+            id: 24,
+            name: "build",
+            app: { slug: "github-actions" },
+            status: "completed",
+            conclusion: "success",
+            run_started_at: "2026-01-07T00:00:00Z",
+            started_at: "2026-01-07T00:00:00Z",
+            completed_at: "2026-01-07T00:03:00Z",
+            check_suite: { pull_requests: [] },
+          },
+        ],
+        expected: "passed",
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const { result, commentLog } = runWorkflow({
+        eventName: "pull_request",
+        eventPayload: {
+          pull_request: {
+            number: 98,
+            head: { sha: reviewedHeadSha },
+            body: "Fixes #97",
+            labels: [],
+          },
+        },
+        prNumber: 98,
+        commentsJson: [reviewGateComment(reviewedHeadSha)],
+        checkRunsJson: testCase.checkRunsJson as unknown as unknown[],
+        statusesJson: [],
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(commentLog).toContain(`- reviewed head SHA: ${reviewedHeadSha}`);
+      expect(commentLog).toContain(`- check-run evidence state: ${testCase.expected}`);
+      expect(commentLog).toContain("- check-run evidence scope: exact reviewed head SHA; includes push-triggered GitHub Actions check-runs");
+      if (testCase.expected === "absent") {
+        expect(commentLog).toContain("no check-run or commit-status evidence found for exact reviewed head");
+      } else {
+        expect(commentLog).not.toContain("no check-run or commit-status evidence found for exact reviewed head");
+      }
+    }
   });
 });
