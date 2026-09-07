@@ -31,6 +31,7 @@ The two checked-in SVGs are reader-facing static projections for GitHub README r
 3. A green gate means the configured current-head evidence contract is satisfied. It does not guarantee overall correctness.
 4. Review is commit-specific. A verdict remains current only while its recorded `head-sha` equals the PR current head.
 5. Local-only work is a separate durability failure mode, detected by comparing local retainers with trusted remote reachability.
+6. Landing authority is fixed by the issue's HITL/AFK classification: AFK may land autonomously after the gate; HITL requires human merge.
 
 ## Drift / ambiguity found at the pinned revision
 
@@ -42,9 +43,9 @@ The two checked-in SVGs are reader-facing static projections for GitHub README r
 
 The verdict contract says issue-body requirements plus brief clarifications explicitly marked as derived from the issue body are binding. The pinned `prompts/agent-brief.md` format has no explicit derived-vs-new provenance field. This documentation PR records the discrepancy without changing workflow policy.
 
-### Merge ownership wording is not fully uniform
+### Merge wording was not uniform at the pinned revision
 
-`README.md`, the review-gate verdict contract, the poller documentation, and `from-pr-review` preserve a human/manual merge boundary. `WORKFLOW.md` also contains AFK wording that can be read as pre-authorizing merge after the gate. The diagrams use the stricter current review contract: human/HITL merge.
+The pinned README, review-contract-adjacent docs, and poller wording emphasized a human/manual merge boundary, while `WORKFLOW.md` explicitly distinguishes AFK autonomous landing from HITL human merge. This documentation PR treats the HITL/AFK section of `WORKFLOW.md` as controlling and models both paths. It does not redefine merge authority.
 
 ## Archify validation status
 
