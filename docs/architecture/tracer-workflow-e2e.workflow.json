@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "tracer-workflow — End-to-End Durable Workflow",
+    "output": "tracer-workflow-e2e.workflow.html",
+    "quality_profile": "showcase",
+    "views": [
+      {"id": "durable-handoffs", "label": "Durable handoffs", "focus": ["to_issues", "agent_brief", "pr_opened", "verdict"], "note": "Intent, execution evidence, and review outcome are persisted in GitHub before the next disposable worker takes over."},
+      {"id": "needs-fix-loop", "label": "Needs-fix loop", "focus": ["review_gate", "verdict", "from_pr_review", "pr_opened", "check_gate"], "note": "A fix push creates a new head. The old verdict is stale, so current-head checks become evidence for another fresh review rather than permission to merge."},
+      {"id": "merge-preconditions", "label": "Merge preconditions", "focus": ["verdict", "check_gate", "merge"], "note": "A merge requires a current-head merge-candidate verdict plus the configured current-head check-run gate; HITL ownership remains a separate human decision."}
+    ]
+  },
+  "lanes": [
+    {"id": "planning", "label": "Planning / Fresh Review Sessions"},
+    {"id": "github", "label": "GitHub Durable Record"},
+    {"id": "execution", "label": "OpenCode / Execution"},
+    {"id": "verification", "label": "Observed Verification"},
+    {"id": "human", "label": "Human Gate"}
+  ],
+  "phases": [
+    {"id": "shape", "label": "Shape intent", "fromCol": 0, "toCol": 2},
+    {"id": "delegate", "label": "Make work executable", "fromCol": 3, "toCol": 4, "variant": "emphasis"},
+    {"id": "review", "label": "Review, verify, merge", "fromCol": 5, "toCol": 5, "variant": "security"}
+  ],
+  "mainPath": ["raw_idea", "to_issues", "triage_queue", "agent_brief", "next", "from_issue", "pr_opened", "review_gate", "verdict", "check_gate", "merge"],
+  "nodes": [
+    {"id": "raw_idea", "lane": "planning", "col": 0, "type": "external", "label": "Raw Idea / PRD", "sublabel": "session-local input", "tag": "not yet durable"},
+    {"id": "to_issues", "lane": "planning", "col": 1, "type": "frontend", "label": "to-issues", "sublabel": "scope vertical slices + HITL/AFK", "tag": "writes GitHub issues"},
+    {"id": "triage_queue", "lane": "planning", "col": 2, "type": "frontend", "label": "triage-queue", "sublabel": "shallow repo-wide selector", "tag": "recommendation only"},
+    {"id": "agent_brief", "lane": "planning", "col": 3, "type": "frontend", "label": "agent-brief", "sublabel": "deep single-item triage", "tag": "writes durable brief"},
+    {"id": "next", "lane": "execution", "col": 3, "type": "backend", "label": "next", "sublabel": "select unblocked ready-for-agent issue", "tag": "documented role; source drift"},
+    {"id": "from_issue", "lane": "execution", "col": 4, "type": "backend", "label": "from-issue", "sublabel": "resume worktree · implement smallest safe slice"},
+    {"id": "pr_opened", "lane": "github", "col": 4, "type": "database", "label": "PR + Evidence Bundle", "sublabel": "Closes #N · exact commands/output · head SHA", "tag": "durable authored evidence"},
+    {"id": "review_gate", "lane": "planning", "col": 5, "type": "security", "label": "Fresh review-gate", "sublabel": "requesting-code-review + dispositions", "tag": "fresh context"},
+    {"id": "verdict", "lane": "github", "col": 5, "type": "messagebus", "label": "Verdict Comment", "sublabel": "state + review-round + exact head-sha", "tag": "append-only / SHA-bound"},
+    {"id": "from_pr_review", "lane": "execution", "col": 5, "type": "backend", "label": "from-pr-review", "sublabel": "receiving-code-review → fix-now batch → push", "tag": "needs-fix only"},
+    {"id": "check_gate", "lane": "verification", "col": 5, "type": "security", "label": "Check-Run Gate", "sublabel": "actual current-head checks + changed-path coverage", "tag": "observed state"},
+    {"id": "merge", "lane": "human", "col": 5, "type": "external", "label": "Merge", "sublabel": "HITL human button in current contract", "tag": "only after current gate"}
+  ],
+  "edges": [
+    {"id": "idea-to-issues", "from": "raw_idea", "to": "to_issues", "role": "main"},
+    {"id": "issues-to-triage", "from": "to_issues", "to": "triage_queue", "label": "scoped issues now durable", "role": "main", "variant": "emphasis"},
+    {"id": "triage-to-brief", "from": "triage_queue", "to": "agent_brief", "label": "selected item", "role": "main"},
+    {"id": "brief-to-next", "from": "agent_brief", "to": "next", "label": "durable brief + ready-for-agent", "role": "main", "variant": "emphasis"},
+    {"id": "next-to-execute", "from": "next", "to": "from_issue", "label": "eligible issue", "role": "main"},
+    {"id": "execute-to-pr", "from": "from_issue", "to": "pr_opened", "label": "commit + push + PR", "role": "main", "variant": "emphasis"},
+    {"id": "pr-to-review", "from": "pr_opened", "to": "review_gate", "label": "issue + diff + evidence + current SHA", "role": "main", "variant": "security"},
+    {"id": "review-to-verdict", "from": "review_gate", "to": "verdict", "label": "append comment @ exact head", "role": "main", "variant": "emphasis"},
+    {"id": "verdict-to-gate", "from": "verdict", "to": "check_gate", "label": "merge-candidate on current head", "role": "main", "variant": "security"},
+    {"id": "gate-to-merge", "from": "check_gate", "to": "merge", "label": "current-head evidence green + verdict still current", "role": "main", "variant": "security"},
+    {"id": "needs-fix", "from": "verdict", "to": "from_pr_review", "label": "needs-fix + SHA current", "role": "branch", "variant": "security"},
+    {"id": "fix-push", "from": "from_pr_review", "to": "pr_opened", "label": "push new head → prior verdict stale", "role": "return", "variant": "emphasis", "route": "return-left"},
+    {"id": "fix-checks", "from": "from_pr_review", "to": "check_gate", "label": "observe new-head checks (evidence only)", "role": "async", "variant": "dashed"},
+    {"id": "new-head-rereview", "from": "check_gate", "to": "review_gate", "label": "after a fix push, fresh review still required", "role": "return", "variant": "dashed", "route": "return-left"},
+    {"id": "merge-next", "from": "merge", "to": "next", "label": "loop to next eligible issue", "role": "return", "variant": "dashed", "route": "return-left"}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "Durability crossings", "items": ["to-issues converts session-local intent into GitHub issues.", "agent-brief makes one issue executable without prior chat memory.", "from-issue converts local implementation into a PR evidence bundle; review-gate converts fresh review into an append-only SHA-bound verdict."]},
+    {"dot": "rose", "title": "Needs-fix invalidation loop", "items": ["Only a current-head needs-fix verdict is eligible for an automated fix pass.", "The fix push moves the PR head and voids the prior verdict immediately.", "New-head CI is evidence for the next review; it does not resurrect the stale verdict."]},
+    {"dot": "amber", "title": "Source drift to fix", "items": ["WORKFLOW.md and README.md define next as the loop-closer.", "At the pinned revision, skills/next/SKILL.md instead contains an unrelated Deliverable Package Finalizer skill.", "This diagram therefore shows the documented workflow contract, while flagging that installed/source parity is currently broken."]}
+  ]
+}
