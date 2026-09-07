@@ -49,4 +49,6 @@ The pinned README, review-contract-adjacent docs, and poller wording emphasized 
 
 ## Archify validation status
 
-The source JSON follows the Archify architecture/workflow/lifecycle schemas and was structurally sanity-checked before this PR. Archify CLI showcase validation and Archify-delivered HTML were not run in the authoring environment because the CLI was unavailable there. Do not treat the JSON as showcase-validated until the repository runs Archify's own `validate`/`deliver` commands.
+The three source models were checked against the architecture, workflow, lifecycle, and shared schemas at `tt-a1i/archify@920543baa1c6137803c5b45a69d8977152773d35`. Their current fields, enum values, lane/column bounds, and guided-view constraints conform to those schemas; the guided-view notes are all within the shared 140-character maximum.
+
+Archify CLI showcase validation and Archify-delivered HTML were not run in the authoring environment because the CLI is unavailable there. Schema conformance here therefore does not claim that Archify `deliver`/showcase rendering was executed.
