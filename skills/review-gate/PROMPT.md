@@ -32,7 +32,11 @@ Do this:
 3. Read the PR's current `<!-- tracer-continuation:v1 -->` comment when present.
    Treat it only as routing metadata. Preserve a safe `implementation-locator`
    for a possible fix return, but do not trust a pointer whose `head-sha` is
-   stale or whose contents disagree with current GitHub state.
+   stale or whose contents disagree with current GitHub state. If a valid
+   implementation locator clearly identifies its implementation surface (for
+   example a ChatGPT history label or an OpenCode session ID), preserve that
+   surface for a later `needs-fix` return rather than replacing it with the
+   default tool.
 4. If this is round `0`, run a full review with two independent axes —
    Standards and Spec — preserving each axis's own order, without reranking or
    merging findings across axes. Within those axes, cover severity-tagged
@@ -57,10 +61,17 @@ Do this:
 9. After the conforming verdict comment is successfully posted and the PR head
    is revalidated, create or update the PR's single continuation-pointer comment
    (`<!-- tracer-continuation:v1 -->`) according to the verdict:
-   - `needs-fix`: `stage: review-fix`, `surface: OpenCode`,
-     `session-policy: continue-preferred`, preserve a safe current
-     `implementation-locator` when available, and set `next-action` to
-     `from-pr-review <PR_URL>`;
+   - `needs-fix`: set `stage: review-fix`. If valid implementation provenance
+     identifies a usable implementation lane, set `surface` to that lane's
+     actual surface (`ChatGPT` or `OpenCode`), use
+     `session-policy: continue-preferred`, preserve its safe
+     `implementation-locator`, and set `next-action` to return to that lane and
+     run `from-pr-review <PR_URL>` there. If no valid implementation provenance
+     exists, use `surface: OpenCode`, `session-policy: fresh-preferred`, and
+     `next-action: Start a fresh OpenCode implementation context from <PR_URL>
+     and run from-pr-review <PR_URL>`. In either case, the fallback is a fresh
+     implementation context reconstructed from the PR, linked issue, branch,
+     current verdict, and review threads.
    - `merge-candidate`: `stage: merge`, `surface: GitHub`,
      `session-policy: n/a`, and set `next-action` to the exact human merge action
      for `<PR_URL>`;
