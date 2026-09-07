@@ -21,7 +21,8 @@ bun tooling/doctor/doctor.ts [--json] [--repo-root <path>] [--repo-root <path>] 
   than the current worktree copy
 - `skills/no-ai-slop/SKILL.md` and its Humanizer reference stay repo-owned
 - `~/.agents/skills/no-ai-slop` resolves to the canonical repo skill directory as
-  current-head activation evidence
+  runtime discovery / activation evidence for #106/#112, not #104's
+  content-contract test
 - `AGENTS.md` / `WORKFLOW.md` repo contract pointers are present
 - `skills/review-gate/references/verdict-contract.md` still carries the marker
   contract
@@ -30,3 +31,14 @@ bun tooling/doctor/doctor.ts [--json] [--repo-root <path>] [--repo-root <path>] 
 - canonical GitHub labels are present when the repo is reachable
 - installed `~/Library/LaunchAgents/*.plist` jobs still point at scripts in the
   canonical tracer-workflow checkout
+
+## Activation probe
+
+Run the isolated HOME activation proof with:
+
+```bash
+bun tooling/doctor/no-ai-slop-activation-probe.ts
+```
+
+For test-only overrides, pass `--opencode-bin <path>` to point at a local
+binary.
