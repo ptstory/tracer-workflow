@@ -76,15 +76,17 @@ planning thread.
 
 On a `needs-fix` verdict, `from-pr-review` applies the fixes, replies per thread,
 and pushes. The push moves the head SHA and invalidates the verdict, so the
-circuit runs again. Only `needs-fix` triggers autonomous action; every other
-verdict goes to a human. Merge is manual and follows the current head's required
-status-check configuration: if required checks are configured, all applicable
-required checks must be green at the current head and at least one applicable
-required check must exercise the changed paths; if no required checks are
-configured, at least one green CI/check run on the current head must exercise
-the changed paths. Older-head results never count.
+circuit runs again. `needs-human` and `blocked` are hard stops. Once a current-head
+`merge-candidate` verdict and the check-run gate agree, landing authority follows
+the issue's autonomy tag: AFK work may land autonomously; HITL work stops for the
+human merge button. The gate follows the current head's required status-check
+configuration: if required checks are configured, all applicable required checks
+must be green at the current head and at least one applicable required check must
+exercise the changed paths; if no required checks are configured, at least one
+green CI/check run on the current head must exercise the changed paths.
+Older-head results never count.
 
-![PR review lifecycle showing a fresh review stamped to SHA A, a needs-fix push producing SHA B and making the prior verdict stale, current-head checks, hard-stop states, and manual merge.](./docs/architecture/tracer-workflow-review-loop.svg)
+![PR review lifecycle showing a fresh review stamped to SHA A, a needs-fix push producing SHA B and making the prior verdict stale, current-head checks, hard-stop states, and AFK autonomous landing versus HITL human merge.](./docs/architecture/tracer-workflow-review-loop.svg)
 
 The critical review rule is commit identity, not conversation continuity: a
 verdict about SHA A cannot authorize work on SHA B. A new push returns the PR to
@@ -109,9 +111,10 @@ The full stage table, including every skill, owner, and role, is in
 
 **`tooling/review-gate-poller/`**: Bun poller that watches open PRs for a fresh
 `needs-fix` verdict at the current head and shells `opencode run` to start the
-fix pass. Only `needs-fix` triggers it; every other verdict is left for a human.
-See its [README](./tooling/review-gate-poller/README.md) for environment variables
-and launchd install.
+fix pass. The poller only triggers current-head `needs-fix` repair; it does not
+infer or override the issue's AFK/HITL landing authority. See its
+[README](./tooling/review-gate-poller/README.md) for environment variables and
+launchd install.
 
 **`tooling/unbacked-work-monitor/`**: nightly Bun monitor for local-only commits
 retained by branches or linked worktrees but not by trusted remote refs. It scans
