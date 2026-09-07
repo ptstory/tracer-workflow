@@ -7,6 +7,11 @@ This is a plain reusable prompt, not an auto-triggered skill or slash command.
 GitHub is the source of truth: read the issue or PR body, comments, labels,
 linked context, and repository workflow docs before writing the brief.
 
+Session and continuation behavior follows [`CONTINUATION.md`](../CONTINUATION.md).
+If this is the first unique item selected by the immediately preceding
+`triage-queue` pass, it may continue in that same triage conversation. Otherwise
+start fresh for a different artifact.
+
 ---
 
 Prepare a durable agent brief for `<ISSUE_OR_PR_URL>`.
@@ -53,6 +58,20 @@ Do this:
 6. For `needs-info`, write specific questions, not vague "please provide more
    info" requests.
 7. For `wontfix`, explain the reason and apply the out-of-scope rules below.
+8. If the durable brief/triage comment is successfully posted, create or update
+   the artifact's single `<!-- tracer-continuation:v1 -->` comment rather than
+   appending competing pointers:
+   - `ready-for-agent` issue → `stage: implementation`, `surface: OpenCode`,
+     `session-policy: fresh-required`, `next-action: from-issue <exact issue URL>`;
+   - `ready-for-human` → point to the one exact human decision/action;
+   - `needs-info` → point to the exact information request / reporter action;
+   - `wontfix` → terminal/no-action as appropriate.
+   Use `as-of` and `source-class` from the canonical pointer contract. Do not
+   invent a session locator. `from-issue` may add a safe implementation locator
+   once an implementation lane actually exists.
+9. If the brief post succeeds but pointer publication fails, report the pointer
+   failure separately. Do not claim the pointer was written and do not treat the
+   successfully posted brief as absent.
 
 Durability rules:
 
@@ -66,6 +85,8 @@ Durability rules:
 - Do not reference stale line numbers.
 - Do not prescribe exact files unless the file itself is the contract.
 - Do not gold-plate adjacent features.
+- A continuation pointer is routing metadata only; it never outranks the issue,
+  PR, current head SHA, labels, blockers, or review/check state.
 
 Out-of-scope rules:
 
@@ -151,4 +172,5 @@ Say whether `.out-of-scope/` should be created, updated, or not touched.
 ```
 
 If you cannot post the GitHub comment, output the comment body and say it was not
-posted.
+posted. Do not create or claim a continuation pointer for a brief that was not
+durably posted.
