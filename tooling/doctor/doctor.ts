@@ -336,88 +336,103 @@ function checkNextSkill(repoRoot: string): DoctorFinding[] {
   ];
 }
 
+
 function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[] {
   const canonicalRepoRoot = getCanonicalCheckoutRoot(repoRoot);
-  const expectedPath = join(canonicalRepoRoot, "skills/next");
-  const expectedResolution = existsSync(expectedPath)
-    ? realpathOrFinding(
+  const findings: DoctorFinding[] = [];
+
+  for (const skillSlug of ["next", "no-ai-slop"] as const) {
+    const expectedPath = join(canonicalRepoRoot, `skills/${skillSlug}`);
+    const component = `runtime-skill:${skillSlug}`;
+    const runtimePath = join(home, ".agents/skills", skillSlug);
+    const expectedResolution = existsSync(expectedPath)
+      ? realpathOrFinding(
         expectedPath,
-        "runtime-skill:next",
-        `directory symlink at ${join(home, ".agents/skills/next")} resolves to ${expectedPath}`,
-        "Restore the canonical next skill path.",
+        component,
+        `directory symlink at ${runtimePath} resolves to ${expectedPath}`,
+        "Restore the canonical skill path.",
       )
-    : { path: expectedPath, finding: null };
-  if (expectedResolution.finding) return [expectedResolution.finding];
+      : { path: expectedPath, finding: null };
+    if (expectedResolution.finding) {
+      findings.push(expectedResolution.finding);
+      continue;
+    }
 
-  const expected = expectedResolution.path ?? expectedPath;
-  const runtimePath = join(home, ".agents/skills/next");
+    const expected = expectedResolution.path ?? expectedPath;
 
-  let stat: ReturnType<typeof lstatSync>;
-  try {
-    stat = lstatSync(runtimePath);
-  } catch {
-    return [
-      finding(
-        "runtime-skill:next",
-        `directory symlink at ${runtimePath} resolves to ${expected}`,
-        "missing runtime skill directory symlink",
-        "error",
-        `Create a symlink from ${runtimePath} to ${expected}.`,
-      ),
-    ];
-  }
+    let stat: ReturnType<typeof lstatSync>;
+    try {
+      stat = lstatSync(runtimePath);
+    } catch {
+      findings.push(
+        finding(
+          component,
+          `directory symlink at ${runtimePath} resolves to ${expected}`,
+          "missing runtime skill directory symlink",
+          "error",
+          `Create a symlink from ${runtimePath} to ${expected}.`,
+        ),
+      );
+      continue;
+    }
 
-  if (!stat.isSymbolicLink()) {
+    if (!stat.isSymbolicLink()) {
+      let resolved: string;
+      try {
+        resolved = realpathSync(runtimePath);
+      } catch (error) {
+        findings.push(
+          inspectionFinding(
+            component,
+            `directory symlink at ${runtimePath} resolves to ${expected}`,
+            inspectionObserved(runtimePath, error),
+            `Restore ${runtimePath}.`,
+          ),
+        );
+        continue;
+      }
+      findings.push(
+        finding(
+          component,
+          `directory symlink at ${runtimePath} resolves to ${expected}`,
+          `not a symlink; realpath=${resolved}`,
+          "error",
+          `Point ${runtimePath} at ${expected}.`,
+        ),
+      );
+      continue;
+    }
+
     let resolved: string;
     try {
       resolved = realpathSync(runtimePath);
-    } catch (error) {
-      return [
-        inspectionFinding(
-          "runtime-skill:next",
+    } catch {
+      findings.push(
+        finding(
+          component,
           `directory symlink at ${runtimePath} resolves to ${expected}`,
-          inspectionObserved(runtimePath, error),
+          `missing symlink target for ${runtimePath}`,
+          "error",
           `Restore ${runtimePath}.`,
         ),
-      ];
+      );
+      continue;
     }
-    return [
-      finding(
-        "runtime-skill:next",
-        `directory symlink at ${runtimePath} resolves to ${expected}`,
-        `not a symlink; realpath=${resolved}`,
-        "error",
-        `Point ${runtimePath} at ${expected}.`,
-      ),
-    ];
+
+    if (resolved !== expected) {
+      findings.push(
+        finding(
+          component,
+          `directory symlink at ${runtimePath} resolves to ${expected}`,
+          `resolved to ${resolved}`,
+          "error",
+          `Point ${runtimePath} at ${expected}.`,
+        ),
+      );
+    }
   }
 
-  let resolved: string;
-  try {
-    resolved = realpathSync(runtimePath);
-  } catch {
-    return [
-      finding(
-        "runtime-skill:next",
-        `directory symlink at ${runtimePath} resolves to ${expected}`,
-        `missing symlink target for ${runtimePath}`,
-        "error",
-        `Restore ${runtimePath}.`,
-      ),
-    ];
-  }
-
-  if (resolved === expected) return [];
-
-  return [
-    finding(
-      "runtime-skill:next",
-      `directory symlink at ${runtimePath} resolves to ${expected}`,
-      `resolved to ${resolved}`,
-      "error",
-      `Point ${runtimePath} at ${expected}.`,
-    ),
-  ];
+  return findings;
 }
 
 function checkVerdictContract(repoRoot: string): DoctorFinding[] {
