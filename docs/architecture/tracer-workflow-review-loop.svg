@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 1060" role="img" aria-labelledby="title desc">
   <title id="title">Tracer PR review lifecycle</title>
-  <desc id="desc">A pull request head is reviewed in a fresh session and the verdict is stamped with that exact SHA. A needs-fix push creates a new head and makes the old verdict stale, requiring fresh review. Merge remains a human action after current-head checks satisfy the gate.</desc>
+  <desc id="desc">A pull request head is reviewed in a fresh session and the verdict is stamped with that exact SHA. A needs-fix push creates a new head and makes the old verdict stale, requiring fresh review. Once current-head checks satisfy the gate, AFK work may land autonomously while HITL work requires human merge.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#57606a"/></marker>
     <style>
@@ -24,7 +24,7 @@
   <rect class="box gh" x="55" y="845" width="230" height="76"/><text class="h" x="170" y="874" text-anchor="middle">Push fix · current head = SHA B</text><text class="s" x="170" y="896" text-anchor="middle">new commit identity</text>
   <rect class="box ok" x="375" y="845" width="230" height="76"/><text class="h" x="490" y="874" text-anchor="middle">Current-head checks</text><text class="s" x="490" y="896" text-anchor="middle">configured gate satisfied for same head</text>
   <rect class="box stop" x="55" y="965" width="230" height="62"/><text class="h" x="170" y="992" text-anchor="middle">SHA A verdict is stale</text><text class="s" x="170" y="1012" text-anchor="middle">not current workflow authority</text>
-  <rect class="box ok" x="375" y="965" width="230" height="62"/><text class="h" x="490" y="992" text-anchor="middle">Human merge-ready</text><text class="s" x="490" y="1012" text-anchor="middle">manual merge remains HITL</text>
+  <rect class="box ok" x="375" y="965" width="230" height="62"/><text class="h" x="490" y="992" text-anchor="middle">Merge-ready</text><text class="s" x="490" y="1012" text-anchor="middle">AFK auto-land · HITL human merge</text>
 
   <path class="e" d="M490 173V215"/><text class="s" x="506" y="198">open / update PR</text>
   <path class="e" d="M490 283V325"/><text class="s" x="506" y="308">fresh session</text>
