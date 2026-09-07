@@ -7,8 +7,8 @@
     "quality_profile": "showcase",
     "views": [
       {"id": "durable-handoffs", "label": "Durable handoffs", "focus": ["to_issues", "agent_brief", "pr_opened", "verdict"], "note": "Intent, execution evidence, and review outcome are persisted in GitHub before the next disposable worker takes over."},
-      {"id": "needs-fix-loop", "label": "Needs-fix loop", "focus": ["review_gate", "verdict", "from_pr_review", "pr_opened", "check_gate"], "note": "A fix push creates a new head. The old verdict is stale, so current-head checks become evidence for another fresh review rather than permission to merge."},
-      {"id": "merge-preconditions", "label": "Merge preconditions", "focus": ["verdict", "check_gate", "merge"], "note": "A merge requires a current-head merge-candidate verdict plus the configured current-head check-run gate; HITL ownership remains a separate human decision."}
+      {"id": "needs-fix-loop", "label": "Needs-fix loop", "focus": ["review_gate", "verdict", "from_pr_review", "pr_opened", "check_gate"], "note": "A fix push creates a new head and stales the old verdict. New-head checks are evidence for fresh review, not permission to merge."},
+      {"id": "merge-preconditions", "label": "Merge preconditions", "focus": ["verdict", "check_gate", "merge"], "note": "Merge requires a current-head merge-candidate verdict and green check-run gate; AFK may auto-land, while HITL requires human merge."}
     ]
   },
   "lanes": [
@@ -16,12 +16,12 @@
     {"id": "github", "label": "GitHub Durable Record"},
     {"id": "execution", "label": "OpenCode / Execution"},
     {"id": "verification", "label": "Observed Verification"},
-    {"id": "human", "label": "Human Gate"}
+    {"id": "human", "label": "Landing Authority"}
   ],
   "phases": [
     {"id": "shape", "label": "Shape intent", "fromCol": 0, "toCol": 2},
     {"id": "delegate", "label": "Make work executable", "fromCol": 3, "toCol": 4, "variant": "emphasis"},
-    {"id": "review", "label": "Review, verify, merge", "fromCol": 5, "toCol": 5, "variant": "security"}
+    {"id": "review", "label": "Review, verify, land", "fromCol": 5, "toCol": 5, "variant": "security"}
   ],
   "mainPath": ["raw_idea", "to_issues", "triage_queue", "agent_brief", "next", "from_issue", "pr_opened", "review_gate", "verdict", "check_gate", "merge"],
   "nodes": [
@@ -36,7 +36,7 @@
     {"id": "verdict", "lane": "github", "col": 5, "type": "messagebus", "label": "Verdict Comment", "sublabel": "state + review-round + exact head-sha", "tag": "append-only / SHA-bound"},
     {"id": "from_pr_review", "lane": "execution", "col": 5, "type": "backend", "label": "from-pr-review", "sublabel": "receiving-code-review → fix-now batch → push", "tag": "needs-fix only"},
     {"id": "check_gate", "lane": "verification", "col": 5, "type": "security", "label": "Check-Run Gate", "sublabel": "actual current-head checks + changed-path coverage", "tag": "observed state"},
-    {"id": "merge", "lane": "human", "col": 5, "type": "external", "label": "Merge", "sublabel": "HITL human button in current contract", "tag": "only after current gate"}
+    {"id": "merge", "lane": "human", "col": 5, "type": "external", "label": "Land / Merge", "sublabel": "AFK autonomous · HITL human", "tag": "authority fixed at issue creation"}
   ],
   "edges": [
     {"id": "idea-to-issues", "from": "raw_idea", "to": "to_issues", "role": "main"},
@@ -48,7 +48,7 @@
     {"id": "pr-to-review", "from": "pr_opened", "to": "review_gate", "label": "issue + diff + evidence + current SHA", "role": "main", "variant": "security"},
     {"id": "review-to-verdict", "from": "review_gate", "to": "verdict", "label": "append comment @ exact head", "role": "main", "variant": "emphasis"},
     {"id": "verdict-to-gate", "from": "verdict", "to": "check_gate", "label": "merge-candidate on current head", "role": "main", "variant": "security"},
-    {"id": "gate-to-merge", "from": "check_gate", "to": "merge", "label": "current-head evidence green + verdict still current", "role": "main", "variant": "security"},
+    {"id": "gate-to-merge", "from": "check_gate", "to": "merge", "label": "same-head gate green; apply issue autonomy", "role": "main", "variant": "security"},
     {"id": "needs-fix", "from": "verdict", "to": "from_pr_review", "label": "needs-fix + SHA current", "role": "branch", "variant": "security"},
     {"id": "fix-push", "from": "from_pr_review", "to": "pr_opened", "label": "push new head → prior verdict stale", "role": "return", "variant": "emphasis", "route": "return-left"},
     {"id": "fix-checks", "from": "from_pr_review", "to": "check_gate", "label": "observe new-head checks (evidence only)", "role": "async", "variant": "dashed"},
