@@ -1,12 +1,17 @@
 # triage-queue prompt
 
-Paste into a ChatGPT/Claude web session with GitHub connector access. Replace
-`<REPO_URL_OR_OWNER_REPO>`.
+Paste into a **fresh** ChatGPT/Claude web session with GitHub connector access.
+Replace `<REPO_URL_OR_OWNER_REPO>`.
 
 This is a plain reusable prompt, not an auto-triggered skill or slash command.
 It is intentionally shallow: it recommends a triage queue for many issues, but
 it does not perform deep single-issue triage or write full agent briefs unless
 explicitly asked.
+
+Session and continuation behavior follows [`CONTINUATION.md`](../CONTINUATION.md).
+Repository-wide triage starts fresh from planning context. If this pass yields
+one unique high-confidence next item, its first `agent-brief` may continue in
+this same triage conversation; a different item later normally starts fresh.
 
 ---
 
@@ -46,13 +51,16 @@ Rules:
 - Do not write agent briefs during queue triage unless explicitly asked for one
   item.
 - Do not claim a bug is verified unless you actually verified it.
-- Do not rely on chat history.
+- Do not rely on planning-chat history.
 - Flag state-label conflicts instead of resolving them silently.
 - Treat the output as a recommendation list for the maintainer to pick from.
 - Low confidence recommendations are not action-ready; set next action to
   `deep-triage` or `human-decision`.
 - `wontfix-candidate` is only a queue recommendation. `wontfix` is a deep-triage
   decision made by `agent-brief` or the maintainer.
+- Do not create a `tracer-continuation` pointer from queue analysis alone. The
+  selected issue becomes pointer-worthy when `agent-brief` writes a durable
+  issue/PR artifact.
 
 Output format:
 
@@ -81,7 +89,12 @@ Output format:
 ## Recommended next pick
 
 Start with #<n> because <reason>.
+
+**Session policy:** continue in this triage conversation for the first uniquely
+selected `agent-brief`.
+
+**Next action:** `agent-brief <exact issue-or-PR URL>`
 ```
 
-After the queue, ask which one item should receive deep triage and an agent
-brief next.
+If there is no unique high-confidence next pick, say so and end with exactly one
+human selection/inspection action instead of inventing a target.
