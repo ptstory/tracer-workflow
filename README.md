@@ -62,8 +62,12 @@ planning thread.
 On a `needs-fix` verdict, `from-pr-review` applies the fixes, replies per thread,
 and pushes. The push moves the head SHA and invalidates the verdict, so the
 circuit runs again. Only `needs-fix` triggers autonomous action; every other
-verdict goes to a human. Merge is manual and requires all required checks green
-at the current head.
+verdict goes to a human. Merge is manual and follows the current head's required
+status-check configuration: if required checks are configured, all applicable
+required checks must be green at the current head and at least one applicable
+required check must exercise the changed paths; if no required checks are
+configured, at least one green CI/check run on the current head must exercise
+the changed paths. Older-head results never count.
 
 ```mermaid
 flowchart LR

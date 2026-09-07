@@ -217,6 +217,7 @@ function makeCanonicalRuntimeSymlinks(home: string, targetSkillDir: string): voi
 }
 
 function writeInstalledLaunchdPlist(home: string, plistRelativePath: string, scriptPath: string, launcherPath: string): void {
+
   writePlist(join(home, "Library/LaunchAgents", basename(plistRelativePath)), scriptPath, {}, launcherPath);
 }
 
@@ -293,6 +294,22 @@ test("runtime skill directory symlink to the canonical checkout passes", () => {
   const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
 
   expect(report.findings.some((item: any) => item.component === "runtime-skill:next")).toBe(false);
+});
+
+test("runtime skill symlink target mismatch is reported for no-ai-slop", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  rmSync(join(home, ".agents/skills/no-ai-slop"), { force: true });
+  mkdirSync(join(repoRoot, "skills/no-ai-slop"), { recursive: true });
+  mkdirSync(join(home, ".agents/skills"), { recursive: true });
+  symlinkSync(join(repoRoot, "skills/next"), join(home, ".agents/skills/no-ai-slop"), "dir");
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps());
+  const finding = report.findings.find((item: any) => item.component === "runtime-skill:no-ai-slop");
+
+  expect(finding).toMatchObject({ severity: "error" });
 });
 
 test("#30/#36 next skill drift is a deterministic error", () => {

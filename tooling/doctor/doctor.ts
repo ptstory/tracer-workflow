@@ -378,11 +378,11 @@ function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[
     const runtimePath = join(home, ".agents/skills", skillSlug);
     const expectedResolution = existsSync(expectedPath)
       ? realpathOrFinding(
-        expectedPath,
-        component,
-        `directory symlink at ${runtimePath} resolves to ${expectedPath}`,
-        "Restore the canonical skill path.",
-      )
+          expectedPath,
+          component,
+          `directory symlink at ${runtimePath} resolves to ${expectedPath}`,
+          "Restore the canonical skill path.",
+        )
       : { path: expectedPath, finding: null };
     if (expectedResolution.finding) {
       findings.push(expectedResolution.finding);

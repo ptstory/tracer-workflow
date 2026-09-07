@@ -171,9 +171,18 @@ itself.
 
 ## Readiness and evidence continuity
 
-`merge-candidate` requires that at least one green required check exercises the
-changed paths. If no green required check covers the changed paths, the gate
-reports that gap as `blocked` rather than green.
+`merge-candidate` is determined by the target branch's required status-check
+configuration.
+
+- Configured path: all applicable required checks are green at the current head,
+  and at least one applicable required check exercises the changed paths.
+- No-required-check path: at least one green CI/check run on the current head
+  exercises the changed paths.
+- If neither path is satisfied, or there is no current-head evidence, the verdict
+  is `blocked`.
+- Older-head results never count.
+- Branch protection is not required.
+- Merge remains HITL.
 
 On round `N > 0`, the reviewer compares the current evidence bundle against the
 prior round's evidence bundle. An unchanged test count alongside a claim of
