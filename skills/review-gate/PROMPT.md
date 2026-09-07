@@ -6,6 +6,11 @@ issue as written, carrying none of the planning thread's assumptions. Replace
 `<PR_URL>` and `<ISSUE_URL>`. For round `N > 0`, also replace
 `<PRIOR_BLOCKING_SET>` and `<DIFF_SINCE_LAST_REVIEWED_SHA>`.
 
+Session and continuation behavior follows [`CONTINUATION.md`](../../CONTINUATION.md).
+Every new PR head SHA is reviewed in a fresh independent web conversation. A
+continuation pointer may identify the preferred implementation lane for a later
+fix pass, but it never changes review independence or verdict validity.
+
 ---
 
 Review `<PR_URL>` against `<ISSUE_URL>` using the superpowers `requesting-code-review`
@@ -24,27 +29,47 @@ Do this:
 1. Resolve the PR's current head SHA. Every verdict you post is tied to this SHA.
 2. Get the actual changed-file list from the PR (the GitHub connector's file list,
    NOT the PR body's prose list — the body is often stale after rebase).
-3. If this is round `0`, run a full review with two independent axes —
+3. Read the PR's current `<!-- tracer-continuation:v1 -->` comment when present.
+   Treat it only as routing metadata. Preserve a safe `implementation-locator`
+   for a possible fix return, but do not trust a pointer whose `head-sha` is
+   stale or whose contents disagree with current GitHub state.
+4. If this is round `0`, run a full review with two independent axes —
    Standards and Spec — preserving each axis's own order, without reranking or
    merging findings across axes. Within those axes, cover severity-tagged
    findings, a security pass where the diff touches
    auth/input/endpoints/secrets/crypto/infra, spec alignment against the
    issue's acceptance criteria, and coverage gaps.
-4. If this is round `N > 0`, treat the labeled prior blocking set and labeled
+5. If this is round `N > 0`, treat the labeled prior blocking set and labeled
    diff as the primary review material. You may consult the full tree only to
    verify a finding derived from those labeled inputs, never to discover a new
    finding outside them. Within that constraint, review regressions introduced
    by the labeled diff and anything in the binding contract that the labeled
    diff newly violates.
-5. If this is round `N > 0`, compare the current evidence bundle against the
+6. If this is round `N > 0`, compare the current evidence bundle against the
    prior round's evidence bundle. If the test count is unchanged while the new
    bundle claims added coverage, emit `blocked` and name the evidence
    inconsistency.
-6. Classify findings only with the contract dispositions: `fix-now`,
+7. Classify findings only with the contract dispositions: `fix-now`,
    `follow-up-issue`, `defer`, `reject`, `needs-human`.
-7. Post the result as a PR comment in the exact format below. Do not attempt a
+8. Post the result as a PR comment in the exact format below. Do not attempt a
    formal REQUEST_CHANGES review — GitHub blocks that on self-authored PRs; the
    verdict lives in the comment body.
+9. After the conforming verdict comment is successfully posted and the PR head
+   is revalidated, create or update the PR's single continuation-pointer comment
+   (`<!-- tracer-continuation:v1 -->`) according to the verdict:
+   - `needs-fix`: `stage: review-fix`, `surface: OpenCode`,
+     `session-policy: continue-preferred`, preserve a safe current
+     `implementation-locator` when available, and set `next-action` to
+     `from-pr-review <PR_URL>`;
+   - `merge-candidate`: `stage: merge`, `surface: GitHub`,
+     `session-policy: n/a`, and set `next-action` to the exact human merge action
+     for `<PR_URL>`;
+   - `needs-human` / `blocked`: point to the one exact human or recovery action
+     named by the verdict;
+   - always bind `head-sha` to the same full current head SHA as the verdict.
+   Update the existing marked pointer comment rather than appending a second
+   active pointer. If pointer publication fails, report that failure separately;
+   do not invalidate or misreport an otherwise successfully posted verdict.
 
 Comment format (post verbatim, filling in):
 
@@ -85,11 +110,12 @@ Rules:
   fields. A rebaseline resets the count, and the first review after that emits
   `review-round: 0` and `rebaseline: yes`.
 - Non-conforming comments are not verdicts and do not increment the round.
-  Review responses, disposition comments, and any other PR comment do not
-  increment the round.
+  Review responses, continuation-pointer comments, disposition comments, and any
+  other PR comment do not increment the round.
 - If the count cannot be determined, emit `blocked` rather than guessing.
-- If you can't post the comment (connector read-only), output the block and stop —
-  do not claim it posted.
+- If you can't post the verdict comment (connector read-only), output the block
+  and stop — do not claim it posted and do not claim a continuation pointer was
+  updated.
 - Apply the contract rules at emission time without extending or reinterpreting
   them:
   - at round `N > 0`, the labeled prior blocking set and labeled diff are the
