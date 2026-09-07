@@ -39,7 +39,7 @@ next-action: <one exact invocation/action with artifact reference>
 fallback: start fresh from the durable artifact if the locator is unavailable or stale
 ```
 
-`implementation-locator` is sticky provenance for the implementation lane. It is useful when the immediate next step is a fresh review but a later `needs-fix` verdict should preferentially return to the implementation session that owns the branch. It remains optional and non-authoritative.
+`implementation-locator` is sticky provenance for the implementation lane. It is useful when the immediate next step is a fresh review but a later `needs-fix` verdict should preferentially return to the implementation session that owns the branch. It remains optional and non-authoritative. When a valid locator identifies the implementation surface (for example, a ChatGPT history label or an OpenCode session ID), later return routing must preserve that surface instead of replacing it with the default implementation tool.
 
 ## Validity and privacy
 
@@ -60,6 +60,20 @@ Continue when the **same actor is continuing the same artifact in the same role*
 
 Same-session continuity is an optimization, never a precondition for resuming work.
 
+## ChatGPT-web implementation exception
+
+Small, low-risk documentation or metadata changes may be implemented from ChatGPT web when the connector can create the branch, commit, and PR safely.
+
+When using that exception:
+
+- use a dedicated implementation conversation rather than the planning, triage, or review conversation;
+- record a safe searchable implementation locator when possible, but never require a private conversation URL;
+- preserve the same issue → branch → PR → evidence contract used by the normal implementation lane;
+- run independent review in a different fresh ChatGPT/Claude conversation for every new PR head SHA;
+- never let the implementing conversation serve as the independent `review-gate` reviewer.
+
+OpenCode remains the default implementation surface, not the only valid one.
+
 ## Stage matrix
 
 | Transition | Session rule | Pointer behavior |
@@ -67,10 +81,10 @@ Same-session continuity is an optimization, never a precondition for resuming wo
 | planning → `to-issues` | Continue the originating ChatGPT conversation. | No pointer is required until a durable issue exists. |
 | planning → `gh-triage-queue` | Start a fresh ChatGPT conversation. | Repository-wide selection should not inherit planning momentum. |
 | queue → uniquely selected first `agent-brief` | Continue the same triage conversation. | When the brief is posted, write/update the issue pointer for the selected next stage. |
-| ready issue → `from-issue` | Start a fresh OpenCode implementation session for that issue by default. | Issue pointer names OpenCode and the exact `from-issue` invocation. Record a safe implementation locator when available. |
+| ready issue → `from-issue` | Start a fresh OpenCode implementation session for that issue by default. | Issue pointer names OpenCode and the exact `from-issue` invocation. Record a safe implementation locator when available. The ChatGPT-web exception above may use a dedicated ChatGPT implementation lane instead. |
 | implementation → PR | Preserve the implementation lane as the preferred return lane. | PR pointer routes the immediate next step to a fresh `review-gate` and retains `implementation-locator` if safely available. |
 | PR head → `review-gate` | Fresh ChatGPT/web reviewer for every new head SHA. | `session-policy: fresh-required`; bind `head-sha` to the reviewed/current head. |
-| current `needs-fix` → `from-pr-review` | Continue the implementation session when healthy. | Refresh pointer to OpenCode + `continue-preferred`; use `implementation-locator` if valid, otherwise resume fresh from PR + branch + verdict. |
+| current `needs-fix` → `from-pr-review` | Continue the valid implementation lane when healthy. | Derive the return `surface` and exact action from valid implementation provenance. Preserve a valid `implementation-locator`. If no valid implementation provenance exists, fall back to a fresh OpenCode implementation context reconstructed from PR + branch + verdict. |
 | pushed fix/new head → `review-gate` | Fresh reviewer again. | Refresh pointer to `fresh-required` and bind the new head SHA. |
 | current `merge-candidate` | Human GitHub merge. | Pointer becomes GitHub / `n/a` with the exact PR action. |
 | merged → `next` | Any healthy read-only selector context is acceptable. | The next selected issue starts a fresh implementation lane. |
@@ -90,7 +104,7 @@ When implementation begins, refresh the issue pointer with the current implement
 
 Review remains independent and fresh per head SHA. After publishing a conforming verdict:
 
-- `needs-fix` → refresh the PR pointer to `from-pr-review`, OpenCode, `continue-preferred`; preserve a valid `implementation-locator` from the prior pointer when available;
+- `needs-fix` → refresh the PR pointer to `review-fix` with `continue-preferred` when valid implementation provenance exists; derive `surface` and `next-action` from that provenance, preserve a valid `implementation-locator`, and otherwise fall back to a fresh OpenCode `from-pr-review` context reconstructed from durable state;
 - `merge-candidate` → refresh the pointer to the human GitHub merge action;
 - `needs-human` / `blocked` → refresh the pointer to the one exact human/recovery action;
 - never reuse the review conversation as the implementation continuation lane.
