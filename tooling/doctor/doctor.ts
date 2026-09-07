@@ -336,6 +336,37 @@ function checkNextSkill(repoRoot: string): DoctorFinding[] {
   ];
 }
 
+function checkNoAiSlopSkill(repoRoot: string): DoctorFinding[] {
+  const skillPath = join(repoRoot, "skills/no-ai-slop/SKILL.md");
+  if (!existsSync(skillPath)) {
+    return [
+      finding(
+        "skill:no-ai-slop",
+        "skills/no-ai-slop/SKILL.md identifies the no-ai-slop role",
+        "missing skills/no-ai-slop/SKILL.md",
+        "error",
+        "Restore skills/no-ai-slop/SKILL.md.",
+      ),
+    ];
+  }
+
+  const read = readTextFile(skillPath, "skill:no-ai-slop", "skills/no-ai-slop/SKILL.md identifies the no-ai-slop role", "Restore skills/no-ai-slop/SKILL.md.");
+  if (read.finding) return [read.finding];
+
+  const contract = parseSkillContract(read.text ?? "");
+  const observed = `frontmatter name=${contract.name ?? "<missing>"}; heading=${contract.heading ?? "<missing>"}`;
+  if (contract.name === "no-ai-slop" && contract.heading === "No AI slop") return [];
+
+  return [
+    finding(
+      "skill:no-ai-slop",
+      "no-ai-slop frontmatter + No AI slop heading",
+      observed,
+      "error",
+      "Restore the canonical no-ai-slop skill.",
+    ),
+  ];
+}
 
 function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[] {
   const canonicalRepoRoot = getCanonicalCheckoutRoot(repoRoot);
@@ -347,11 +378,11 @@ function checkRuntimeSkillWiring(repoRoot: string, home: string): DoctorFinding[
     const runtimePath = join(home, ".agents/skills", skillSlug);
     const expectedResolution = existsSync(expectedPath)
       ? realpathOrFinding(
-        expectedPath,
-        component,
-        `directory symlink at ${runtimePath} resolves to ${expectedPath}`,
-        "Restore the canonical skill path.",
-      )
+          expectedPath,
+          component,
+          `directory symlink at ${runtimePath} resolves to ${expectedPath}`,
+          "Restore the canonical skill path.",
+        )
       : { path: expectedPath, finding: null };
     if (expectedResolution.finding) {
       findings.push(expectedResolution.finding);
@@ -782,6 +813,7 @@ function buildDoctorReport(repoRootsOrCanonicalRoot: string[] | string, downstre
   const allRepoRoots = [...new Set(repoRoots.length > 0 ? repoRoots : [mainRepoRoot])];
   const findings = [
     ...checkNextSkill(mainRepoRoot),
+    ...checkNoAiSlopSkill(mainRepoRoot),
     ...checkRuntimeSkillWiring(mainRepoRoot, home),
     ...checkVerdictContract(mainRepoRoot),
     ...allRepoRoots.flatMap((repoRoot) => checkRepoContract(repoRoot)),

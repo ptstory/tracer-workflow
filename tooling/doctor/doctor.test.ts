@@ -17,6 +17,16 @@ const CANONICAL_LABELS = [
   "enhancement",
 ];
 const CANONICAL_REMOTE_URL = "git@github.com:ptstory/tracer-workflow.git";
+const CANONICAL_NO_AI_SLOP_SKILL = `---
+name: no-ai-slop
+description: >
+  Edit drafts into sharper, more human writing while preserving the writer's voice.
+---
+
+# No AI slop
+
+Keep the writer's point and voice.
+`;
 type DoctorFixture = { remoteUrl: string; labels: string[]; ghFailure?: string };
 
 const sandboxDirs: string[] = [];
@@ -74,6 +84,7 @@ ${environmentXml}</dict>
 
 function writeSkills(repoRoot: string, nextSkillContents: string): void {
   writeText(join(repoRoot, "skills/next/SKILL.md"), nextSkillContents);
+  writeText(join(repoRoot, "skills/no-ai-slop/SKILL.md"), CANONICAL_NO_AI_SLOP_SKILL);
   writeText(
     join(repoRoot, "skills/review-gate/references/verdict-contract.md"),
     "# review-gate verdict contract\n\n## review-gate: <state>\nhead-sha: 0123456789abcdef0123456789abcdef01234567\n",
@@ -200,13 +211,13 @@ function makeCanonicalRuntimeSymlinks(home: string, targetSkillDir: string): voi
   mkdirSync(dirname(runtimePath), { recursive: true });
   symlinkSync(targetSkillDir, runtimePath, "dir");
 
-  const noAiSlopTarget = join(dirname(targetSkillDir), "no-ai-slop");
-  mkdirSync(noAiSlopTarget, { recursive: true });
   const noAiSlopRuntimePath = join(home, ".agents/skills/no-ai-slop");
-  symlinkSync(noAiSlopTarget, noAiSlopRuntimePath, "dir");
+  mkdirSync(dirname(noAiSlopRuntimePath), { recursive: true });
+  symlinkSync(join(dirname(targetSkillDir), "no-ai-slop"), noAiSlopRuntimePath, "dir");
 }
 
 function writeInstalledLaunchdPlist(home: string, plistRelativePath: string, scriptPath: string, launcherPath: string): void {
+
   writePlist(join(home, "Library/LaunchAgents", basename(plistRelativePath)), scriptPath, {}, launcherPath);
 }
 
