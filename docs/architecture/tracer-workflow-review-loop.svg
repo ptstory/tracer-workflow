@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 1060" role="img" aria-labelledby="title desc">
+  <title id="title">Tracer PR review lifecycle</title>
+  <desc id="desc">A pull request head is reviewed in a fresh session and the verdict is stamped with that exact SHA. A needs-fix push creates a new head and makes the old verdict stale, requiring fresh review. Once current-head checks satisfy the gate, AFK work may land autonomously while HITL work requires human merge.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#57606a"/></marker>
+    <style>
+      .t{font:700 28px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#1f2328}.h{font:700 15px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#1f2328}.s{font:12px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#57606a}.e{stroke:#57606a;stroke-width:2;fill:none;marker-end:url(#arrow)}.box{stroke:#57606a;stroke-width:1.5;rx:14}.ep{fill:#fff8c5}.gh{fill:#ddf4ff}.ok{fill:#dafbe1}.stop{fill:#ffebe9}.neutral{fill:#f6f8fa}
+    </style>
+  </defs>
+  <rect width="980" height="1060" fill="#fff"/>
+  <text class="t" x="490" y="42" text-anchor="middle">A verdict is valid only for the reviewed PR head.</text>
+  <text class="s" x="490" y="68" text-anchor="middle">Every push changes the identity under review and invalidates the previous SHA-bound verdict.</text>
+
+  <rect class="box ep" x="355" y="105" width="270" height="68"/><text class="h" x="490" y="134" text-anchor="middle">Implementation / fix pass</text><text class="s" x="490" y="154" text-anchor="middle">OpenCode or equivalent execution lane</text>
+  <rect class="box gh" x="355" y="215" width="270" height="68"/><text class="h" x="490" y="244" text-anchor="middle">PR open · current head = SHA A</text><text class="s" x="490" y="264" text-anchor="middle">diff + evidence bundle are durable</text>
+  <rect class="box ep" x="330" y="325" width="320" height="76"/><text class="h" x="490" y="354" text-anchor="middle">Fresh review-gate session</text><text class="s" x="490" y="376" text-anchor="middle">reads issue + actual changed files + SHA A</text>
+  <rect class="box gh" x="355" y="445" width="270" height="68"/><text class="h" x="490" y="474" text-anchor="middle">Verdict comment · head-sha: SHA A</text><text class="s" x="490" y="494" text-anchor="middle">append-only review record</text>
+  <polygon class="neutral" points="490,550 600,610 490,670 380,610" stroke="#57606a" stroke-width="1.5"/><text class="h" x="490" y="615" text-anchor="middle">verdict?</text>
+
+  <rect class="box stop" x="55" y="725" width="230" height="76"/><text class="h" x="170" y="754" text-anchor="middle">needs-fix</text><text class="s" x="170" y="776" text-anchor="middle">from-pr-review applies fix-now batch</text>
+  <rect class="box ok" x="375" y="725" width="230" height="76"/><text class="h" x="490" y="754" text-anchor="middle">merge-candidate</text><text class="s" x="490" y="776" text-anchor="middle">evaluate current-head check gate</text>
+  <rect class="box stop" x="695" y="725" width="230" height="76"/><text class="h" x="810" y="754" text-anchor="middle">needs-human / blocked</text><text class="s" x="810" y="776" text-anchor="middle">hard stop; no autonomous action</text>
+
+  <rect class="box gh" x="55" y="845" width="230" height="76"/><text class="h" x="170" y="874" text-anchor="middle">Push fix · current head = SHA B</text><text class="s" x="170" y="896" text-anchor="middle">new commit identity</text>
+  <rect class="box ok" x="375" y="845" width="230" height="76"/><text class="h" x="490" y="874" text-anchor="middle">Current-head checks</text><text class="s" x="490" y="896" text-anchor="middle">configured gate satisfied for same head</text>
+  <rect class="box stop" x="55" y="965" width="230" height="62"/><text class="h" x="170" y="992" text-anchor="middle">SHA A verdict is stale</text><text class="s" x="170" y="1012" text-anchor="middle">not current workflow authority</text>
+  <rect class="box ok" x="375" y="965" width="230" height="62"/><text class="h" x="490" y="992" text-anchor="middle">Merge-ready</text><text class="s" x="490" y="1012" text-anchor="middle">AFK auto-land · HITL human merge</text>
+
+  <path class="e" d="M490 173V215"/><text class="s" x="506" y="198">open / update PR</text>
+  <path class="e" d="M490 283V325"/><text class="s" x="506" y="308">fresh session</text>
+  <path class="e" d="M490 401V445"/><text class="s" x="506" y="428">stamp exact SHA</text>
+  <path class="e" d="M490 513V550"/>
+  <path class="e" d="M410 650C330 685 245 700 170 725"/><text class="s" x="285" y="688" text-anchor="middle">needs-fix</text>
+  <path class="e" d="M490 670V725"/><text class="s" x="505" y="704">merge-candidate</text>
+  <path class="e" d="M570 650C650 685 735 700 810 725"/><text class="s" x="695" y="688" text-anchor="middle">needs-human / blocked</text>
+  <path class="e" d="M170 801V845"/><text class="s" x="187" y="826">implement + push</text>
+  <path class="e" d="M490 801V845"/>
+  <path class="e" d="M170 921V965"/><text class="s" x="187" y="947">head changed</text>
+  <path class="e" d="M490 921V965"/>
+  <path class="e" d="M170 965C170 760 205 565 330 365"/><text class="s" x="205" y="575">fresh review for SHA B</text>
+  <path class="e" d="M605 996C700 996 720 890 650 363"/><text class="s" x="714" y="672">new push or evidence gap returns to fresh review</text>
+
+  <text class="s" x="490" y="1046" text-anchor="middle">Green current-head checks are evidence, not a correctness guarantee.</text>
+</svg>

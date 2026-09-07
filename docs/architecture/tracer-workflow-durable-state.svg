@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Tracer durable-state system overview</title>
+  <desc id="desc">Disposable ChatGPT, Claude, OpenCode, and local work cross into durable GitHub issues, pull requests, verdict comments, current head identity, check runs, and trusted remote refs. Pollers compare the durable record with observed state to detect stale review and local-only work.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#57606a"/></marker>
+    <style>
+      .t{font:700 28px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#1f2328}.h{font:700 16px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#1f2328}.b{font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#24292f}.s{font:12px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#57606a}.e{stroke:#57606a;stroke-width:2;fill:none;marker-end:url(#arrow)}.d{stroke-dasharray:8 7}.box{stroke:#57606a;stroke-width:1.5;rx:14}.ep{fill:#fff8c5}.gh{fill:#ddf4ff}.obs{fill:#dafbe1}.det{fill:#fbefff}.local{fill:#f6f8fa}.frame{fill:none;stroke-width:2;rx:20}.lab{font:700 14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    </style>
+  </defs>
+  <rect width="1200" height="760" fill="#fff"/>
+  <text class="t" x="600" y="42" text-anchor="middle">Sessions do work; GitHub holds the record.</text>
+  <text class="s" x="600" y="68" text-anchor="middle">Authority moves from session-local work into durable GitHub records; observed state checks whether those records are still current.</text>
+
+  <rect class="frame d" x="40" y="110" width="280" height="500" stroke="#8c959f"/>
+  <text class="lab" x="60" y="138" fill="#57606a">Disposable worker / local state</text>
+  <rect class="box ep" x="65" y="170" width="230" height="78"/><text class="h" x="180" y="199" text-anchor="middle">Fresh web sessions</text><text class="s" x="180" y="222" text-anchor="middle">planning + independent review</text>
+  <rect class="box ep" x="65" y="285" width="230" height="78"/><text class="h" x="180" y="314" text-anchor="middle">Implementation agents</text><text class="s" x="180" y="337" text-anchor="middle">from-issue + from-pr-review</text>
+  <rect class="box local" x="65" y="400" width="230" height="92"/><text class="h" x="180" y="431" text-anchor="middle">Local repo / worktree</text><text class="s" x="180" y="454" text-anchor="middle">useful, resumable, fallible</text><text class="s" x="180" y="473" text-anchor="middle">not workflow authority</text>
+
+  <rect class="frame" x="355" y="110" width="515" height="560" stroke="#54aeff"/>
+  <text class="lab" x="375" y="138" fill="#0969da">Durable GitHub coordination record</text>
+  <rect class="box gh" x="385" y="170" width="205" height="82"/><text class="h" x="488" y="199" text-anchor="middle">Issues</text><text class="s" x="488" y="221" text-anchor="middle">intent + acceptance criteria</text><text class="s" x="488" y="239" text-anchor="middle">durable brief</text>
+  <rect class="box gh" x="635" y="170" width="205" height="82"/><text class="h" x="738" y="199" text-anchor="middle">Pull requests</text><text class="s" x="738" y="221" text-anchor="middle">diff + Closes #N</text><text class="s" x="738" y="239" text-anchor="middle">evidence bundle</text>
+  <rect class="box gh" x="385" y="305" width="205" height="82"/><text class="h" x="488" y="334" text-anchor="middle">Verdict comments</text><text class="s" x="488" y="356" text-anchor="middle">append-only review state</text><text class="s" x="488" y="374" text-anchor="middle">bound to exact SHA</text>
+  <rect class="box gh" x="635" y="305" width="205" height="82"/><text class="h" x="738" y="334" text-anchor="middle">Current head SHA</text><text class="s" x="738" y="356" text-anchor="middle">commit identity</text><text class="s" x="738" y="374" text-anchor="middle">staleness anchor</text>
+  <rect class="box obs" x="385" y="440" width="205" height="82"/><text class="h" x="488" y="469" text-anchor="middle">CI / check runs</text><text class="s" x="488" y="491" text-anchor="middle">observed current-head</text><text class="s" x="488" y="509" text-anchor="middle">verification state</text>
+  <rect class="box gh" x="635" y="440" width="205" height="82"/><text class="h" x="738" y="469" text-anchor="middle">Trusted remote refs</text><text class="s" x="738" y="491" text-anchor="middle">durable commit</text><text class="s" x="738" y="509" text-anchor="middle">retention baseline</text>
+  <text class="s" x="612" y="588" text-anchor="middle">Authored record: issues · PR evidence · verdict comment</text>
+  <text class="s" x="612" y="612" text-anchor="middle">Observed state: current head · actual checks · trusted reachability</text>
+
+  <rect class="frame" x="905" y="110" width="255" height="500" stroke="#bf8700"/>
+  <text class="lab" x="925" y="138" fill="#8250df">Drift detection</text>
+  <rect class="box det" x="930" y="200" width="205" height="105"/><text class="h" x="1033" y="230" text-anchor="middle">review-gate poller</text><text class="s" x="1033" y="253" text-anchor="middle">verdict SHA = current head?</text><text class="s" x="1033" y="273" text-anchor="middle">only current needs-fix</text><text class="s" x="1033" y="291" text-anchor="middle">may auto-route</text>
+  <rect class="box det" x="930" y="380" width="205" height="105"/><text class="h" x="1033" y="410" text-anchor="middle">unbacked-work monitor</text><text class="s" x="1033" y="433" text-anchor="middle">local tips minus trusted</text><text class="s" x="1033" y="453" text-anchor="middle">remote reachability</text><text class="s" x="1033" y="471" text-anchor="middle">surfaces durability drift</text>
+
+  <path class="e" d="M295 209H385"/><text class="s" x="340" y="197" text-anchor="middle">writes intent</text>
+  <path class="e" d="M385 226C340 226 330 324 295 324"/><text class="s" x="331" y="278" text-anchor="middle">action-ready input</text>
+  <path class="e" d="M180 363V400"/>
+  <path class="e" d="M295 446C365 446 572 211 635 211"/><text class="s" x="448" y="400" text-anchor="middle">push + PR</text>
+  <path class="e" d="M635 225C550 225 330 206 295 206"/><text class="s" x="485" y="180" text-anchor="middle">fresh review reads GitHub</text>
+  <path class="e" d="M295 220C330 250 345 340 385 340"/><text class="s" x="340" y="314" text-anchor="middle">publishes verdict</text>
+  <path class="e" d="M738 252V305"/>
+  <path class="e" d="M635 211C610 260 520 390 488 440"/>
+  <path class="e" d="M840 346H930"/><text class="s" x="885" y="334" text-anchor="middle">current SHA</text>
+  <path class="e" d="M590 346C725 346 850 250 930 250"/><text class="s" x="772" y="270" text-anchor="middle">verdict</text>
+  <path class="e" d="M590 481C730 481 850 285 930 270"/><text class="s" x="797" y="425" text-anchor="middle">checks</text>
+  <path class="e" d="M295 462C520 600 800 565 930 443"/><text class="s" x="604" y="575" text-anchor="middle">local retainers</text>
+  <path class="e" d="M840 481H930"/><text class="s" x="885" y="469" text-anchor="middle">trusted refs</text>
+
+  <text class="b" x="600" y="715" text-anchor="middle">A green gate narrows uncertainty; it does not guarantee correctness.</text>
+</svg>

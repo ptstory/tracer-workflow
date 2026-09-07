@@ -26,6 +26,21 @@ Vocabulary is defined once in [CONTEXT.md](./CONTEXT.md). [WORKFLOW.md](./WORKFL
 defines the HITL/AFK rule, evidence-bundle contract, slice contract, check-run
 gate, the `from-issue` execution-stage contract, and the full stage table.
 
+## Trust architecture
+
+The system separates disposable workers, durable authored GitHub records, and
+observed repository state. Sessions and agents can perform work, but later stages
+reconstruct authority from GitHub rather than trusting prior narration.
+
+![Durable-state system overview showing disposable sessions and local work crossing into GitHub issues, PRs, SHA-bound verdicts, current-head checks, trusted remote refs, and drift detectors.](./docs/architecture/tracer-workflow-durable-state.svg)
+
+The editable source-backed models are the
+[trust architecture](./docs/architecture/tracer-workflow-trust.architecture.json),
+[end-to-end workflow](./docs/architecture/tracer-workflow-e2e.workflow.json), and
+[PR/review lifecycle](./docs/architecture/tracer-workflow-pr-review.lifecycle.json).
+Their evidence base, revision pin, known drift, and validation status are recorded
+in [docs/architecture/SOURCES.md](./docs/architecture/SOURCES.md).
+
 ## One issue, end to end
 
 A raw idea goes through `to-issues` and comes out as scoped issues, one vertical
@@ -61,37 +76,21 @@ planning thread.
 
 On a `needs-fix` verdict, `from-pr-review` applies the fixes, replies per thread,
 and pushes. The push moves the head SHA and invalidates the verdict, so the
-circuit runs again. Only `needs-fix` triggers autonomous action; every other
-verdict goes to a human. Merge is manual and follows the current head's required
-status-check configuration: if required checks are configured, all applicable
-required checks must be green at the current head and at least one applicable
-required check must exercise the changed paths; if no required checks are
-configured, at least one green CI/check run on the current head must exercise
-the changed paths. Older-head results never count.
+circuit runs again. `needs-human` and `blocked` are hard stops. Once a current-head
+`merge-candidate` verdict and the check-run gate agree, landing authority follows
+the issue's autonomy tag: AFK work may land autonomously; HITL work stops for the
+human merge button. The gate follows the current head's required status-check
+configuration: if required checks are configured, all applicable required checks
+must be green at the current head and at least one applicable required check must
+exercise the changed paths; if no required checks are configured, at least one
+green CI/check run on the current head must exercise the changed paths.
+Older-head results never count.
 
-```mermaid
-flowchart LR
-    idea([raw idea / PRD]) --> ti[to-issues]
-    ti --> tq[triage-queue]
-    tq --> ab[agent-brief]
-    ab -->|ready-for-agent| nx[next]
-    nx --> fi[from-issue]
-    fi -->|"PR + Closes #N"| rg[review-gate]
-    rg -->|verdict on PR| fpr[from-pr-review]
-    fpr -->|delegates judgment| rec[receiving-code-review]
-    rec -->|disposition| fpr
-    fpr -->|check-run gate| gate{all checks green?}
-    gate -->|yes| merge([merge])
-    gate -->|no| rg
-    merge --> nx
+![PR review lifecycle showing a fresh review stamped to SHA A, a needs-fix push producing SHA B and making the prior verdict stale, current-head checks, hard-stop states, and AFK autonomous landing versus HITL human merge.](./docs/architecture/tracer-workflow-review-loop.svg)
 
-    classDef custom fill:#2d3748,stroke:#4fd1c5,color:#fff
-    classDef adopted fill:#2d3748,stroke:#718096,color:#fff
-    class fi,fpr,nx,rg,tq,ab custom
-    class ti,rec adopted
-```
-
-Teal = custom, owned here. Gray = adopted, consumed but not authored here.
+The critical review rule is commit identity, not conversation continuity: a
+verdict about SHA A cannot authorize work on SHA B. A new push returns the PR to
+fresh review even when the implementation session itself continues.
 
 ## Where things live
 
@@ -112,9 +111,10 @@ The full stage table, including every skill, owner, and role, is in
 
 **`tooling/review-gate-poller/`**: Bun poller that watches open PRs for a fresh
 `needs-fix` verdict at the current head and shells `opencode run` to start the
-fix pass. Only `needs-fix` triggers it; every other verdict is left for a human.
-See its [README](./tooling/review-gate-poller/README.md) for environment variables
-and launchd install.
+fix pass. The poller only triggers current-head `needs-fix` repair; it does not
+infer or override the issue's AFK/HITL landing authority. See its
+[README](./tooling/review-gate-poller/README.md) for environment variables and
+launchd install.
 
 **`tooling/unbacked-work-monitor/`**: nightly Bun monitor for local-only commits
 retained by branches or linked worktrees but not by trusted remote refs. It scans

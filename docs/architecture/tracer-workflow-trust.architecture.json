@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "tracer-workflow — Durable State & Trust Architecture",
+    "output": "tracer-workflow-trust.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ptstory/tracer-workflow",
+      "revision": "53edae78f8f1a0ad56f1f0f19bcf69e5bdedc728"
+    },
+    "views": [
+      {
+        "id": "sessions-vs-record",
+        "label": "Sessions do work; GitHub holds the record",
+        "focus": ["web_sessions", "implementation_agents", "github_issues", "github_prs", "verdict_comments", "head_sha", "ci_check_runs"],
+        "note": "Disposable workers cross into durable GitHub artifacts; later stages resume from those artifacts, not chat memory."
+      },
+      {
+        "id": "authored-vs-observed",
+        "label": "Authored evidence vs observed verification",
+        "focus": ["github_issues", "github_prs", "verdict_comments", "head_sha", "ci_check_runs", "trusted_remote_refs"],
+        "note": "Authored GitHub records are claims; head, checks, and remote reachability are observed facts that expose stale or unsupported claims."
+      },
+      {
+        "id": "drift-detection",
+        "label": "Drift detectors",
+        "focus": ["local_worktrees", "trusted_remote_refs", "review_gate_poller", "unbacked_monitor", "human_operator"],
+        "note": "One detector refuses stale review verdicts; the other finds commits retained locally but by no trusted remote ref."
+      }
+    ]
+  },
+  "layout": {"mode": "grid", "origin": [35, 75], "cols": 6, "gapX": 35, "gapY": 90, "cellW": 185, "cellH": 72},
+  "components": [
+    {"id": "human_operator", "type": "external", "label": "Human Operator", "sublabel": "scope · judgment · HITL merge", "tag": "authority for human decisions", "row": 0, "col": 0, "sources": [{"path": "WORKFLOW.md", "label": "HITL / AFK contract"}]},
+    {"id": "web_sessions", "type": "frontend", "label": "ChatGPT / Claude Web", "sublabel": "planning · fresh-context review", "tag": "ephemeral worker", "row": 0, "col": 1, "sources": [{"path": "CONTEXT.md", "label": "planning plane"}, {"path": "skills/review-gate/PROMPT.md", "label": "fresh review session"}]},
+    {"id": "implementation_agents", "type": "backend", "label": "OpenCode / Implementation Agents", "sublabel": "from-issue · from-pr-review", "tag": "ephemeral worker", "row": 0, "col": 2, "sources": [{"path": "WORKFLOW.md", "label": "execution plane"}, {"path": "skills/from-issue/SKILL.md", "label": "execution contract"}, {"path": "skills/from-pr-review/SKILL.md", "label": "fix return leg"}]},
+    {"id": "github_issues", "type": "database", "label": "GitHub Issues", "sublabel": "intent · acceptance criteria · durable brief · labels", "tag": "durable authored state", "row": 1, "col": 0, "sources": [{"path": "WORKFLOW.md", "label": "durable coordination"}, {"path": "CONTEXT.md", "label": "durable brief"}, {"path": "prompts/agent-brief.md", "label": "brief writer"}]},
+    {"id": "github_prs", "type": "database", "label": "GitHub Pull Requests", "sublabel": "diff · Closes #N · evidence bundle", "tag": "durable authored evidence", "row": 1, "col": 1, "sources": [{"path": "README.md", "label": "PR-mediated workflow"}, {"path": "skills/from-issue/SKILL.md", "label": "PR + evidence bundle"}]},
+    {"id": "verdict_comments", "type": "messagebus", "label": "PR Verdict Comments", "sublabel": "append-only review-gate message", "tag": "authored verdict @ SHA", "row": 1, "col": 2, "sources": [{"path": "skills/review-gate/references/verdict-contract.md", "label": "canonical message contract"}, {"path": "skills/review-gate/PROMPT.md", "label": "verdict producer"}]},
+    {"id": "head_sha", "type": "security", "label": "Current Head SHA", "sublabel": "headRefOid / commit identity", "tag": "staleness anchor", "row": 1, "col": 3, "sources": [{"path": "CONTEXT.md", "label": "SHA-staleness"}, {"path": "skills/review-gate/references/verdict-contract.md", "label": "current-head compare"}]},
+    {"id": "ci_check_runs", "type": "security", "label": "CI / Check Runs", "sublabel": "required checks · path coverage · current head", "tag": "observed verification state", "row": 1, "col": 4, "sources": [{"path": "CONTEXT.md", "label": "check-run gate"}, {"path": "skills/from-pr-review/SKILL.md", "label": "real check-run verification"}, {"path": ".github/workflows/gate-readiness.yml", "label": "mechanical readiness"}]},
+    {"id": "trusted_remote_refs", "type": "cloud", "label": "Trusted Remote Refs", "sublabel": "refs/remotes/<trusted> after fetch", "tag": "observed retention baseline", "row": 1, "col": 5, "sources": [{"path": "tooling/unbacked-work-monitor/README.md", "label": "trusted remotes"}, {"path": "tooling/unbacked-work-monitor/unbacked-work-monitor.ts", "label": "remote ref scan"}]},
+    {"id": "local_worktrees", "type": "database", "label": "Local Repos / Worktrees", "sublabel": "dirty state · local branches · detached heads", "tag": "non-authoritative local state", "row": 2, "col": 0, "sources": [{"path": "skills/from-issue/SKILL.md", "label": "worktree resume / dirtiness"}, {"path": "tooling/unbacked-work-monitor/unbacked-work-monitor.ts", "label": "local retainers"}]},
+    {"id": "review_gate_poller", "type": "backend", "label": "review-gate Poller", "sublabel": "parse verdict · compare SHA · launch fix pass", "tag": "stale-review detector", "row": 2, "col": 2, "sources": [{"path": "tooling/review-gate-poller/README.md", "label": "poller behavior"}, {"path": "tooling/lib/verdict.ts", "label": "verdict parser"}]},
+    {"id": "unbacked_monitor", "type": "backend", "label": "Unbacked-Work Monitor", "sublabel": "local tips − trusted remote reachability", "tag": "local-only-work detector", "row": 2, "col": 4, "sources": [{"path": "tooling/unbacked-work-monitor/README.md", "label": "monitor contract"}, {"path": "tooling/unbacked-work-monitor/unbacked-work-monitor.ts", "label": "rev-list comparison"}]}
+  ],
+  "boundaries": [
+    {"kind": "region", "label": "Disposable worker/session plane — useful, fallible, not authoritative", "wraps": ["web_sessions", "implementation_agents"]},
+    {"kind": "security-group", "label": "GitHub durable coordination plane / source of truth", "wraps": ["github_issues", "github_prs", "verdict_comments", "head_sha", "ci_check_runs", "trusted_remote_refs"]},
+    {"kind": "region", "label": "Local execution state — resumable when safe, but not durable authority", "wraps": ["local_worktrees"]},
+    {"kind": "region", "label": "Drift detection / automation", "wraps": ["review_gate_poller", "unbacked_monitor"]}
+  ],
+  "connections": [
+    {"id": "human-web", "from": "human_operator", "to": "web_sessions", "label": "idea / review request"},
+    {"id": "web-issues", "from": "web_sessions", "to": "github_issues", "label": "author issue / durable brief", "variant": "emphasis"},
+    {"id": "issues-agents", "from": "github_issues", "to": "implementation_agents", "label": "read execution contract", "variant": "emphasis"},
+    {"id": "agents-local", "from": "implementation_agents", "to": "local_worktrees", "label": "edit + commit"},
+    {"id": "local-pr", "from": "local_worktrees", "to": "github_prs", "label": "push + PR evidence bundle", "variant": "emphasis"},
+    {"id": "pr-head", "from": "github_prs", "to": "head_sha", "label": "current headRefOid", "variant": "security"},
+    {"id": "pr-remote", "from": "github_prs", "to": "trusted_remote_refs", "label": "pushed branch retains commits"},
+    {"id": "issues-web", "from": "github_issues", "to": "web_sessions", "label": "binding spec", "variant": "dashed"},
+    {"id": "pr-web", "from": "github_prs", "to": "web_sessions", "label": "diff + authored evidence", "variant": "dashed"},
+    {"id": "head-web", "from": "head_sha", "to": "web_sessions", "label": "review identity", "variant": "security"},
+    {"id": "checks-web", "from": "ci_check_runs", "to": "web_sessions", "label": "observed gate evidence", "variant": "security"},
+    {"id": "web-verdict", "from": "web_sessions", "to": "verdict_comments", "label": "append verdict @ exact SHA", "variant": "emphasis"},
+    {"id": "verdict-poller", "from": "verdict_comments", "to": "review_gate_poller", "label": "latest conforming needs-fix"},
+    {"id": "head-poller", "from": "head_sha", "to": "review_gate_poller", "label": "SHA equality check", "variant": "security"},
+    {"id": "poller-agents", "from": "review_gate_poller", "to": "implementation_agents", "label": "launch from-pr-review", "variant": "dashed"},
+    {"id": "local-monitor", "from": "local_worktrees", "to": "unbacked_monitor", "label": "branch/worktree retainers"},
+    {"id": "remote-monitor", "from": "trusted_remote_refs", "to": "unbacked_monitor", "label": "remote reachability baseline", "variant": "security"},
+    {"id": "monitor-human", "from": "unbacked_monitor", "to": "human_operator", "label": "attention.md / scan.json", "variant": "dashed"},
+    {"id": "verdict-human", "from": "verdict_comments", "to": "human_operator", "label": "merge-candidate / stop state", "variant": "dashed"},
+    {"id": "checks-human", "from": "ci_check_runs", "to": "human_operator", "label": "current-head gate state", "variant": "security"}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "Core thesis", "items": ["Sessions do work; GitHub holds the record.", "Each stage can be restarted from a durable GitHub artifact instead of prior chat memory.", "The system is designed to detect drift between narrated state and repository reality."]},
+    {"dot": "emerald", "title": "Three trust classes", "items": ["Agent claim: useful working narration, never authoritative by itself.", "Authored GitHub record: issue/brief, PR evidence bundle, and append-only verdict comment.", "Observed state: current head SHA, actual CI/check runs, and commit reachability from trusted remote refs."]},
+    {"dot": "violet", "title": "What the gates do — and do not prove", "items": ["Evidence bundles preserve exact reported commands/output but do not independently prove correctness.", "Fresh review evaluates the binding spec/standards and binds its verdict to one exact commit.", "Green checks establish configured current-head verification evidence; correctness still is not guaranteed."]}
+  ]
+}
