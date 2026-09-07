@@ -338,3 +338,29 @@ Findings recorded at the time. All four remained unfixed until 2026-08-18:
   2.2.8.
 - NORTH_STAR.md, revised 2026-07-23, was confirmed absent from disk anywhere
   under ~/Code. The document governing stage sequencing is lost.
+
+## 2026-09-07
+
+Corrections to the 2026-09-05 entry:
+- The recorded variant boundary of `high` on Sep 1–3 and `medium` on Sep 4–5 does not exist. Both variants ran on 08-31, 09-01, and 09-02, and `medium` also ran on 08-27. Variant must be split by `json_extract(model,'$.variant')`, never by date range. (disk)
+- 2026-09-05 has 36 parent orchestrator sessions, not 3; the entry was written mid-day. (disk)
+- 2026-09-01 is 37 percent of the window, not 63 percent. (disk)
+- Terra's pre-window use on this seat is at least n=2 (2026-07-19 and 2026-08-27), not 1. (disk)
+
+Orchestrator variant reverted from `medium` to `high`, effective 2026-09-07 pending an OpenCode restart:
+- Measured against `~/.local/share/opencode/opencode.db`, for orchestrator sessions since 2026-08-13 in product-code directories only, with child-inclusive read tokens (`tokens_input + tokens_cache_read`, parent plus direct children):
+
+  | arm | parents | read/session | children/parent |
+  |---|---:|---:|---:|
+  | gpt-5.4 @ high | 49 | 5.03M | 2.22 |
+  | terra @ high | 24 | 4.50M | 4.17 |
+  | terra @ medium | 42 | 9.25M | 9.1 |
+
+- `terra @ high` is approximately 11 percent cheaper than the `gpt-5.4` baseline. `terra @ medium` is 2.06x `terra @ high` on identical work, driven by delegation rate. (disk)
+- The method reproduces the previously filed `gpt-5.4` (1.96 children/session) and `luna-fast` (3.44 children/session, 4.02M read/session) baselines exactly, so it is comparable to earlier records. n is not a concern: 84 terra parents against 80 gpt-5.4. (disk)
+- Standing caveat: read-tokens-per-session is a cost proxy, not a work proxy; nothing here measures whether medium's extra children finish more work. (disk)
+- The `session.directory` split is load-bearing: `gpt-5.4` costs approximately 1.4x more per session on product code than on tracer-workflow work, and the arms do not share a work mix. (disk)
+
+Tooling finding from the 2026-09-07 variant edit:
+- An `apply_patch` hunk written with no surrounding context (a bare `"variant": "medium"` replacement) silently matched the first occurrence in `oh-my-opencode-slim.json`, which has repeated identical keys across seven presets. It changed `thirty.fixer` instead of `thirty-lite.orchestrator`. Nothing surfaced this; only a post-patch read of the intended line caught it. (session)
+- `~/.config/opencode` is not a git repository, so there is no diff to fall back on; a dated backup file confirmed the revert was clean. Rule: single-line patches against files with repeated keys must include enough surrounding context to be unique, and must be verified by reading the target location afterward. (session)
