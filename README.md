@@ -26,6 +26,21 @@ Vocabulary is defined once in [CONTEXT.md](./CONTEXT.md). [WORKFLOW.md](./WORKFL
 defines the HITL/AFK rule, evidence-bundle contract, slice contract, check-run
 gate, the `from-issue` execution-stage contract, and the full stage table.
 
+## Trust architecture
+
+The system separates disposable workers, durable authored GitHub records, and
+observed repository state. Sessions and agents can perform work, but later stages
+reconstruct authority from GitHub rather than trusting prior narration.
+
+![Durable-state system overview showing disposable sessions and local work crossing into GitHub issues, PRs, SHA-bound verdicts, current-head checks, trusted remote refs, and drift detectors.](./docs/architecture/tracer-workflow-durable-state.svg)
+
+The editable source-backed models are the
+[trust architecture](./docs/architecture/tracer-workflow-trust.architecture.json),
+[end-to-end workflow](./docs/architecture/tracer-workflow-e2e.workflow.json), and
+[PR/review lifecycle](./docs/architecture/tracer-workflow-pr-review.lifecycle.json).
+Their evidence base, revision pin, known drift, and validation status are recorded
+in [docs/architecture/SOURCES.md](./docs/architecture/SOURCES.md).
+
 ## One issue, end to end
 
 A raw idea goes through `to-issues` and comes out as scoped issues, one vertical
@@ -69,29 +84,11 @@ required check must exercise the changed paths; if no required checks are
 configured, at least one green CI/check run on the current head must exercise
 the changed paths. Older-head results never count.
 
-```mermaid
-flowchart LR
-    idea([raw idea / PRD]) --> ti[to-issues]
-    ti --> tq[triage-queue]
-    tq --> ab[agent-brief]
-    ab -->|ready-for-agent| nx[next]
-    nx --> fi[from-issue]
-    fi -->|"PR + Closes #N"| rg[review-gate]
-    rg -->|verdict on PR| fpr[from-pr-review]
-    fpr -->|delegates judgment| rec[receiving-code-review]
-    rec -->|disposition| fpr
-    fpr -->|check-run gate| gate{all checks green?}
-    gate -->|yes| merge([merge])
-    gate -->|no| rg
-    merge --> nx
+![PR review lifecycle showing a fresh review stamped to SHA A, a needs-fix push producing SHA B and making the prior verdict stale, current-head checks, hard-stop states, and manual merge.](./docs/architecture/tracer-workflow-review-loop.svg)
 
-    classDef custom fill:#2d3748,stroke:#4fd1c5,color:#fff
-    classDef adopted fill:#2d3748,stroke:#718096,color:#fff
-    class fi,fpr,nx,rg,tq,ab custom
-    class ti,rec adopted
-```
-
-Teal = custom, owned here. Gray = adopted, consumed but not authored here.
+The critical review rule is commit identity, not conversation continuity: a
+verdict about SHA A cannot authorize work on SHA B. A new push returns the PR to
+fresh review even when the implementation session itself continues.
 
 ## Where things live
 
