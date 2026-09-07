@@ -17,6 +17,10 @@ the hands. Never decide whether a review item is good — collect the items,
 delegate each to `receiving-code-review`, execute its verdict, prove the result
 against actual check-run state, and hand back.
 
+Session and continuation behavior follows [`CONTINUATION.md`](../../CONTINUATION.md).
+A valid continuation pointer may identify the preferred implementation lane, but
+GitHub PR/branch/head state remains authoritative.
+
 ## Inputs
 
 - A PR reference (URL or number). If absent, refuse — do not guess which PR.
@@ -35,15 +39,39 @@ against actual check-run state, and hand back.
 - Do not open follow-up issues silently — only when `receiving-code-review`
   returns a `follow-up-issue` verdict, and record the created issue number in the
   handoff.
+- A session locator is advisory. Validate repository, branch, PR, and current
+  head before acting. If the named session is unavailable or stale, resume in a
+  fresh implementation context from durable state.
+
+## Continuation pointer
+
+Read the PR's active `<!-- tracer-continuation:v1 -->` comment when present.
+
+- Use `implementation-locator` only when the pointer is current for the PR and
+  the locator is safe/usable.
+- A pointer whose `head-sha` does not match the current PR head is stale; do not
+  let it authorize a fix pass. Recompute the route from the current verdict and
+  durable state.
+- A current `needs-fix` verdict normally routes to OpenCode with
+  `session-policy: continue-preferred`. If the implementation locator cannot be
+  used, start fresh from the PR, linked issue, branch/worktree, verdict, and
+  review threads.
+- After pushing any fix and producing a new head SHA, update the same marked PR
+  continuation comment so the immediate next stage is a **fresh** `review-gate`
+  bound to that new full head SHA. Preserve the safe implementation locator for
+  a possible later return.
 
 ## Steps
 
 1. **Identify the PR.** Resolve URL/number to `owner/repo#N`, the head branch, and
-   the current head SHA. Record the base branch.
+   the current head SHA. Record the base branch. Read the current continuation
+   pointer if one exists, but treat it as routing metadata only.
 
 2. **Checkout the branch.** Use the project's worktree convention (see the repo's
    `AGENTS.md`; default to a worktree, not a raw checkout, if the repo says so).
-   Confirm the working tree is clean before touching anything.
+   Confirm the working tree is clean before touching anything. Reuse a valid
+   implementation lane when practical; otherwise reconstruct a fresh one from
+   durable state.
 
 3. **Build the review-thread ledger.** Pull every unresolved review thread and
    review comment via `gh pr view <N> --json reviews,comments` plus the
@@ -103,12 +131,17 @@ against actual check-run state, and hand back.
     number / reason. Resolve threads that are genuinely resolved. Leave open the
     ones the verdict said to defer, with the reason.
 
-11. **Handoff.** Emit a structured handoff (see `references/handoff-shape.md`):
+11. **Refresh continuation.** Update the PR's single marked continuation comment
+    for the new head SHA. The next action is a fresh `review-gate`; use
+    `session-policy: fresh-required`, preserve any safe implementation locator,
+    and do not reuse this implementation session as the independent reviewer.
+
+12. **Handoff.** Emit a structured handoff (see `references/handoff-shape.md`):
     PR, new head SHA, the disposition ledger from step 4, check-run gate result as data,
-    any follow-up issues created, and the single readiness line — **ready** only
-    if the gate is green, otherwise **blocked-on:** with the specific red/pending
-    checks or open deferrals. Never "looks good" prose in place of the gate
-    result.
+    any follow-up issues created, the refreshed continuation action, and the
+    single readiness line — **ready** only if the gate is green, otherwise
+    **blocked-on:** with the specific red/pending checks or open deferrals. Never
+    "looks good" prose in place of the gate result.
 
 ## Do not
 
@@ -121,3 +154,5 @@ against actual check-run state, and hand back.
   disposition vocabulary.
 - Do not rewrite or delete existing code or comments beyond what a fix-now verdict
   requires.
+- Do not let a continuation pointer override a stale/mismatched head, branch, or
+  verdict.

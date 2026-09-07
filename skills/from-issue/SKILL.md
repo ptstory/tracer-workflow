@@ -15,6 +15,11 @@ action-ready input and the current worktree state, then either finishes the
 slice or stops on a genuine blocker. Chat memory is not required; the validated
 artifact is the execution input.
 
+Session and continuation behavior follows [`CONTINUATION.md`](../../CONTINUATION.md).
+The normal entry for a new issue is a fresh OpenCode implementation session. Once
+that lane exists, keeping it through review-fix cycles is preferred for efficiency
+but never required for correctness.
+
 ## Inputs
 
 - A GitHub issue URL or number plus its durable `ready-for-agent` brief.
@@ -60,6 +65,26 @@ artifact is the execution input.
 - Treat `review-gate`, `from-pr-review`, and `receiving-code-review` as
   subordinate judgment/review lanes; do not flatten them into `from-issue`.
 
+## Continuation pointer
+
+Use the canonical `<!-- tracer-continuation:v1 -->` contract in
+[`CONTINUATION.md`](../../CONTINUATION.md).
+
+- When implementation starts, update the issue's existing pointer when possible
+  with `stage: implementation`, `surface: OpenCode`, and a safe
+  `implementation-locator` if one is available. Never publish private/signed
+  session URLs or unsafe local paths merely to preserve continuity.
+- Once a PR exists, the PR becomes the active artifact. Create or update its
+  single marked continuation comment rather than appending competing pointers.
+- The immediate post-implementation transition is a **fresh** independent
+  `review-gate` for the current PR head, so use `session-policy: fresh-required`
+  and bind `head-sha` to that full current head SHA.
+- Preserve a safe `implementation-locator` in the PR pointer when available so
+  a later current-head `needs-fix` verdict can preferentially return to this
+  implementation lane.
+- The fallback is always a fresh implementation context reconstructed from the
+  issue/PR, branch/worktree, verdicts, and current GitHub state.
+
 ## Steps
 
 1. Load the issue and any existing branch/worktree for that issue.
@@ -68,11 +93,19 @@ artifact is the execution input.
 3. Inspect checkout/worktree cleanliness and classify any dirtiness explicitly.
 4. If the primary checkout is dirty and isolation is required, create or reuse
    the dedicated issue branch/worktree and continue execution there.
-5. Implement the smallest safe slice.
-6. Verify locally.
-7. Commit, push, open or update the PR, and include the evidence bundle. Stop
-   there; review, check-run, and merge remain downstream.
-8. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the failure, and the next required recovery contract.
+5. Refresh the issue continuation pointer for the active implementation lane when
+   a safe locator is available.
+6. Implement the smallest safe slice.
+7. Verify locally.
+8. Commit, push, open or update the PR, and include the evidence bundle.
+9. Resolve the new full PR head SHA and create/update the PR continuation pointer
+   for a fresh `review-gate`, retaining the safe implementation locator when
+   available. Stop there; review, check-run, and merge remain downstream.
+10. If blocked or a verified failure cannot be recovered locally, first persist
+    the exact blocker or recovery state durably in the linked GitHub issue or PR
+    comment, refresh the continuation pointer to the single recovery action when
+    possible, then stop with a blocker handoff that names the blocker, the
+    failure, and the next required recovery contract.
 
 ## Do not
 
@@ -80,3 +113,5 @@ artifact is the execution input.
 - Do not emit a second implementation handoff for the same issue.
 - Do not silently discard dirty worktree state.
 - Do not claim progress when a genuine blocker prevents execution.
+- Do not make a session locator authoritative over current GitHub or checkout
+  state.

@@ -3,7 +3,8 @@
 Issue-backed, PR-mediated, evidence-first AI coding workflow.
 
 [CONTEXT.md](./CONTEXT.md) defines the terms used here: evidence bundle, verdict
-value, slice contract, HITL/AFK, and plane.
+value, slice contract, HITL/AFK, and plane. [CONTINUATION.md](./CONTINUATION.md)
+defines session boundaries and the optional continuation-pointer contract.
 
 **Planes.** ChatGPT-web / Claude plan and review. OpenCode executes. GitHub
 issues, PRs, commits, comments, and check runs form the durable coordination
@@ -121,30 +122,43 @@ from any stage in any tool by pointing that stage at the relevant GitHub
 artifact. The same property keeps it tool-agnostic across ChatGPT, Claude, and
 OpenCode.
 
+**Durable state answers what happens next.** A continuation pointer answers only
+where that already-determined transition should preferably run. See
+[`CONTINUATION.md`](./CONTINUATION.md) for the canonical
+`<!-- tracer-continuation:v1 -->` shape, freshness rules, privacy rules, and the
+session-boundary matrix. A missing or stale pointer never blocks recovery; start
+a fresh context from the durable artifact.
+
 Resume entry points:
 
-| State on GitHub | Resume with |
-|---|---|
-| repo has many untriaged / stale issues | `triage-queue <repo>` |
-| selected issue/PR needs durable triage comment | `agent-brief <issue-or-pr-url>` |
-| issue is `ready-for-human` | human reviews the brief and makes the judgment/merge/scope decision |
-| issue exists, no PR | `from-issue <issue-url>` |
-| PR exists, no verdict | `review-gate` against the PR |
-| PR exists, `needs-fix` verdict on current head | `from-pr-review` |
-| merged | `next` |
+| State on GitHub | Resume with | Session policy |
+|---|---|---|
+| repo has many untriaged / stale issues | `triage-queue <repo>` | fresh from planning context |
+| selected issue/PR needs durable triage comment | `agent-brief <issue-or-pr-url>` | same triage conversation only for its first unique pick; otherwise fresh |
+| issue is `ready-for-human` | human reviews the brief and makes the judgment/merge/scope decision | human / GitHub |
+| issue exists, no PR | `from-issue <issue-url>` | fresh OpenCode per issue by default |
+| PR exists, no current verdict | `review-gate` against the PR | fresh reviewer for the current head SHA |
+| PR exists, `needs-fix` verdict on current head | `from-pr-review <pr-url>` | continue the implementation lane when healthy; otherwise fresh from durable state |
+| PR has current `merge-candidate` | human merge/check gate | GitHub / no implementation session required |
+| merged | `next` | any healthy read-only selector context; next issue starts fresh implementation |
 
 Two limits:
 
-- **Resumable between stages, not within one.** If a stage dies with
-  uncommitted local work, GitHub has no artifact to resume from. Re-run the stage.
-  `from-issue` inspects dirty checkout/worktree state explicitly and resumes the
-  same issue/worktree when it is safe to do so, rather than spawning a fresh
-  implementation handoff. If the dirtiness is unrelated or genuinely blocks
-  execution, or a failure is verified and cannot be recovered locally, it stops
-  with a blocker handoff. Incremental commits shrink this dead zone.
-- **Fix-pass resume is bound to the reviewed head SHA.** A verdict is valid only
-  for the head it reviewed. If the head moved, `from-pr-review` does nothing
-  until a fresh review runs against the current head.
+- **Resumable between stages; in-stage partial work needs a checkpoint.** If a
+  stage dies before a durable output exists, a session pointer alone cannot make
+  uncommitted work recoverable. `from-issue` still inspects dirty checkout/worktree
+  state explicitly and resumes the same issue/worktree when safe. Crash-safe
+  partial execution durability is owned separately by issue #33; incremental
+  commits shrink the dead zone until that contract exists.
+- **Fix-pass resume is bound to the reviewed head SHA.** A verdict and any
+  head-sensitive continuation pointer are valid only for the head they name. If
+  the head moved, `from-pr-review` does nothing until a fresh review runs against
+  the current head.
+
+The planned `tracer resume` command in issue #35 derives the next stage from
+current durable state first. Only after that classification may it use a valid
+continuation pointer to recommend a preferred surface/session. It must not turn
+session provenance into a competing state store.
 
 ## HITL / AFK
 
@@ -162,6 +176,8 @@ Anything touching write endpoints, auth paths, public surface, or live infra
 ## Where things live
 
 - Canonical source for Tracer custom skills: this repo, under `skills/`.
+- Canonical session-boundary and continuation-pointer policy:
+  `CONTINUATION.md`.
 - Plain reusable prompts that are not runtime skills: `prompts/`.
 - Runtime skills: `~/.agents/skills/<name>` symlinks into this repo where a
   prompt or skill is installed as a runtime skill, leaving one authoritative

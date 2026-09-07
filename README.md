@@ -16,7 +16,10 @@ rather than narrated confidence, decides readiness. A nightly monitor finds
 commits no trusted remote holds.
 
 Sessions are good workers with bad memories. They can do the work, but GitHub is
-the record.
+the record. When reusing a particular session would reduce context-rebuild cost,
+Tracer may record an optional continuation pointer on the active issue or PR.
+That pointer says where the already-determined next stage should preferably run;
+it never outranks durable GitHub state and is never required to recover.
 
 This is a personal workflow. It is deliberately heavier than a small change
 warrants, and earns its cost when work spans sessions, needs review, or would be
@@ -25,6 +28,8 @@ expensive to misremember.
 Vocabulary is defined once in [CONTEXT.md](./CONTEXT.md). [WORKFLOW.md](./WORKFLOW.md)
 defines the HITL/AFK rule, evidence-bundle contract, slice contract, check-run
 gate, the `from-issue` execution-stage contract, and the full stage table.
+[CONTINUATION.md](./CONTINUATION.md) defines when a stage should continue or start
+fresh and the `<!-- tracer-continuation:v1 -->` routing-pointer contract.
 
 ## One issue, end to end
 
@@ -60,14 +65,18 @@ fresh session reviews the issue as written without carrying assumptions from the
 planning thread.
 
 On a `needs-fix` verdict, `from-pr-review` applies the fixes, replies per thread,
-and pushes. The push moves the head SHA and invalidates the verdict, so the
-circuit runs again. Only `needs-fix` triggers autonomous action; every other
-verdict goes to a human. Merge is manual and follows the current head's required
-status-check configuration: if required checks are configured, all applicable
-required checks must be green at the current head and at least one applicable
-required check must exercise the changed paths; if no required checks are
-configured, at least one green CI/check run on the current head must exercise
-the changed paths. Older-head results never count.
+and pushes. The review gate refreshes the PR continuation pointer toward the
+implementation lane when a safe locator exists; if that lane is unavailable, a
+fresh implementation context reconstructs from GitHub. The fix push moves the
+head SHA, invalidates the verdict, and refreshes the pointer back toward a fresh
+review for the new head, so the circuit runs again. Only `needs-fix` triggers
+autonomous action; every other verdict goes to a human. Merge is manual and
+follows the current head's required status-check configuration: if required
+checks are configured, all applicable required checks must be green at the
+current head and at least one applicable required check must exercise the
+changed paths; if no required checks are configured, at least one green CI/check
+run on the current head must exercise the changed paths. Older-head results never
+count.
 
 ```mermaid
 flowchart LR
@@ -106,7 +115,8 @@ seam and is used stock; `requesting-code-review` takes review scope from a root
 `context-snapshot.json` when present.
 
 The full stage table, including every skill, owner, and role, is in
-[WORKFLOW.md](./WORKFLOW.md).
+[WORKFLOW.md](./WORKFLOW.md). Session-boundary and continuation-pointer policy is
+canonical in [CONTINUATION.md](./CONTINUATION.md).
 
 ## Tooling
 
