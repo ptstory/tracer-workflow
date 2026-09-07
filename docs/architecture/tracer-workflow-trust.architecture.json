@@ -20,7 +20,7 @@
         "id": "authored-vs-observed",
         "label": "Authored evidence vs observed verification",
         "focus": ["github_issues", "github_prs", "verdict_comments", "head_sha", "ci_check_runs", "trusted_remote_refs"],
-        "note": "Issues, PR evidence bundles, and verdict comments are authored records. Current head identity, check-run state, and remote reachability are observed facts used to detect stale or unsupported claims."
+        "note": "Authored GitHub records are claims; head, checks, and remote reachability are observed facts that expose stale or unsupported claims."
       },
       {
         "id": "drift-detection",
