@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import { runNoAiSlopActivationProbe } from "./no-ai-slop-activation-probe";
 
@@ -10,7 +11,7 @@ function sandbox(): string {
 }
 
 test("activation probe discovers repo-owned no-ai-slop from isolated HOME", () => {
-  const repoRoot = "/Users/perrystory/Code/.worktrees/tracer-workflow-issue-106-runtime-activation-evidence";
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const stubBin = sandbox();
   mkdirSync(stubBin, { recursive: true });
   writeFileSync(
