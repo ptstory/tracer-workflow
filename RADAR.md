@@ -37,3 +37,17 @@ Candidates enter here before they enter the stack.
 - Verdict: undecided
 - Reason: not yet researched — recovered from memory, details to be filled from chat archaeology.
 - Taken: nothing
+
+## caveman — 2026-09-08
+- Source: github.com/JuliusBrussee/caveman
+- Claims: skill cuts ~65% output tokens; proxy reports 33.2% fewer provider-reported input tokens (benchmark_counterfactual, 54-run pinned Claude Code); pixel mode −79% on dense slabs; wraps opencode via env without touching opencode.json; MIT skill, BSL-1.1 engine.
+- Verdict: skip (skill), undecided (proxy).
+- Reason: output tokens are 0.86% of weekly load (7.2M of 836.5M, week of 2026-09-08) and the skill adds ~1–1.5k input per turn, so the skill is net-negative on this stack by its own arithmetic. The proxy targets input, which is where the cost actually is, but it is lossy context compression behind recovery handles — the same class of intervention already opted out of four times in this config (compaction.auto, compaction.prune, preemptive-compaction, context-window-monitor). caveman learn duplicates CodeBurn. Blocking question: whether the four compaction opt-outs were reasoned or inherited.
+- Taken: nothing.
+
+## ponytail — 2026-09-08
+- Source: github.com/DietrichGebert/ponytail
+- Claims: −54% LOC, −22% tokens, −20% cost, −27% time, 100% safe against a no-skill baseline; n=4, 12 feature tasks, Haiku 4.5, headless Claude Code on full-stack-fastapi-template; MIT; opencode install is one plugin array entry.
+- Verdict: undecided.
+- Reason: benchmark ran on Haiku 4.5 while this stack is entirely GPT-5.x, and the README states a terse reasoning model deliberating the ladder can go the other way, naming GPT-5.5 as a case where it does — reasoning is the largest part type in opencode.db at 201,643, above tool at 169,063. Injects its ruleset into every subagent every turn by default; PONYTAIL_SUBAGENT_MATCHER scopes it. Targets code volume, while Coding was 7% of the 30-day OpenCode cut against Exploration at 45%. Blocking question: does the LOC reduction survive on GPT-5.x, and does it survive scoped off the read-only seats.
+- Taken: nothing.

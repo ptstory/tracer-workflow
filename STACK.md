@@ -338,3 +338,17 @@ Findings recorded at the time. All four remained unfixed until 2026-08-18:
   2.2.8.
 - NORTH_STAR.md, revised 2026-07-23, was confirmed absent from disk anywhere
   under ~/Code. The document governing stage sequencing is lost.
+
+## 2026-09-08
+
+Findings:
+- In a 2026-09-08 session, the thirty-lite orchestrator re-read `oh-my-opencode-slim.json` (573 lines), `opencode.json` (155), `thirty-lite/orchestrator_append.md` (182), `skills/oh-my-opencode-slim/SKILL.md`, `agents/executor.md`, `thirty-lite/explorer_append.md`, and `thirty-lite/fixer_append.md` after @explorer had returned a complete sourced answer on `oh-my-opencode-slim.json` and `opencode.json`. It also issued two directory-wide greps, one returning `Found 100 matches (more matches available)`: approximately ten broad calls against the loaded rule capping them at two.
+- Measured `skill` preload frequency from `opencode.db`: it appears in 2,895 of 8,476 sessions (34%), with 7,800 calls; `serena_initial_instructions` appears in 505 sessions (6%), with 510 calls. This is not a fixed per-session tax, so no rule was written.
+- CodeBurn reports `agentType: null` on every OpenCode row, and `models --by-agent` attributes every model to `(main)`, while `part.data` on subagent task parts carries `$.metadata.model.modelID`. Per-subagent model exists in `opencode.db` and is lost in CodeBurn's root-session fold.
+- Week of 2026-09-08 spend was $194.24 across three models; gpt-5.4 is no longer present.
+
+Changes applied:
+- Added a no-re-read-after-subagent rule and a no-directory-wide-grep rule under Serena usage in `thirty-lite/orchestrator_append.md`.
+
+Process note:
+- The session re-derived config facts before reading `STACK.md`, the third recorded occurrence.
