@@ -481,6 +481,30 @@ test("advisory aggregation treats zero inputs as pass", () => {
   expect(aggregateTracerAdoptionInvariantVerdicts(["pass", "unverifiable"], "advisory")).toBe("unverifiable");
 });
 
+test("parsed tracer-adoption policy can reshuffle aggregation and mapping", () => {
+  const policy = {
+    reducers: {
+      required: { order: ["unverifiable", "fail", "conflict", "pass"], empty: "reject" },
+      advisory: { order: ["pass", "conflict", "fail", "unverifiable"], empty: "pass" },
+    },
+    state_mapping: {
+      required_pass: {
+        advisory_pass: "partial",
+        advisory_fail: "adopted",
+        advisory_unverifiable_or_conflict: "blocked-or-unverifiable",
+      },
+      required_fail: "not-adopted",
+      required_unverifiable_or_conflict: "skipped",
+      skipped: "explicit-only",
+    },
+  };
+
+  expect((aggregateTracerAdoptionInvariantVerdicts as any)(["fail", "unverifiable"], policy.reducers.required)).toBe("unverifiable");
+  expect((aggregateTracerAdoptionInvariantVerdicts as any)(["fail", "unverifiable"], policy.reducers.advisory)).toBe("fail");
+  expect((evaluateTracerAdoptionState as any)("pass", "fail", policy.state_mapping)).toBe("adopted");
+  expect((evaluateTracerAdoptionState as any)("pass", "pass", policy.state_mapping)).toBe("partial");
+});
+
 test("required aggregation rejects empty input", () => {
   expect(() => aggregateTracerAdoptionInvariantVerdicts([], "required")).toThrow("required invariant aggregation needs at least one verdict");
 });

@@ -93,6 +93,27 @@ type TracerAdoptionInvariant = {
   };
 };
 
+const CANONICAL_TRACER_ADOPTION_REDUCER_ORDER: TracerAdoptionInvariantVerdict[] = ["conflict", "fail", "unverifiable", "pass"];
+
+const CANONICAL_TRACER_ADOPTION_STATE_MAPPING: TracerAdoptionStateMapping = {
+  required_pass: {
+    advisory_pass: "adopted",
+    advisory_fail: "partial",
+    advisory_unverifiable_or_conflict: "blocked-or-unverifiable",
+  },
+  required_fail: "not-adopted",
+  required_unverifiable_or_conflict: "blocked-or-unverifiable",
+  skipped: "explicit-only",
+};
+
+function isTracerAdoptionInvariantVerdict(value: unknown): value is TracerAdoptionInvariantVerdict {
+  return value === "pass" || value === "fail" || value === "unverifiable" || value === "conflict";
+}
+
+function isTracerAdoptionAdoptionState(value: unknown): value is TracerAdoptionAdoptionState {
+  return value === "adopted" || value === "partial" || value === "not-adopted" || value === "blocked-or-unverifiable" || value === "skipped";
+}
+
 type TracerAdoptionContract = {
   schema_version: 1;
   contract: string;
@@ -205,27 +226,41 @@ function classifyTracerAdoptionInvariant(text: string | null, expected: string, 
   return { verdict: "fail", observed: `missing ${expected}` };
 }
 
-function aggregateTracerAdoptionInvariantVerdicts(verdicts: TracerAdoptionInvariantVerdict[], className: "required" | "advisory"): TracerAdoptionInvariantVerdict {
+function aggregateTracerAdoptionInvariantVerdicts(
+  verdicts: TracerAdoptionInvariantVerdict[],
+  reducerOrClassName: TracerAdoptionStateReducer | "required" | "advisory",
+): TracerAdoptionInvariantVerdict {
+  const reducer = typeof reducerOrClassName === "string"
+    ? reducerOrClassName === "advisory"
+      ? { order: CANONICAL_TRACER_ADOPTION_REDUCER_ORDER, empty: "pass" as const }
+      : { order: CANONICAL_TRACER_ADOPTION_REDUCER_ORDER, empty: "reject" as const }
+    : reducerOrClassName;
+
   if (verdicts.length === 0) {
-    if (className === "advisory") return "pass";
+    if (reducer.empty === "pass") return "pass";
     throw new Error("required invariant aggregation needs at least one verdict");
   }
 
-  if (verdicts.includes("conflict")) return "conflict";
-  if (verdicts.includes("fail")) return "fail";
-  if (verdicts.includes("unverifiable")) return "unverifiable";
-  return "pass";
-}
-
-function evaluateTracerAdoptionState(requiredVerdict: TracerAdoptionInvariantVerdict, advisoryVerdict: TracerAdoptionInvariantVerdict): TracerAdoptionAdoptionState {
-  if (requiredVerdict === "pass") {
-    if (advisoryVerdict === "pass") return "adopted";
-    if (advisoryVerdict === "fail") return "partial";
-    return "blocked-or-unverifiable";
+  for (const verdict of reducer.order) {
+    if (verdicts.includes(verdict)) return verdict;
   }
 
-  if (requiredVerdict === "fail") return "not-adopted";
-  return "blocked-or-unverifiable";
+  throw new Error("tracer-adoption reducer order must cover all verdicts");
+}
+
+function evaluateTracerAdoptionState(
+  requiredVerdict: TracerAdoptionInvariantVerdict,
+  advisoryVerdict: TracerAdoptionInvariantVerdict,
+  stateMapping: TracerAdoptionStateMapping = CANONICAL_TRACER_ADOPTION_STATE_MAPPING,
+): TracerAdoptionAdoptionState {
+  if (requiredVerdict === "pass") {
+    if (advisoryVerdict === "pass") return stateMapping.required_pass.advisory_pass;
+    if (advisoryVerdict === "fail") return stateMapping.required_pass.advisory_fail;
+    return stateMapping.required_pass.advisory_unverifiable_or_conflict;
+  }
+
+  if (requiredVerdict === "fail") return stateMapping.required_fail;
+  return stateMapping.required_unverifiable_or_conflict;
 }
 
 function parseSkillContract(text: string): SkillContract {
@@ -342,16 +377,15 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
     };
   }
 
-  const expectedReducerOrder: TracerAdoptionInvariantVerdict[] = ["conflict", "fail", "unverifiable", "pass"];
   const requiredReducer = reducers!.required && typeof reducers!.required === "object" ? (reducers!.required as Partial<TracerAdoptionStateReducer>) : null;
   const advisoryReducer = reducers!.advisory && typeof reducers!.advisory === "object" ? (reducers!.advisory as Partial<TracerAdoptionStateReducer>) : null;
   const reducerIssues = [
     !requiredReducer ? "reducers.required" : null,
-    requiredReducer && (!Array.isArray(requiredReducer.order) || requiredReducer.order.length !== expectedReducerOrder.length || requiredReducer.order.some((item, index) => item !== expectedReducerOrder[index])) ? "reducers.required.order" : null,
-    requiredReducer && requiredReducer.empty !== "reject" ? "reducers.required.empty" : null,
+    requiredReducer && (!Array.isArray(requiredReducer.order) || requiredReducer.order.length !== CANONICAL_TRACER_ADOPTION_REDUCER_ORDER.length || requiredReducer.order.some((item) => !isTracerAdoptionInvariantVerdict(item)) || new Set(requiredReducer.order).size !== CANONICAL_TRACER_ADOPTION_REDUCER_ORDER.length) ? "reducers.required.order" : null,
+    requiredReducer && !((requiredReducer.empty === "reject") || requiredReducer.empty === "pass") ? "reducers.required.empty" : null,
     !advisoryReducer ? "reducers.advisory" : null,
-    advisoryReducer && (!Array.isArray(advisoryReducer.order) || advisoryReducer.order.length !== expectedReducerOrder.length || advisoryReducer.order.some((item, index) => item !== expectedReducerOrder[index])) ? "reducers.advisory.order" : null,
-    advisoryReducer && advisoryReducer.empty !== "pass" ? "reducers.advisory.empty" : null,
+    advisoryReducer && (!Array.isArray(advisoryReducer.order) || advisoryReducer.order.length !== CANONICAL_TRACER_ADOPTION_REDUCER_ORDER.length || advisoryReducer.order.some((item) => !isTracerAdoptionInvariantVerdict(item)) || new Set(advisoryReducer.order).size !== CANONICAL_TRACER_ADOPTION_REDUCER_ORDER.length) ? "reducers.advisory.order" : null,
+    advisoryReducer && !((advisoryReducer.empty === "reject") || advisoryReducer.empty === "pass") ? "reducers.advisory.empty" : null,
   ].filter(Boolean);
   if (reducerIssues.length > 0) {
     return {
@@ -375,11 +409,11 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
     : null;
   const stateMappingIssues = [
     !requiredPass ? "state_mapping.required_pass" : null,
-    requiredPass && requiredPass.advisory_pass !== "adopted" ? "state_mapping.required_pass.advisory_pass" : null,
-    requiredPass && requiredPass.advisory_fail !== "partial" ? "state_mapping.required_pass.advisory_fail" : null,
-    requiredPass && requiredPass.advisory_unverifiable_or_conflict !== "blocked-or-unverifiable" ? "state_mapping.required_pass.advisory_unverifiable_or_conflict" : null,
-    stateMapping!.required_fail !== "not-adopted" ? "state_mapping.required_fail" : null,
-    stateMapping!.required_unverifiable_or_conflict !== "blocked-or-unverifiable" ? "state_mapping.required_unverifiable_or_conflict" : null,
+    requiredPass && !isTracerAdoptionAdoptionState(requiredPass.advisory_pass) ? "state_mapping.required_pass.advisory_pass" : null,
+    requiredPass && !isTracerAdoptionAdoptionState(requiredPass.advisory_fail) ? "state_mapping.required_pass.advisory_fail" : null,
+    requiredPass && !isTracerAdoptionAdoptionState(requiredPass.advisory_unverifiable_or_conflict) ? "state_mapping.required_pass.advisory_unverifiable_or_conflict" : null,
+    !isTracerAdoptionAdoptionState(stateMapping!.required_fail) ? "state_mapping.required_fail" : null,
+    !isTracerAdoptionAdoptionState(stateMapping!.required_unverifiable_or_conflict) ? "state_mapping.required_unverifiable_or_conflict" : null,
     stateMapping!.skipped !== "explicit-only" ? "state_mapping.skipped" : null,
   ].filter(Boolean);
   if (stateMappingIssues.length > 0) {
@@ -394,6 +428,14 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
       ),
     };
   }
+
+  const validatedRequiredReducer = requiredReducer as Partial<TracerAdoptionStateReducer>;
+  const validatedAdvisoryReducer = advisoryReducer as Partial<TracerAdoptionStateReducer>;
+  const validatedRequiredPass = requiredPass as {
+    advisory_pass: unknown;
+    advisory_fail: unknown;
+    advisory_unverifiable_or_conflict: unknown;
+  };
 
   const normalizedLabels: TracerAdoptionLabel[] = [];
   for (const [index, item] of labels!.entries()) {
@@ -507,24 +549,34 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
     };
   }
 
+  const normalizedReducers: TracerAdoptionContract["reducers"] = {
+    required: {
+      order: validatedRequiredReducer.order!.map((item) => item as TracerAdoptionInvariantVerdict),
+      empty: validatedRequiredReducer.empty as "reject" | "pass",
+    },
+    advisory: {
+      order: validatedAdvisoryReducer.order!.map((item) => item as TracerAdoptionInvariantVerdict),
+      empty: validatedAdvisoryReducer.empty as "reject" | "pass",
+    },
+  };
+
+  const normalizedStateMapping: TracerAdoptionContract["state_mapping"] = {
+    required_pass: {
+      advisory_pass: String(validatedRequiredPass.advisory_pass).trim() as TracerAdoptionAdoptionState,
+      advisory_fail: String(validatedRequiredPass.advisory_fail).trim() as TracerAdoptionAdoptionState,
+      advisory_unverifiable_or_conflict: String(validatedRequiredPass.advisory_unverifiable_or_conflict).trim() as TracerAdoptionAdoptionState,
+    },
+    required_fail: String(stateMapping!.required_fail).trim() as TracerAdoptionAdoptionState,
+    required_unverifiable_or_conflict: String(stateMapping!.required_unverifiable_or_conflict).trim() as TracerAdoptionAdoptionState,
+    skipped: String(stateMapping!.skipped).trim() as "explicit-only",
+  };
+
   return {
     contract: {
       schema_version: 1,
       contract: TRACER_ADOPTION_CONTRACT_PATH,
-      reducers: {
-        required: { order: expectedReducerOrder, empty: "reject" },
-        advisory: { order: expectedReducerOrder, empty: "pass" },
-      },
-      state_mapping: {
-        required_pass: {
-          advisory_pass: "adopted",
-          advisory_fail: "partial",
-          advisory_unverifiable_or_conflict: "blocked-or-unverifiable",
-        },
-        required_fail: "not-adopted",
-        required_unverifiable_or_conflict: "blocked-or-unverifiable",
-        skipped: "explicit-only",
-      },
+      reducers: normalizedReducers,
+      state_mapping: normalizedStateMapping,
       invariants: normalizedInvariants,
       repo: {
         workflow_pointer: String(repo!.workflow_pointer).trim(),
