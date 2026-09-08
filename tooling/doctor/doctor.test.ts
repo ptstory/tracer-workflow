@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -7,15 +7,8 @@ import { fileURLToPath } from "node:url";
 
 import { buildDoctorReport, renderDoctorText } from "./doctor";
 
-const CANONICAL_LABELS = [
-  "needs-triage",
-  "needs-info",
-  "ready-for-agent",
-  "ready-for-human",
-  "wontfix",
-  "bug",
-  "enhancement",
-];
+const TRACER_ADOPTION_CONTRACT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../tracer-adoption:v1"), "utf8");
+const TRACER_ADOPTION_LABELS = (JSON.parse(TRACER_ADOPTION_CONTRACT) as { labels: Array<{ actual: string }> }).labels.map(({ actual }) => actual);
 const CANONICAL_REMOTE_URL = "git@github.com:ptstory/tracer-workflow.git";
 const CANONICAL_NO_AI_SLOP_SKILL = `---
 name: no-ai-slop
@@ -96,19 +89,16 @@ function writeContracts(repoRoot: string): void {
     join(repoRoot, "AGENTS.md"),
     `# AGENTS
 
-needs-triage
-needs-info
-ready-for-agent
-ready-for-human
-wontfix
-bug
-enhancement
+Label authority: tracer-adoption:v1
+
+The canonical-to-actual label mapping lives in tracer-adoption:v1.
 `,
   );
   writeText(join(repoRoot, "WORKFLOW.md"), `# Workflow
 
 setup-matt-pocock-skills
 `);
+  writeText(join(repoRoot, "tracer-adoption:v1"), TRACER_ADOPTION_CONTRACT);
 }
 
 function writeTooling(repoRoot: string): void {
@@ -165,7 +155,7 @@ function slugFromRemoteUrl(remoteUrl: string): string {
 function makeDoctorDeps(fixtures: Record<string, { remoteUrl?: string; labels?: string[]; ghFailure?: string }> = {}) {
   const defaultFixture = {
     remoteUrl: CANONICAL_REMOTE_URL,
-    labels: CANONICAL_LABELS,
+    labels: TRACER_ADOPTION_LABELS,
   };
   const normalizedFixtures = new Map(
     Object.entries(fixtures).map(([repoRoot, fixture]) => [
@@ -282,6 +272,60 @@ Pick the next ready-for-agent issue.
   expect(report.summary).toEqual({ errors: 0, warnings: 0 });
   expect(report.findings).toEqual([]);
   expect(renderDoctorText(report)).toBe("tracer doctor: clean\n");
+});
+
+test("missing tracer-adoption contract is reported distinctly", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  rmSync(join(repoRoot, "tracer-adoption:v1"), { force: true });
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, labels: [] },
+  }));
+
+  const finding = report.findings.find((item: any) => item.component === "contract:tracer-adoption-v1");
+
+  expect(finding).toMatchObject({
+    severity: "error",
+    expected: "tracer-adoption:v1 is schema-valid and lists the canonical labels",
+  });
+  expect(finding?.observed).toContain("is missing");
+});
+
+test("malformed and schema-invalid tracer-adoption contracts are rejected", () => {
+  const cases = [
+    {
+      content: "{not-json",
+      observed: "could not parse tracer-adoption:v1",
+    },
+    {
+      content: JSON.stringify({ schema_version: 1, contract: "tracer-adoption:v1", labels: [{ canonical: "needs-triage" }] }, null, 2),
+      observed: "label entry 0 must include canonical and actual strings",
+    },
+  ] as const;
+
+  for (const { content, observed } of cases) {
+    const { repoRoot, home } = makeRepoRoot();
+    writeCleanBaseline(repoRoot);
+    writeText(join(repoRoot, "tracer-adoption:v1"), content);
+    makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+    writeInstalledLaunchdTargets(home, repoRoot);
+
+    const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+      [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, labels: [] },
+    }));
+
+    const finding = report.findings.find((item: any) => item.component === "contract:tracer-adoption-v1");
+
+    expect(finding).toBeTruthy();
+    expect(finding).toMatchObject({
+      severity: "error",
+      expected: "tracer-adoption:v1 is schema-valid and lists the canonical labels",
+    });
+    expect(finding?.observed).toContain(observed);
+  }
 });
 
 test("runtime skill directory symlink to the canonical checkout passes", () => {

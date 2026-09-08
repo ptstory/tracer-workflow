@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "contract": "tracer-adoption:v1",
+  "labels": [
+    { "canonical": "needs-triage", "actual": "needs-triage" },
+    { "canonical": "needs-info", "actual": "needs-info" },
+    { "canonical": "ready-for-agent", "actual": "ready-for-agent" },
+    { "canonical": "ready-for-human", "actual": "ready-for-human" },
+    { "canonical": "wontfix", "actual": "wontfix" },
+    { "canonical": "bug", "actual": "bug" },
+    { "canonical": "enhancement", "actual": "enhancement" }
+  ]
+}

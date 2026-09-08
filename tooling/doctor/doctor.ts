@@ -46,18 +46,21 @@ type SkillContract = {
   heading: string | null;
 };
 
+type TracerAdoptionLabel = {
+  canonical: string;
+  actual: string;
+};
+
+type TracerAdoptionContract = {
+  schema_version: number;
+  contract: string;
+  labels: TracerAdoptionLabel[];
+};
+
 const EXPECTED_SKILL_NAME = "next";
 const EXPECTED_SKILL_HEADING = "Next";
 const EXPECTED_WORKFLOW_POINTER = "setup-matt-pocock-skills";
-const EXPECTED_LABELS = [
-  "needs-triage",
-  "needs-info",
-  "ready-for-agent",
-  "ready-for-human",
-  "wontfix",
-  "bug",
-  "enhancement",
-] as const;
+const TRACER_ADOPTION_CONTRACT_PATH = "tracer-adoption:v1";
 
 const LAUNCHD_TARGETS = [
   {
@@ -146,6 +149,132 @@ function parseSkillContract(text: string): SkillContract {
   };
 }
 
+function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionContract | null; finding: DoctorFinding | null } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+        `could not parse ${TRACER_ADOPTION_CONTRACT_PATH}: ${(error as Error).message}`,
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+        `expected a JSON object, got ${Array.isArray(parsed) ? "array" : typeof parsed}`,
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
+  const record = parsed as Partial<TracerAdoptionContract> & { labels?: unknown };
+  const labels = Array.isArray(record.labels) ? record.labels : null;
+  const missingFields = [
+    typeof record.schema_version !== "number" ? "schema_version" : null,
+    record.contract !== TRACER_ADOPTION_CONTRACT_PATH ? "contract" : null,
+    !labels ? "labels" : null,
+  ].filter(Boolean);
+  if (missingFields.length > 0) {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+        `missing or invalid fields: ${missingFields.join(", ")}`,
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
+  const normalizedLabels: TracerAdoptionLabel[] = [];
+  for (const [index, item] of labels!.entries()) {
+    if (!item || typeof item !== "object") {
+      return {
+        contract: null,
+        finding: finding(
+          "contract:tracer-adoption-v1",
+          `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+          `label entry ${index} is not an object`,
+          "error",
+          "Restore the tracer-adoption contract artifact.",
+        ),
+      };
+    }
+
+    const canonical = (item as { canonical?: unknown }).canonical;
+    const actual = (item as { actual?: unknown }).actual;
+    if (typeof canonical !== "string" || typeof actual !== "string" || canonical.trim() === "" || actual.trim() === "") {
+      return {
+        contract: null,
+        finding: finding(
+          "contract:tracer-adoption-v1",
+          `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+          `label entry ${index} must include canonical and actual strings`,
+          "error",
+          "Restore the tracer-adoption contract artifact.",
+        ),
+      };
+    }
+
+    normalizedLabels.push({ canonical: canonical.trim(), actual: actual.trim() });
+  }
+
+  if (normalizedLabels.length !== 7) {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+        `expected 7 labels, found ${normalizedLabels.length}`,
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
+  return {
+    contract: {
+      schema_version: 1,
+      contract: TRACER_ADOPTION_CONTRACT_PATH,
+      labels: normalizedLabels,
+    },
+    finding: null,
+  };
+}
+
+function readTracerAdoptionContract(repoRoot: string): { contract: TracerAdoptionContract | null; finding: DoctorFinding | null } {
+  const path = join(repoRoot, TRACER_ADOPTION_CONTRACT_PATH);
+  if (!existsSync(path)) {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+        `${TRACER_ADOPTION_CONTRACT_PATH} is missing`,
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
+  const read = readTextFile(path, "contract:tracer-adoption-v1", `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`, "Restore the tracer-adoption contract artifact.");
+  if (read.finding) return { contract: null, finding: read.finding };
+  return parseTracerAdoptionContract(read.text ?? "");
+}
+
 function finding(component: string, expected: string, observed: string, severity: Severity, action: string): DoctorFinding {
   return { component, expected, observed, severity, action };
 }
@@ -232,6 +361,12 @@ function resolveRepoSlug(repoRoot: string, deps: DoctorDeps = {}): string | null
 
 function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorFinding[] {
   try {
+    const contractRead = readTracerAdoptionContract(repoRoot);
+    if (contractRead.finding) {
+      return [contractRead.finding];
+    }
+
+    const expectedLabels = contractRead.contract?.labels.map((label) => label.actual) ?? [];
     const repoSlug = resolveRepoSlug(repoRoot, deps);
     if (!repoSlug) {
       return [
@@ -279,13 +414,13 @@ function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorF
           .map((item) => (item && typeof item === "object" && "name" in item ? String((item as { name?: unknown }).name) : null))
           .filter((name): name is string => Boolean(name))
       : [];
-    const missingLabels = [...EXPECTED_LABELS].filter((label) => !observedLabels.includes(label));
+    const missingLabels = expectedLabels.filter((label) => !observedLabels.includes(label));
     if (missingLabels.length === 0) return [];
 
     return [
       finding(
         `repo-labels:${repoRoot}`,
-        `canonical GitHub labels: ${EXPECTED_LABELS.join(", ")}`,
+        `canonical GitHub labels: ${expectedLabels.join(", ")}`,
         `missing labels: ${missingLabels.join(", ")}`,
         "error",
         "Add the missing GitHub labels to the repository.",
@@ -509,7 +644,7 @@ function checkRepoContract(repoRoot: string): DoctorFinding[] {
     findings.push(
       finding(
         `repo-contract:${basename(repoRoot)}`,
-        "AGENTS.md exists and carries the canonical label mapping",
+        `AGENTS.md points to ${TRACER_ADOPTION_CONTRACT_PATH}`,
         "AGENTS.md is missing",
         "error",
         "Add the repo's AGENTS.md pointer/label contract using setup-matt-pocock-skills.",
@@ -519,22 +654,22 @@ function checkRepoContract(repoRoot: string): DoctorFinding[] {
     const agentsRead = readTextFile(
       agentsPath,
       `repo-contract:${basename(repoRoot)}`,
-      `AGENTS.md lists canonical labels: ${EXPECTED_LABELS.join(", ")}`,
-      "Restore the AGENTS.md label contract.",
+      `AGENTS.md points to ${TRACER_ADOPTION_CONTRACT_PATH}`,
+      "Restore the AGENTS.md label contract pointer.",
     );
     if (agentsRead.finding) {
       findings.push(agentsRead.finding);
     } else {
       const agents = agentsRead.text ?? "";
-      const missingLabels = [...EXPECTED_LABELS].filter((label) => !agents.includes(label));
-      if (missingLabels.length > 0) {
+      const missingPointers = [TRACER_ADOPTION_CONTRACT_PATH].filter((pointer) => !agents.includes(pointer));
+      if (missingPointers.length > 0) {
         findings.push(
           finding(
             `repo-contract:${basename(repoRoot)}`,
-            `AGENTS.md lists canonical labels: ${EXPECTED_LABELS.join(", ")}`,
-            `missing labels: ${missingLabels.join(", ")}`,
+            `AGENTS.md points to ${TRACER_ADOPTION_CONTRACT_PATH}`,
+            `missing pointers: ${missingPointers.join(", ")}`,
             "error",
-            "Restore the canonical label mapping in AGENTS.md.",
+            "Restore the AGENTS.md pointer to the tracer-adoption contract.",
           ),
         );
       }
