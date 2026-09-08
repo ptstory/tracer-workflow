@@ -11,8 +11,14 @@ const TRACER_ADOPTION_CONTRACT = readFileSync(join(dirname(fileURLToPath(import.
 const TRACER_ADOPTION_LABELS = (JSON.parse(TRACER_ADOPTION_CONTRACT) as { labels: Array<{ actual: string }> }).labels.map(({ actual }) => actual);
 const TRACER_ADOPTION_CONTRACT_DATA = JSON.parse(TRACER_ADOPTION_CONTRACT) as Record<string, unknown> & {
   labels: Array<{ canonical: string; actual: string }>;
-  invariants: Array<{ verdicts: Record<string, unknown> }>;
-  repo?: { workflow_pointer?: string };
+  invariants: Array<{ verdicts: Record<string, unknown>; evidence?: string }>;
+  repo?: {
+    workflow_pointer?: string;
+    evidence?: {
+      agents?: string;
+      workflow?: string;
+    };
+  };
   github?: { identity?: string; access?: string };
 };
 const CANONICAL_REMOTE_URL = "git@github.com:ptstory/tracer-workflow.git";
@@ -446,6 +452,59 @@ setup-project-cockpit
   expect(report.findings.some((item: any) => item.component === `repo-contract:${basename(repoRoot)}`)).toBe(false);
 });
 
+
+test("required pass plus advisory pass maps to adopted", () => {
+  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
+    state: "adopted",
+    required_result: "pass",
+    advisory_result: "pass",
+  });
+});
+
+test("required pass plus advisory fail maps to partial", () => {
+  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
+    state: "partial",
+    required_result: "pass",
+    advisory_result: "fail",
+  });
+});
+
+test("required fail plus advisory pass maps to not-adopted", () => {
+  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
+    state: "not-adopted",
+    required_result: "fail",
+    advisory_result: "pass",
+  });
+});
+
+test("required unverifiable plus advisory unverifiable maps to blocked-or-unverifiable", () => {
+  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
+    state: "blocked-or-unverifiable",
+    required_result: "unverifiable",
+    advisory_result: "unverifiable",
+  });
+});
+
+test("skipped is explicit-only", () => {
+  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
+    state: "skipped",
+    explicit_only: true,
+  });
+});
+
+test("repo.workflow-pointer evidence names the concrete AGENTS.md and WORKFLOW.md checks", () => {
+  expect(TRACER_ADOPTION_CONTRACT_DATA.repo).toMatchObject({
+    workflow_pointer: "setup-matt-pocock-skills",
+    evidence: {
+      agents: "Label authority: tracer-adoption:v1",
+      workflow: "setup-matt-pocock-skills",
+    },
+  });
+  expect(TRACER_ADOPTION_CONTRACT_DATA.invariants.find((item: any) => item.id === "repo.workflow-pointer")?.evidence).toBe(
+    "AGENTS.md contains Label authority: tracer-adoption:v1; WORKFLOW.md contains setup-matt-pocock-skills.",
+  );
+});
+
 test("GitHub access expectation comes from tracer-adoption contract", () => {
   const { repoRoot, home } = makeRepoRoot();
   writeCleanBaseline(repoRoot);
@@ -656,10 +715,26 @@ Pick the next ready-for-agent issue.
   }));
   const repoFinding = report.findings.find((item: any) => item.component.startsWith("repo-contract:"));
 
-  expect(repoFinding?.observed).toContain("unverifiable: WORKFLOW.md is missing");
+  expect(repoFinding?.observed).toContain("fail: missing WORKFLOW.md");
   expect(report.findings.some((item: any) => item.component === "skill:next")).toBe(false);
 });
 
+
+test("missing AGENTS.md is a failure rather than unverifiable", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeContracts(repoRoot);
+  rmSync(join(repoRoot, "AGENTS.md"), { force: true });
+  writeTooling(repoRoot);
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL },
+  }));
+  const repoFinding = report.findings.find((item: any) => item.component.startsWith("repo-contract:"));
+
+  expect(repoFinding?.observed).toContain("fail: missing AGENTS.md");
+});
 
 test("repo contract pointer conflicts are reported through shared invariant semantics", () => {
   const { repoRoot, home } = makeRepoRoot();

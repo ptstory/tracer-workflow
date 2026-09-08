@@ -2,11 +2,11 @@
   "schema_version": 1,
   "contract": "tracer-adoption:v1",
   "adoption_states": [
-    "adopted",
-    "partial",
-    "not-adopted",
-    "blocked-or-unverifiable",
-    "skipped"
+    { "state": "adopted", "required_result": "pass", "advisory_result": "pass" },
+    { "state": "partial", "required_result": "pass", "advisory_result": "fail" },
+    { "state": "not-adopted", "required_result": "fail", "advisory_result": "pass" },
+    { "state": "blocked-or-unverifiable", "required_result": "unverifiable", "advisory_result": "unverifiable" },
+    { "state": "skipped", "explicit_only": true }
   ],
   "invariants": [
     {
@@ -45,7 +45,7 @@
       "id": "repo.workflow-pointer",
       "description": "AGENTS.md and WORKFLOW.md point at the shared workflow pointer.",
       "status": "required",
-      "evidence": "The repo files mention repo.workflow_pointer.",
+      "evidence": "AGENTS.md contains Label authority: tracer-adoption:v1; WORKFLOW.md contains setup-matt-pocock-skills.",
       "verdicts": {
         "pass": "The workflow pointer is present in the repo docs.",
         "fail": "The workflow pointer is missing from AGENTS.md or WORKFLOW.md.",
@@ -75,7 +75,11 @@
     }
   ],
   "repo": {
-    "workflow_pointer": "setup-matt-pocock-skills"
+    "workflow_pointer": "setup-matt-pocock-skills",
+    "evidence": {
+      "agents": "Label authority: tracer-adoption:v1",
+      "workflow": "setup-matt-pocock-skills"
+    }
   },
   "github": {
     "identity": "a GitHub repository slug from origin remote",

@@ -58,6 +58,13 @@ type TracerAdoptionAdoptionState =
   | "blocked-or-unverifiable"
   | "skipped";
 
+type TracerAdoptionAdoptionStateDefinition = {
+  state: TracerAdoptionAdoptionState;
+  required_result?: TracerAdoptionInvariantVerdict;
+  advisory_result?: TracerAdoptionInvariantVerdict;
+  explicit_only?: true;
+};
+
 type TracerAdoptionInvariantVerdicts = {
   pass: string;
   fail: string;
@@ -80,10 +87,14 @@ type TracerAdoptionInvariant = {
 type TracerAdoptionContract = {
   schema_version: 1;
   contract: string;
-  adoption_states: TracerAdoptionAdoptionState[];
+  adoption_states: TracerAdoptionAdoptionStateDefinition[];
   invariants: TracerAdoptionInvariant[];
   repo: {
     workflow_pointer: string;
+    evidence: {
+      agents: string;
+      workflow: string;
+    };
   };
   github: {
     identity: string;
@@ -95,12 +106,12 @@ type TracerAdoptionContract = {
 const EXPECTED_SKILL_NAME = "next";
 const EXPECTED_SKILL_HEADING = "Next";
 const TRACER_ADOPTION_CONTRACT_PATH = "tracer-adoption:v1";
-const TRACER_ADOPTION_ADOPTION_STATES: TracerAdoptionAdoptionState[] = [
-  "adopted",
-  "partial",
-  "not-adopted",
-  "blocked-or-unverifiable",
-  "skipped",
+const TRACER_ADOPTION_ADOPTION_STATES: TracerAdoptionAdoptionStateDefinition[] = [
+  { state: "adopted", required_result: "pass", advisory_result: "pass" },
+  { state: "partial", required_result: "pass", advisory_result: "fail" },
+  { state: "not-adopted", required_result: "fail", advisory_result: "pass" },
+  { state: "blocked-or-unverifiable", required_result: "unverifiable", advisory_result: "unverifiable" },
+  { state: "skipped", explicit_only: true },
 ];
 
 const LAUNCHD_TARGETS = [
@@ -263,7 +274,8 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
   const labels = Array.isArray(record.labels) ? record.labels : null;
   const adoptionStates = Array.isArray(record.adoption_states) ? record.adoption_states : null;
   const invariants = Array.isArray(record.invariants) ? record.invariants : null;
-  const repo = record.repo && typeof record.repo === "object" ? (record.repo as { workflow_pointer?: unknown }) : null;
+  const repo = record.repo && typeof record.repo === "object" ? (record.repo as { workflow_pointer?: unknown; evidence?: unknown }) : null;
+  const repoEvidence = repo && repo.evidence && typeof repo.evidence === "object" ? (repo.evidence as { agents?: unknown; workflow?: unknown }) : null;
   const github = record.github && typeof record.github === "object" ? (record.github as { identity?: unknown; access?: unknown }) : null;
   const missingFields = [
     record.contract !== TRACER_ADOPTION_CONTRACT_PATH ? "contract" : null,
@@ -272,6 +284,9 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
     !invariants ? "invariants" : null,
     !repo ? "repo" : null,
     repo && typeof repo.workflow_pointer !== "string" ? "repo.workflow_pointer" : null,
+    !repoEvidence ? "repo.evidence" : null,
+    repoEvidence && typeof repoEvidence.agents !== "string" ? "repo.evidence.agents" : null,
+    repoEvidence && typeof repoEvidence.workflow !== "string" ? "repo.evidence.workflow" : null,
     !github ? "github" : null,
     github && typeof github.identity !== "string" ? "github.identity" : null,
     github && typeof github.access !== "string" ? "github.access" : null,
@@ -289,28 +304,95 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
     };
   }
 
-  const normalizedAdoptionStates: TracerAdoptionAdoptionState[] = [];
-  for (const [index, state] of adoptionStates!.entries()) {
-    if (typeof state !== "string" || state.trim() === "") {
+  if (String(repoEvidence!.workflow).trim() !== String(repo!.workflow_pointer).trim()) {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} declares the repo workflow pointer evidence`,
+        `repo.evidence.workflow must match repo.workflow_pointer`,
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
+  if (String(repoEvidence!.agents).trim() !== "Label authority: tracer-adoption:v1") {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} declares the repo workflow pointer evidence`,
+        `repo.evidence.agents must be \"Label authority: tracer-adoption:v1\"`,
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
+  const normalizedAdoptionStates: TracerAdoptionAdoptionStateDefinition[] = [];
+  const allowedAdoptionStates: TracerAdoptionAdoptionState[] = ["adopted", "partial", "not-adopted", "blocked-or-unverifiable", "skipped"];
+  const allowedVerdicts: Array<"pass" | "fail" | "unverifiable" | "conflict"> = ["pass", "fail", "unverifiable", "conflict"];
+  for (const [index, item] of adoptionStates!.entries()) {
+    if (!item || typeof item !== "object") {
       return {
         contract: null,
         finding: finding(
           "contract:tracer-adoption-v1",
-          `${TRACER_ADOPTION_CONTRACT_PATH} declares the canonical adoption states`,
-          `adoption_states entry ${index} must be a non-empty string`,
+          `${TRACER_ADOPTION_CONTRACT_PATH} declares adoption-state mappings`,
+          `adoption_states entry ${index} is not an object`,
           "error",
           "Restore the tracer-adoption contract artifact.",
         ),
       };
     }
-    normalizedAdoptionStates.push(state.trim() as TracerAdoptionAdoptionState);
+
+    const entry = item as Partial<TracerAdoptionAdoptionStateDefinition> & {
+      state?: unknown;
+      required_result?: unknown;
+      advisory_result?: unknown;
+      explicit_only?: unknown;
+    };
+    const requiredFields = [
+      typeof entry.state !== "string" || !allowedAdoptionStates.includes(entry.state as TracerAdoptionAdoptionState) ? "state" : null,
+      entry.state === "skipped" && entry.explicit_only !== true ? "explicit_only" : null,
+      entry.state !== "skipped" && entry.explicit_only === true ? "explicit_only" : null,
+      entry.state === "skipped" && entry.required_result !== undefined ? "required_result" : null,
+      entry.state === "skipped" && entry.advisory_result !== undefined ? "advisory_result" : null,
+      entry.state !== "skipped" && (typeof entry.required_result !== "string" || !allowedVerdicts.includes(entry.required_result as any)) ? "required_result" : null,
+      entry.state !== "skipped" && (typeof entry.advisory_result !== "string" || !allowedVerdicts.includes(entry.advisory_result as any)) ? "advisory_result" : null,
+    ].filter(Boolean);
+
+    if (requiredFields.length > 0) {
+      return {
+        contract: null,
+        finding: finding(
+          "contract:tracer-adoption-v1",
+          `${TRACER_ADOPTION_CONTRACT_PATH} declares adoption-state mappings`,
+          `adoption_states entry ${index} has invalid fields: ${requiredFields.join(", ")}`,
+          "error",
+          "Restore the tracer-adoption contract artifact.",
+        ),
+      };
+    }
+
+    normalizedAdoptionStates.push(
+      entry.state === "skipped"
+        ? { state: "skipped", explicit_only: true }
+        : {
+            state: entry.state as TracerAdoptionAdoptionState,
+            required_result: entry.required_result as "pass" | "fail" | "unverifiable" | "conflict",
+            advisory_result: entry.advisory_result as "pass" | "fail" | "unverifiable" | "conflict",
+          },
+    );
   }
+
   if (normalizedAdoptionStates.length === 0) {
     return {
       contract: null,
       finding: finding(
         "contract:tracer-adoption-v1",
-        `${TRACER_ADOPTION_CONTRACT_PATH} declares the canonical adoption states`,
+        `${TRACER_ADOPTION_CONTRACT_PATH} declares adoption-state mappings`,
         `adoption_states must not be empty`,
         "error",
         "Restore the tracer-adoption contract artifact.",
@@ -319,13 +401,19 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
   }
 
   const expectedAdoptionStates = TRACER_ADOPTION_ADOPTION_STATES;
-  if (normalizedAdoptionStates.length !== expectedAdoptionStates.length || normalizedAdoptionStates.some((state, index) => state !== expectedAdoptionStates[index])) {
+  if (
+    normalizedAdoptionStates.length !== expectedAdoptionStates.length
+    || normalizedAdoptionStates.some((state, index) => state.state !== expectedAdoptionStates[index].state
+      || state.required_result !== expectedAdoptionStates[index].required_result
+      || state.advisory_result !== expectedAdoptionStates[index].advisory_result
+      || state.explicit_only !== expectedAdoptionStates[index].explicit_only)
+  ) {
     return {
       contract: null,
       finding: finding(
         "contract:tracer-adoption-v1",
-        `${TRACER_ADOPTION_CONTRACT_PATH} declares the canonical adoption states`,
-        `unexpected adoption_states: ${normalizedAdoptionStates.join(", ")}`,
+        `${TRACER_ADOPTION_CONTRACT_PATH} declares adoption-state mappings`,
+        `unexpected adoption_states: ${normalizedAdoptionStates.map((item) => item.state).join(", ")}`,
         "error",
         "Restore the tracer-adoption contract artifact.",
       ),
@@ -452,6 +540,10 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
       invariants: normalizedInvariants,
       repo: {
         workflow_pointer: String(repo!.workflow_pointer).trim(),
+        evidence: {
+          agents: String(repoEvidence!.agents).trim(),
+          workflow: String(repoEvidence!.workflow).trim(),
+        },
       },
       github: {
         identity: String(github!.identity).trim(),
@@ -868,7 +960,7 @@ function checkRepoContract(repoRoot: string): DoctorFinding[] {
       return finding(
         `repo-contract:${basename(repoRoot)}`,
         componentExpected,
-        `unverifiable: ${basename(filePath)} is missing`,
+        `fail: missing ${basename(filePath)}`,
         "error",
         missingAction,
       );
