@@ -5,12 +5,26 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { buildDoctorReport, renderDoctorText } from "./doctor";
+import { aggregateTracerAdoptionInvariantVerdicts, buildDoctorReport, evaluateTracerAdoptionState, renderDoctorText } from "./doctor";
 
 const TRACER_ADOPTION_CONTRACT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../tracer-adoption:v1"), "utf8");
 const TRACER_ADOPTION_LABELS = (JSON.parse(TRACER_ADOPTION_CONTRACT) as { labels: Array<{ actual: string }> }).labels.map(({ actual }) => actual);
 const TRACER_ADOPTION_CONTRACT_DATA = JSON.parse(TRACER_ADOPTION_CONTRACT) as Record<string, unknown> & {
   labels: Array<{ canonical: string; actual: string }>;
+  reducers: {
+    required: { order: string[]; empty: string };
+    advisory: { order: string[]; empty: string };
+  };
+  state_mapping: {
+    required_pass: {
+      advisory_pass: string;
+      advisory_fail: string;
+      advisory_unverifiable_or_conflict: string;
+    };
+    required_fail: string;
+    required_unverifiable_or_conflict: string;
+    skipped: string;
+  };
   invariants: Array<{ verdicts: Record<string, unknown>; evidence?: string }>;
   repo?: {
     workflow_pointer?: string;
@@ -453,42 +467,49 @@ setup-project-cockpit
 });
 
 
-test("required pass plus advisory pass maps to adopted", () => {
-  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
-    state: "adopted",
-    required_result: "pass",
-    advisory_result: "pass",
-  });
+test("required aggregation uses conflict > fail > unverifiable > pass", () => {
+  expect(aggregateTracerAdoptionInvariantVerdicts(["pass", "unverifiable", "fail", "conflict"], "required")).toBe("conflict");
+  expect(aggregateTracerAdoptionInvariantVerdicts(["pass", "unverifiable", "fail"], "required")).toBe("fail");
+  expect(aggregateTracerAdoptionInvariantVerdicts(["pass", "unverifiable"], "required")).toBe("unverifiable");
+  expect(aggregateTracerAdoptionInvariantVerdicts(["pass", "pass"], "required")).toBe("pass");
 });
 
-test("required pass plus advisory fail maps to partial", () => {
-  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
-    state: "partial",
-    required_result: "pass",
-    advisory_result: "fail",
-  });
+test("advisory aggregation treats zero inputs as pass", () => {
+  expect(aggregateTracerAdoptionInvariantVerdicts([], "advisory")).toBe("pass");
+  expect(aggregateTracerAdoptionInvariantVerdicts(["pass", "unverifiable", "fail", "conflict"], "advisory")).toBe("conflict");
+  expect(aggregateTracerAdoptionInvariantVerdicts(["pass", "unverifiable", "fail"], "advisory")).toBe("fail");
+  expect(aggregateTracerAdoptionInvariantVerdicts(["pass", "unverifiable"], "advisory")).toBe("unverifiable");
 });
 
-test("required fail plus advisory pass maps to not-adopted", () => {
-  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
-    state: "not-adopted",
-    required_result: "fail",
-    advisory_result: "pass",
-  });
+test("required aggregation rejects empty input", () => {
+  expect(() => aggregateTracerAdoptionInvariantVerdicts([], "required")).toThrow("required invariant aggregation needs at least one verdict");
 });
 
-test("required unverifiable plus advisory unverifiable maps to blocked-or-unverifiable", () => {
-  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
-    state: "blocked-or-unverifiable",
-    required_result: "unverifiable",
-    advisory_result: "unverifiable",
-  });
+test("state mapping is total and deterministic", () => {
+  expect(evaluateTracerAdoptionState("pass", "pass")).toBe("adopted");
+  expect(evaluateTracerAdoptionState("pass", "fail")).toBe("partial");
+  expect(evaluateTracerAdoptionState("pass", "unverifiable")).toBe("blocked-or-unverifiable");
+  expect(evaluateTracerAdoptionState("pass", "conflict")).toBe("blocked-or-unverifiable");
+  expect(evaluateTracerAdoptionState("fail", "pass")).toBe("not-adopted");
+  expect(evaluateTracerAdoptionState("fail", "conflict")).toBe("not-adopted");
+  expect(evaluateTracerAdoptionState("unverifiable", "pass")).toBe("blocked-or-unverifiable");
+  expect(evaluateTracerAdoptionState("conflict", "fail")).toBe("blocked-or-unverifiable");
 });
 
-test("skipped is explicit-only", () => {
-  expect(TRACER_ADOPTION_CONTRACT_DATA.adoption_states).toContainEqual({
-    state: "skipped",
-    explicit_only: true,
+test("tracer-adoption contract declares the canonical reducers and state mapping", () => {
+  expect(TRACER_ADOPTION_CONTRACT_DATA.reducers).toEqual({
+    required: { order: ["conflict", "fail", "unverifiable", "pass"], empty: "reject" },
+    advisory: { order: ["conflict", "fail", "unverifiable", "pass"], empty: "pass" },
+  });
+  expect(TRACER_ADOPTION_CONTRACT_DATA.state_mapping).toEqual({
+    required_pass: {
+      advisory_pass: "adopted",
+      advisory_fail: "partial",
+      advisory_unverifiable_or_conflict: "blocked-or-unverifiable",
+    },
+    required_fail: "not-adopted",
+    required_unverifiable_or_conflict: "blocked-or-unverifiable",
+    skipped: "explicit-only",
   });
 });
 

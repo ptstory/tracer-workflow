@@ -1,13 +1,20 @@
 {
   "schema_version": 1,
   "contract": "tracer-adoption:v1",
-  "adoption_states": [
-    { "state": "adopted", "required_result": "pass", "advisory_result": "pass" },
-    { "state": "partial", "required_result": "pass", "advisory_result": "fail" },
-    { "state": "not-adopted", "required_result": "fail", "advisory_result": "pass" },
-    { "state": "blocked-or-unverifiable", "required_result": "unverifiable", "advisory_result": "unverifiable" },
-    { "state": "skipped", "explicit_only": true }
-  ],
+  "reducers": {
+    "required": { "order": ["conflict", "fail", "unverifiable", "pass"], "empty": "reject" },
+    "advisory": { "order": ["conflict", "fail", "unverifiable", "pass"], "empty": "pass" }
+  },
+  "state_mapping": {
+    "required_pass": {
+      "advisory_pass": "adopted",
+      "advisory_fail": "partial",
+      "advisory_unverifiable_or_conflict": "blocked-or-unverifiable"
+    },
+    "required_fail": "not-adopted",
+    "required_unverifiable_or_conflict": "blocked-or-unverifiable",
+    "skipped": "explicit-only"
+  },
   "invariants": [
     {
       "id": "contract.identity",
