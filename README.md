@@ -32,14 +32,15 @@ The system separates disposable workers, durable authored GitHub records, and
 observed repository state. Sessions and agents can perform work, but later stages
 reconstruct authority from GitHub rather than trusting prior narration.
 
-![Durable-state system overview showing disposable sessions and local work crossing into GitHub issues, PRs, SHA-bound verdicts, current-head checks, trusted remote refs, and drift detectors.](./docs/architecture/tracer-workflow-durable-state.svg)
+![Durable-state overview showing disposable sessions and local work crossing into GitHub issues, PRs, SHA-bound verdicts, current-head checks, trusted remote refs, and drift detectors.](./docs/diagrams/tracer-durable-state.svg)
 
-The editable source-backed models are the
-[trust architecture](./docs/architecture/tracer-workflow-trust.architecture.json),
-[end-to-end workflow](./docs/architecture/tracer-workflow-e2e.workflow.json), and
-[PR/review lifecycle](./docs/architecture/tracer-workflow-pr-review.lifecycle.json).
-Their evidence base, revision pin, known drift, and validation status are recorded
-in [docs/architecture/SOURCES.md](./docs/architecture/SOURCES.md).
+![PR review loop showing a fresh review stamped to SHA A, a needs-fix push producing SHA B and making the prior verdict stale, current-head checks, hard-stop states, and AFK autonomous landing versus HITL human merge.](./docs/diagrams/tracer-review-loop.svg)
+
+Source-backed architecture, provenance, drift, and the editable models live in [`docs/architecture/`](./docs/architecture/). The diagram source and visual constraints are documented in [`docs/diagrams/README.md`](./docs/diagrams/README.md).
+
+The critical review rule is commit identity, not conversation continuity: a
+verdict about SHA A cannot authorize work on SHA B. A new push returns the PR to
+fresh review even when the implementation session itself continues.
 
 ## One issue, end to end
 
@@ -86,11 +87,11 @@ exercise the changed paths; if no required checks are configured, at least one
 green CI/check run on the current head must exercise the changed paths.
 Older-head results never count.
 
-![PR review lifecycle showing a fresh review stamped to SHA A, a needs-fix push producing SHA B and making the prior verdict stale, current-head checks, hard-stop states, and AFK autonomous landing versus HITL human merge.](./docs/architecture/tracer-workflow-review-loop.svg)
+### Reader-facing diagrams
 
-The critical review rule is commit identity, not conversation continuity: a
-verdict about SHA A cannot authorize work on SHA B. A new push returns the PR to
-fresh review even when the implementation session itself continues.
+The figures in `docs/diagrams/` stay intentionally simple; they are the primary
+visuals in this README. Their editable source and editorial rules live in
+[`docs/diagrams/README.md`](./docs/diagrams/README.md).
 
 ## Where things live
 
