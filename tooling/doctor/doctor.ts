@@ -93,19 +93,6 @@ type TracerAdoptionInvariant = {
   };
 };
 
-const CANONICAL_TRACER_ADOPTION_REDUCER_ORDER: TracerAdoptionInvariantVerdict[] = ["conflict", "fail", "unverifiable", "pass"];
-
-const CANONICAL_TRACER_ADOPTION_STATE_MAPPING: TracerAdoptionStateMapping = {
-  required_pass: {
-    advisory_pass: "adopted",
-    advisory_fail: "partial",
-    advisory_unverifiable_or_conflict: "blocked-or-unverifiable",
-  },
-  required_fail: "not-adopted",
-  required_unverifiable_or_conflict: "blocked-or-unverifiable",
-  skipped: "explicit-only",
-};
-
 function isTracerAdoptionInvariantVerdict(value: unknown): value is TracerAdoptionInvariantVerdict {
   return value === "pass" || value === "fail" || value === "unverifiable" || value === "conflict";
 }
@@ -228,14 +215,8 @@ function classifyTracerAdoptionInvariant(text: string | null, expected: string, 
 
 function aggregateTracerAdoptionInvariantVerdicts(
   verdicts: TracerAdoptionInvariantVerdict[],
-  reducerOrClassName: TracerAdoptionStateReducer | "required" | "advisory",
+  reducer: TracerAdoptionStateReducer,
 ): TracerAdoptionInvariantVerdict {
-  const reducer = typeof reducerOrClassName === "string"
-    ? reducerOrClassName === "advisory"
-      ? { order: CANONICAL_TRACER_ADOPTION_REDUCER_ORDER, empty: "pass" as const }
-      : { order: CANONICAL_TRACER_ADOPTION_REDUCER_ORDER, empty: "reject" as const }
-    : reducerOrClassName;
-
   if (verdicts.length === 0) {
     if (reducer.empty === "pass") return "pass";
     throw new Error("required invariant aggregation needs at least one verdict");
@@ -251,7 +232,7 @@ function aggregateTracerAdoptionInvariantVerdicts(
 function evaluateTracerAdoptionState(
   requiredVerdict: TracerAdoptionInvariantVerdict,
   advisoryVerdict: TracerAdoptionInvariantVerdict,
-  stateMapping: TracerAdoptionStateMapping = CANONICAL_TRACER_ADOPTION_STATE_MAPPING,
+  stateMapping: TracerAdoptionStateMapping,
 ): TracerAdoptionAdoptionState {
   if (requiredVerdict === "pass") {
     if (advisoryVerdict === "pass") return stateMapping.required_pass.advisory_pass;
@@ -381,10 +362,10 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
   const advisoryReducer = reducers!.advisory && typeof reducers!.advisory === "object" ? (reducers!.advisory as Partial<TracerAdoptionStateReducer>) : null;
   const reducerIssues = [
     !requiredReducer ? "reducers.required" : null,
-    requiredReducer && (!Array.isArray(requiredReducer.order) || requiredReducer.order.length !== CANONICAL_TRACER_ADOPTION_REDUCER_ORDER.length || requiredReducer.order.some((item) => !isTracerAdoptionInvariantVerdict(item)) || new Set(requiredReducer.order).size !== CANONICAL_TRACER_ADOPTION_REDUCER_ORDER.length) ? "reducers.required.order" : null,
+    requiredReducer && (!Array.isArray(requiredReducer.order) || requiredReducer.order.length !== 4 || requiredReducer.order.some((item) => !isTracerAdoptionInvariantVerdict(item)) || new Set(requiredReducer.order).size !== 4) ? "reducers.required.order" : null,
     requiredReducer && !((requiredReducer.empty === "reject") || requiredReducer.empty === "pass") ? "reducers.required.empty" : null,
     !advisoryReducer ? "reducers.advisory" : null,
-    advisoryReducer && (!Array.isArray(advisoryReducer.order) || advisoryReducer.order.length !== CANONICAL_TRACER_ADOPTION_REDUCER_ORDER.length || advisoryReducer.order.some((item) => !isTracerAdoptionInvariantVerdict(item)) || new Set(advisoryReducer.order).size !== CANONICAL_TRACER_ADOPTION_REDUCER_ORDER.length) ? "reducers.advisory.order" : null,
+    advisoryReducer && (!Array.isArray(advisoryReducer.order) || advisoryReducer.order.length !== 4 || advisoryReducer.order.some((item) => !isTracerAdoptionInvariantVerdict(item)) || new Set(advisoryReducer.order).size !== 4) ? "reducers.advisory.order" : null,
     advisoryReducer && !((advisoryReducer.empty === "reject") || advisoryReducer.empty === "pass") ? "reducers.advisory.empty" : null,
   ].filter(Boolean);
   if (reducerIssues.length > 0) {
@@ -1365,6 +1346,7 @@ export {
   parseGithubRepoSlug,
   parsePlistProgramArguments,
   parseSkillContract,
+  readTracerAdoptionContract,
   renderDoctorText,
   resolveRepoSlug,
   runCli,
