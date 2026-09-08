@@ -51,16 +51,57 @@ type TracerAdoptionLabel = {
   actual: string;
 };
 
+type TracerAdoptionAdoptionState =
+  | "adopted"
+  | "partial"
+  | "not-adopted"
+  | "blocked-or-unverifiable"
+  | "skipped";
+
+type TracerAdoptionInvariantVerdicts = {
+  pass: string;
+  fail: string;
+  unverifiable: string;
+  conflict: string;
+};
+
+type TracerAdoptionInvariant = {
+  id: string;
+  description: string;
+  status: "required" | "advisory";
+  evidence: string;
+  verdicts: TracerAdoptionInvariantVerdicts;
+  remediation: {
+    class: string;
+    action: string;
+  };
+};
+
 type TracerAdoptionContract = {
-  schema_version: number;
+  schema_version: 1;
   contract: string;
+  adoption_states: TracerAdoptionAdoptionState[];
+  invariants: TracerAdoptionInvariant[];
+  repo: {
+    workflow_pointer: string;
+  };
+  github: {
+    identity: string;
+    access: string;
+  };
   labels: TracerAdoptionLabel[];
 };
 
 const EXPECTED_SKILL_NAME = "next";
 const EXPECTED_SKILL_HEADING = "Next";
-const EXPECTED_WORKFLOW_POINTER = "setup-matt-pocock-skills";
 const TRACER_ADOPTION_CONTRACT_PATH = "tracer-adoption:v1";
+const TRACER_ADOPTION_ADOPTION_STATES: TracerAdoptionAdoptionState[] = [
+  "adopted",
+  "partial",
+  "not-adopted",
+  "blocked-or-unverifiable",
+  "skipped",
+];
 
 const LAUNCHD_TARGETS = [
   {
@@ -129,6 +170,25 @@ function parseArgs(argv: string[]): ParsedArgs {
   };
 }
 
+type TracerAdoptionInvariantVerdict = "pass" | "fail" | "unverifiable" | "conflict";
+
+function classifyTracerAdoptionInvariant(text: string | null, expected: string, conflictPattern: RegExp): { verdict: TracerAdoptionInvariantVerdict; observed: string } {
+  if (text === null) {
+    return { verdict: "unverifiable", observed: "missing file" };
+  }
+
+  if (text.includes(expected)) {
+    return { verdict: "pass", observed: `found ${expected}` };
+  }
+
+  const conflict = text.match(conflictPattern)?.[0];
+  if (conflict && conflict !== expected) {
+    return { verdict: "conflict", observed: `found ${conflict}` };
+  }
+
+  return { verdict: "fail", observed: `missing ${expected}` };
+}
+
 function parseSkillContract(text: string): SkillContract {
   const frontmatterMatch = text.match(/^---\n([\s\S]*?)\n---\n?/);
   let name: string | null = null;
@@ -158,7 +218,7 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
       contract: null,
       finding: finding(
         "contract:tracer-adoption-v1",
-        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and declares the canonical invariants`,
         `could not parse ${TRACER_ADOPTION_CONTRACT_PATH}: ${(error as Error).message}`,
         "error",
         "Restore the tracer-adoption contract artifact.",
@@ -171,7 +231,7 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
       contract: null,
       finding: finding(
         "contract:tracer-adoption-v1",
-        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and declares the canonical invariants`,
         `expected a JSON object, got ${Array.isArray(parsed) ? "array" : typeof parsed}`,
         "error",
         "Restore the tracer-adoption contract artifact.",
@@ -179,20 +239,93 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
     };
   }
 
-  const record = parsed as Partial<TracerAdoptionContract> & { labels?: unknown };
+  const record = parsed as Partial<TracerAdoptionContract> & {
+    adoption_states?: unknown;
+    invariants?: unknown;
+    labels?: unknown;
+    repo?: unknown;
+    github?: unknown;
+  };
+
+  if (record.schema_version !== 1) {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} schema_version 1 is required`,
+        typeof record.schema_version === "number" ? `unsupported schema_version: ${record.schema_version}` : "missing or invalid fields: schema_version",
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
   const labels = Array.isArray(record.labels) ? record.labels : null;
+  const adoptionStates = Array.isArray(record.adoption_states) ? record.adoption_states : null;
+  const invariants = Array.isArray(record.invariants) ? record.invariants : null;
+  const repo = record.repo && typeof record.repo === "object" ? (record.repo as { workflow_pointer?: unknown }) : null;
+  const github = record.github && typeof record.github === "object" ? (record.github as { identity?: unknown; access?: unknown }) : null;
   const missingFields = [
-    typeof record.schema_version !== "number" ? "schema_version" : null,
     record.contract !== TRACER_ADOPTION_CONTRACT_PATH ? "contract" : null,
     !labels ? "labels" : null,
+    !adoptionStates ? "adoption_states" : null,
+    !invariants ? "invariants" : null,
+    !repo ? "repo" : null,
+    repo && typeof repo.workflow_pointer !== "string" ? "repo.workflow_pointer" : null,
+    !github ? "github" : null,
+    github && typeof github.identity !== "string" ? "github.identity" : null,
+    github && typeof github.access !== "string" ? "github.access" : null,
   ].filter(Boolean);
   if (missingFields.length > 0) {
     return {
       contract: null,
       finding: finding(
         "contract:tracer-adoption-v1",
-        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and declares the canonical invariants`,
         `missing or invalid fields: ${missingFields.join(", ")}`,
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
+  const normalizedAdoptionStates: TracerAdoptionAdoptionState[] = [];
+  for (const [index, state] of adoptionStates!.entries()) {
+    if (typeof state !== "string" || state.trim() === "") {
+      return {
+        contract: null,
+        finding: finding(
+          "contract:tracer-adoption-v1",
+          `${TRACER_ADOPTION_CONTRACT_PATH} declares the canonical adoption states`,
+          `adoption_states entry ${index} must be a non-empty string`,
+          "error",
+          "Restore the tracer-adoption contract artifact.",
+        ),
+      };
+    }
+    normalizedAdoptionStates.push(state.trim() as TracerAdoptionAdoptionState);
+  }
+  if (normalizedAdoptionStates.length === 0) {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} declares the canonical adoption states`,
+        `adoption_states must not be empty`,
+        "error",
+        "Restore the tracer-adoption contract artifact.",
+      ),
+    };
+  }
+
+  const expectedAdoptionStates = TRACER_ADOPTION_ADOPTION_STATES;
+  if (normalizedAdoptionStates.length !== expectedAdoptionStates.length || normalizedAdoptionStates.some((state, index) => state !== expectedAdoptionStates[index])) {
+    return {
+      contract: null,
+      finding: finding(
+        "contract:tracer-adoption-v1",
+        `${TRACER_ADOPTION_CONTRACT_PATH} declares the canonical adoption states`,
+        `unexpected adoption_states: ${normalizedAdoptionStates.join(", ")}`,
         "error",
         "Restore the tracer-adoption contract artifact.",
       ),
@@ -206,7 +339,7 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
         contract: null,
         finding: finding(
           "contract:tracer-adoption-v1",
-          `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+          `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and declares the canonical invariants`,
           `label entry ${index} is not an object`,
           "error",
           "Restore the tracer-adoption contract artifact.",
@@ -221,7 +354,7 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
         contract: null,
         finding: finding(
           "contract:tracer-adoption-v1",
-          `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+          `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and declares the canonical invariants`,
           `label entry ${index} must include canonical and actual strings`,
           "error",
           "Restore the tracer-adoption contract artifact.",
@@ -232,13 +365,79 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
     normalizedLabels.push({ canonical: canonical.trim(), actual: actual.trim() });
   }
 
-  if (normalizedLabels.length !== 7) {
+  const normalizedInvariants: TracerAdoptionInvariant[] = [];
+  for (const [index, item] of invariants!.entries()) {
+    if (!item || typeof item !== "object") {
+      return {
+        contract: null,
+        finding: finding(
+          "contract:tracer-adoption-v1",
+          `${TRACER_ADOPTION_CONTRACT_PATH} declares stable invariants`,
+          `invariant entry ${index} is not an object`,
+          "error",
+          "Restore the tracer-adoption contract artifact.",
+        ),
+      };
+    }
+
+    const invariant = item as Partial<TracerAdoptionInvariant>;
+    const verdicts = invariant.verdicts && typeof invariant.verdicts === "object" ? (invariant.verdicts as Partial<TracerAdoptionInvariantVerdicts>) : null;
+    const remediation = invariant.remediation && typeof invariant.remediation === "object" ? (invariant.remediation as { class?: unknown; action?: unknown }) : null;
+    const requiredFields = [
+      typeof invariant.id !== "string" || invariant.id.trim() === "" ? "id" : null,
+      typeof invariant.description !== "string" || invariant.description.trim() === "" ? "description" : null,
+      invariant.status !== "required" && invariant.status !== "advisory" ? "status" : null,
+      typeof invariant.evidence !== "string" || invariant.evidence.trim() === "" ? "evidence" : null,
+      !verdicts ? "verdicts" : null,
+      verdicts && (typeof verdicts.pass !== "string" || verdicts.pass.trim() === "") ? "verdicts.pass" : null,
+      verdicts && (typeof verdicts.fail !== "string" || verdicts.fail.trim() === "") ? "verdicts.fail" : null,
+      verdicts && (typeof verdicts.unverifiable !== "string" || verdicts.unverifiable.trim() === "") ? "verdicts.unverifiable" : null,
+      verdicts && (typeof verdicts.conflict !== "string" || verdicts.conflict.trim() === "") ? "verdicts.conflict" : null,
+      !remediation ? "remediation" : null,
+      remediation && typeof remediation.class !== "string" ? "remediation.class" : null,
+      remediation && typeof remediation.action !== "string" ? "remediation.action" : null,
+    ].filter(Boolean);
+
+    if (requiredFields.length > 0) {
+      return {
+        contract: null,
+        finding: finding(
+          "contract:tracer-adoption-v1",
+          `${TRACER_ADOPTION_CONTRACT_PATH} declares stable invariants`,
+          `invariant entry ${index} has invalid fields: ${requiredFields.join(", ")}`,
+          "error",
+          "Restore the tracer-adoption contract artifact.",
+        ),
+      };
+    }
+
+    normalizedInvariants.push({
+      id: invariant.id!.trim(),
+      description: invariant.description!.trim(),
+      status: invariant.status as "required" | "advisory",
+      evidence: invariant.evidence!.trim(),
+      verdicts: {
+        pass: verdicts!.pass!.trim(),
+        fail: verdicts!.fail!.trim(),
+        unverifiable: verdicts!.unverifiable!.trim(),
+        conflict: verdicts!.conflict!.trim(),
+      },
+      remediation: {
+        class: String(remediation!.class).trim(),
+        action: String(remediation!.action).trim(),
+      },
+    });
+  }
+
+  const expectedInvariantIds = ["contract.identity", "labels.registry", "repo.workflow-pointer", "github.access"];
+  const actualInvariantIds = normalizedInvariants.map((item) => item.id);
+  if (actualInvariantIds.length !== expectedInvariantIds.length || actualInvariantIds.some((item, index) => item !== expectedInvariantIds[index])) {
     return {
       contract: null,
       finding: finding(
         "contract:tracer-adoption-v1",
-        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
-        `expected 7 labels, found ${normalizedLabels.length}`,
+        `${TRACER_ADOPTION_CONTRACT_PATH} declares stable invariant ids`,
+        `unexpected invariants: ${actualInvariantIds.join(", ")}`,
         "error",
         "Restore the tracer-adoption contract artifact.",
       ),
@@ -249,6 +448,15 @@ function parseTracerAdoptionContract(text: string): { contract: TracerAdoptionCo
     contract: {
       schema_version: 1,
       contract: TRACER_ADOPTION_CONTRACT_PATH,
+      adoption_states: normalizedAdoptionStates,
+      invariants: normalizedInvariants,
+      repo: {
+        workflow_pointer: String(repo!.workflow_pointer).trim(),
+      },
+      github: {
+        identity: String(github!.identity).trim(),
+        access: String(github!.access).trim(),
+      },
       labels: normalizedLabels,
     },
     finding: null,
@@ -262,7 +470,7 @@ function readTracerAdoptionContract(repoRoot: string): { contract: TracerAdoptio
       contract: null,
       finding: finding(
         "contract:tracer-adoption-v1",
-        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`,
+        `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and declares the canonical invariants`,
         `${TRACER_ADOPTION_CONTRACT_PATH} is missing`,
         "error",
         "Restore the tracer-adoption contract artifact.",
@@ -270,7 +478,7 @@ function readTracerAdoptionContract(repoRoot: string): { contract: TracerAdoptio
     };
   }
 
-  const read = readTextFile(path, "contract:tracer-adoption-v1", `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and lists the canonical labels`, "Restore the tracer-adoption contract artifact.");
+  const read = readTextFile(path, "contract:tracer-adoption-v1", `${TRACER_ADOPTION_CONTRACT_PATH} is schema-valid and declares the canonical invariants`, "Restore the tracer-adoption contract artifact.");
   if (read.finding) return { contract: null, finding: read.finding };
   return parseTracerAdoptionContract(read.text ?? "");
 }
@@ -367,12 +575,14 @@ function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorF
     }
 
     const expectedLabels = contractRead.contract?.labels.map((label) => label.actual) ?? [];
+    const githubIdentity = contractRead.contract?.github.identity ?? "a GitHub repository slug from origin remote";
+    const githubAccess = contractRead.contract?.github.access ?? "read-only label inventory";
     const repoSlug = resolveRepoSlug(repoRoot, deps);
     if (!repoSlug) {
       return [
         finding(
           `repo-label-slug:${repoRoot}`,
-          `resolve a GitHub repo slug from ${repoRoot}`,
+          `resolve ${githubIdentity} from ${repoRoot}`,
           "remote.origin.url missing or not a github.com repo",
           "error",
           "Point the origin remote at a GitHub slug.",
@@ -386,10 +596,10 @@ function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorF
       return [
         finding(
           `repo-label-access:${repoRoot}`,
-          `read-only gh label list succeeds for ${repoSlug}`,
+          `${githubAccess} succeeds for ${repoSlug}`,
           `gh label list failed: ${observed}`,
           "error",
-          "Inspect GitHub CLI access for this repo.",
+          `Inspect ${githubIdentity} access for this repo.`,
         ),
       ];
     }
@@ -401,10 +611,10 @@ function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorF
       return [
         finding(
           `repo-label-access:${repoRoot}`,
-          `read-only gh label list returns JSON for ${repoSlug}`,
+          `${githubAccess} succeeds for ${repoSlug}`,
           `could not parse gh output: ${(error as Error).message}`,
           "error",
-          "Inspect gh label output for this repo.",
+          `Inspect ${githubIdentity} access for this repo.`,
         ),
       ];
     }
@@ -640,76 +850,77 @@ function checkRepoContract(repoRoot: string): DoctorFinding[] {
   const agentsPath = join(repoRoot, "AGENTS.md");
   const workflowPath = join(repoRoot, "WORKFLOW.md");
 
-  if (!existsSync(agentsPath)) {
-    findings.push(
-      finding(
-        `repo-contract:${basename(repoRoot)}`,
-        `AGENTS.md points to ${TRACER_ADOPTION_CONTRACT_PATH}`,
-        "AGENTS.md is missing",
-        "error",
-        "Add the repo's AGENTS.md pointer/label contract using setup-matt-pocock-skills.",
-      ),
-    );
-  } else {
-    const agentsRead = readTextFile(
-      agentsPath,
-      `repo-contract:${basename(repoRoot)}`,
-      `AGENTS.md points to ${TRACER_ADOPTION_CONTRACT_PATH}`,
-      "Restore the AGENTS.md label contract pointer.",
-    );
-    if (agentsRead.finding) {
-      findings.push(agentsRead.finding);
-    } else {
-      const agents = agentsRead.text ?? "";
-      const missingPointers = [TRACER_ADOPTION_CONTRACT_PATH].filter((pointer) => !agents.includes(pointer));
-      if (missingPointers.length > 0) {
-        findings.push(
-          finding(
-            `repo-contract:${basename(repoRoot)}`,
-            `AGENTS.md points to ${TRACER_ADOPTION_CONTRACT_PATH}`,
-            `missing pointers: ${missingPointers.join(", ")}`,
-            "error",
-            "Restore the AGENTS.md pointer to the tracer-adoption contract.",
-          ),
-        );
-      }
-    }
+  const contractRead = readTracerAdoptionContract(repoRoot);
+  if (contractRead.finding) {
+    return [contractRead.finding];
   }
 
-  if (!existsSync(workflowPath)) {
-    findings.push(
-      finding(
+  const workflowPointer = contractRead.contract?.repo.workflow_pointer ?? "setup-matt-pocock-skills";
+
+  const inspectPointerFile = (
+    filePath: string,
+    componentExpected: string,
+    expectedPattern: RegExp,
+    conflictPattern: RegExp,
+    missingAction: string,
+  ): DoctorFinding | null => {
+    if (!existsSync(filePath)) {
+      return finding(
         `repo-contract:${basename(repoRoot)}`,
-        `WORKFLOW.md mentions ${EXPECTED_WORKFLOW_POINTER}`,
-        "WORKFLOW.md is missing",
+        componentExpected,
+        `unverifiable: ${basename(filePath)} is missing`,
         "error",
-        "Restore the repo workflow pointer contract.",
-      ),
-    );
-  } else {
-    const workflowRead = readTextFile(
-      workflowPath,
-      `repo-contract:${basename(repoRoot)}`,
-      `WORKFLOW.md mentions ${EXPECTED_WORKFLOW_POINTER}`,
-      "Restore the workflow pointer contract.",
-    );
-    if (workflowRead.finding) {
-      findings.push(workflowRead.finding);
-    } else {
-      const workflow = workflowRead.text ?? "";
-      if (!workflow.includes(EXPECTED_WORKFLOW_POINTER)) {
-        findings.push(
-          finding(
-            `repo-contract:${basename(repoRoot)}`,
-            `WORKFLOW.md mentions ${EXPECTED_WORKFLOW_POINTER}`,
-            "pointer text missing",
-            "error",
-            "Add the setup-matt-pocock-skills pointer to WORKFLOW.md.",
-          ),
-        );
-      }
+        missingAction,
+      );
     }
-  }
+
+    const read = readTextFile(filePath, `repo-contract:${basename(repoRoot)}`, componentExpected, missingAction);
+    if (read.finding) {
+      return read.finding;
+    }
+
+    const text = read.text ?? "";
+    if (expectedPattern.test(text)) {
+      return null;
+    }
+
+    const conflict = text.match(conflictPattern)?.[0];
+    if (conflict) {
+      return finding(
+        `repo-contract:${basename(repoRoot)}`,
+        componentExpected,
+        `conflict: found ${conflict}`,
+        "error",
+        missingAction,
+      );
+    }
+
+    return finding(
+      `repo-contract:${basename(repoRoot)}`,
+      componentExpected,
+      `fail: missing ${componentExpected}`,
+      "error",
+      missingAction,
+    );
+  };
+
+  const agentsFinding = inspectPointerFile(
+    agentsPath,
+    `AGENTS.md points to ${TRACER_ADOPTION_CONTRACT_PATH}`,
+    /^Label authority:\s*tracer-adoption:v1$/m,
+    /tracer-adoption:v\d+/g,
+    "Restore the AGENTS.md label contract pointer.",
+  );
+  if (agentsFinding) findings.push(agentsFinding);
+
+  const workflowFinding = inspectPointerFile(
+    workflowPath,
+    `WORKFLOW.md points to ${workflowPointer}`,
+    new RegExp(`^${workflowPointer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"),
+    /setup-[A-Za-z0-9-]+/g,
+    "Restore the workflow pointer contract.",
+  );
+  if (workflowFinding) findings.push(workflowFinding);
 
   return findings;
 }

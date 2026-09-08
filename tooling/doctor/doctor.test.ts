@@ -9,6 +9,12 @@ import { buildDoctorReport, renderDoctorText } from "./doctor";
 
 const TRACER_ADOPTION_CONTRACT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../tracer-adoption:v1"), "utf8");
 const TRACER_ADOPTION_LABELS = (JSON.parse(TRACER_ADOPTION_CONTRACT) as { labels: Array<{ actual: string }> }).labels.map(({ actual }) => actual);
+const TRACER_ADOPTION_CONTRACT_DATA = JSON.parse(TRACER_ADOPTION_CONTRACT) as Record<string, unknown> & {
+  labels: Array<{ canonical: string; actual: string }>;
+  invariants: Array<{ verdicts: Record<string, unknown> }>;
+  repo?: { workflow_pointer?: string };
+  github?: { identity?: string; access?: string };
+};
 const CANONICAL_REMOTE_URL = "git@github.com:ptstory/tracer-workflow.git";
 const CANONICAL_NO_AI_SLOP_SKILL = `---
 name: no-ai-slop
@@ -99,6 +105,10 @@ The canonical-to-actual label mapping lives in tracer-adoption:v1.
 setup-matt-pocock-skills
 `);
   writeText(join(repoRoot, "tracer-adoption:v1"), TRACER_ADOPTION_CONTRACT);
+}
+
+function writeTracerAdoptionContract(repoRoot: string, contract: Record<string, unknown>): void {
+  writeText(join(repoRoot, "tracer-adoption:v1"), `${JSON.stringify(contract, null, 2)}\n`);
 }
 
 function writeTooling(repoRoot: string): void {
@@ -289,9 +299,29 @@ test("missing tracer-adoption contract is reported distinctly", () => {
 
   expect(finding).toMatchObject({
     severity: "error",
-    expected: "tracer-adoption:v1 is schema-valid and lists the canonical labels",
+    expected: "tracer-adoption:v1 is schema-valid and declares the canonical invariants",
   });
   expect(finding?.observed).toContain("is missing");
+});
+
+test("future tracer-adoption schema versions are rejected", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  writeTracerAdoptionContract(repoRoot, { ...TRACER_ADOPTION_CONTRACT_DATA, schema_version: 2 });
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, labels: [] },
+  }));
+
+  const finding = report.findings.find((item: any) => item.component === "contract:tracer-adoption-v1");
+
+  expect(finding).toMatchObject({
+    severity: "error",
+    expected: "tracer-adoption:v1 schema_version 1 is required",
+  });
+  expect(finding?.observed).toContain("unsupported schema_version: 2");
 });
 
 test("malformed and schema-invalid tracer-adoption contracts are rejected", () => {
@@ -301,7 +331,10 @@ test("malformed and schema-invalid tracer-adoption contracts are rejected", () =
       observed: "could not parse tracer-adoption:v1",
     },
     {
-      content: JSON.stringify({ schema_version: 1, contract: "tracer-adoption:v1", labels: [{ canonical: "needs-triage" }] }, null, 2),
+      content: JSON.stringify({
+        ...TRACER_ADOPTION_CONTRACT_DATA,
+        labels: [{ canonical: "needs-triage" }],
+      }, null, 2),
       observed: "label entry 0 must include canonical and actual strings",
     },
   ] as const;
@@ -322,10 +355,117 @@ test("malformed and schema-invalid tracer-adoption contracts are rejected", () =
     expect(finding).toBeTruthy();
     expect(finding).toMatchObject({
       severity: "error",
-      expected: "tracer-adoption:v1 is schema-valid and lists the canonical labels",
+      expected: "tracer-adoption:v1 is schema-valid and declares the canonical invariants",
     });
     expect(finding?.observed).toContain(observed);
   }
+});
+
+
+test("missing tracer-adoption verdict keys are rejected with a structured contract error", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  writeText(join(repoRoot, "tracer-adoption:v1"), JSON.stringify({
+    ...TRACER_ADOPTION_CONTRACT_DATA,
+    invariants: TRACER_ADOPTION_CONTRACT_DATA.invariants.map((invariant, index) => index === 0
+      ? { ...invariant, verdicts: (({ conflict, ...verdicts }) => verdicts)(invariant.verdicts) }
+      : invariant),
+  }, null, 2));
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, labels: [] },
+  }));
+
+  const finding = report.findings.find((item: any) => item.component === "contract:tracer-adoption-v1");
+
+  expect(finding).toBeTruthy();
+  expect(finding).toMatchObject({
+    severity: "error",
+    expected: "tracer-adoption:v1 declares stable invariants",
+  });
+  expect(finding?.observed).toContain("invariant entry 0 has invalid fields: verdicts.conflict");
+});
+
+test("contract label changes reshape the expected GitHub labels", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  const labels = TRACER_ADOPTION_CONTRACT_DATA.labels.filter(({ actual }) => actual !== "wontfix");
+  writeTracerAdoptionContract(repoRoot, {
+    ...TRACER_ADOPTION_CONTRACT_DATA,
+    labels,
+  });
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, labels: labels.map(({ actual }) => actual) },
+  }));
+
+  expect(report.findings.some((item: any) => item.component === "contract:tracer-adoption-v1")).toBe(false);
+  expect(report.findings.some((item: any) => item.component === `repo-labels:${repoRoot}`)).toBe(false);
+});
+
+test("repo workflow pointer comes from tracer-adoption contract", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeSkills(
+    repoRoot,
+    `---
+name: next
+description: >
+  Pick the next unblocked ready-for-agent issue after merge.
+---
+
+# Next
+
+Pick the next ready-for-agent issue.
+`,
+  );
+  writeTracerAdoptionContract(repoRoot, {
+    ...TRACER_ADOPTION_CONTRACT_DATA,
+    repo: { workflow_pointer: "setup-project-cockpit" },
+  });
+  writeText(join(repoRoot, "AGENTS.md"), `# AGENTS
+
+Label authority: tracer-adoption:v1
+
+The canonical-to-actual label mapping lives in tracer-adoption:v1.
+`);
+  writeText(join(repoRoot, "WORKFLOW.md"), `# Workflow
+
+setup-project-cockpit
+`);
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, labels: TRACER_ADOPTION_LABELS },
+  }));
+
+  expect(report.findings.some((item: any) => item.component === `repo-contract:${basename(repoRoot)}`)).toBe(false);
+});
+
+test("GitHub access expectation comes from tracer-adoption contract", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  writeTracerAdoptionContract(repoRoot, {
+    ...TRACER_ADOPTION_CONTRACT_DATA,
+    github: { identity: "GitHub repository slug from origin remote", access: "read-only label inventory" },
+  });
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, ghFailure: "gh: permission denied\n" },
+  }));
+
+  const finding = report.findings.find((item: any) => item.component === `repo-label-access:${repoRoot}`);
+
+  expect(finding).toMatchObject({
+    severity: "error",
+    expected: "read-only label inventory succeeds for ptstory/tracer-workflow",
+  });
 });
 
 test("runtime skill directory symlink to the canonical checkout passes", () => {
@@ -503,6 +643,8 @@ Pick the next ready-for-agent issue.
 `,
   );
   writeContracts(clean.repoRoot);
+  writeContracts(bad.repoRoot);
+  rmSync(join(bad.repoRoot, "WORKFLOW.md"), { force: true });
   writeTooling(clean.repoRoot);
   writeTooling(bad.repoRoot);
   makeCanonicalRuntimeSymlinks(clean.home, join(clean.repoRoot, "skills/next"));
@@ -514,8 +656,26 @@ Pick the next ready-for-agent issue.
   }));
   const repoFinding = report.findings.find((item: any) => item.component.startsWith("repo-contract:"));
 
-  expect(repoFinding?.observed).toBe("AGENTS.md is missing");
+  expect(repoFinding?.observed).toContain("unverifiable: WORKFLOW.md is missing");
   expect(report.findings.some((item: any) => item.component === "skill:next")).toBe(false);
+});
+
+
+test("repo contract pointer conflicts are reported through shared invariant semantics", () => {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  writeText(join(repoRoot, "WORKFLOW.md"), `# Workflow\n\nsetup-project-cockpit\n`);
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, labels: TRACER_ADOPTION_LABELS },
+  }));
+
+  const finding = report.findings.find((item: any) => item.component === `repo-contract:${basename(repoRoot)}` && item.expected.startsWith("WORKFLOW.md"));
+
+  expect(finding).toMatchObject({ severity: "error" });
+  expect(finding?.observed).toContain("conflict: found setup-project-cockpit");
 });
 
 test("stale launchd path is warning-only and keeps exit zero", () => {
@@ -829,7 +989,7 @@ test("GitHub access failure is reported distinctly when repo label lookup fails"
 
   expect(finding).toMatchObject({
     severity: "error",
-    expected: "read-only gh label list succeeds for ptstory/tracer-workflow",
+    expected: "read-only label inventory succeeds for ptstory/tracer-workflow",
   });
   expect(finding?.observed).toContain("gh label list failed");
   expect(finding?.observed).toContain("permission denied");
