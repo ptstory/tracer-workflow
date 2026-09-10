@@ -41,3 +41,5 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Check review-gate contract
         run: bun scripts/check-review-gate-contract.ts
+      - name: Check visual-proof contract
+        run: bun scripts/check-visual-proof-contract.ts
