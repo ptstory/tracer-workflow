@@ -23,13 +23,21 @@ In the GPT builder:
 
 1. Add an Action.
 2. Choose Import from URL.
-3. Use the raw GitHub URL for github-readonly.yaml.
+3. Use the stable versioned raw GitHub URL for github-readonly.yaml.
 4. Configure authentication separately using a fine-grained GitHub PAT.
 5. Never put a token or Authorization header in this repository or schema.
 
-Expected raw URL shape:
+Stable v1 import URL:
 
-[https://raw.githubusercontent.com/OWNER/tracer-workflow/main/actions/github/github-readonly.yaml](https://raw.githubusercontent.com/OWNER/tracer-workflow/main/actions/github/github-readonly.yaml)
+https://raw.githubusercontent.com/ptstory/tracer-workflow/v1/actions/github/github-readonly.yaml
+
+The `v1` branch is an intentionally pinned compatibility branch. Do not move it for incompatible schema changes. Create a new versioned branch such as `v2` instead.
+
+For development and inspection, the current `main` version is available at:
+
+https://raw.githubusercontent.com/ptstory/tracer-workflow/main/actions/github/github-readonly.yaml
+
+Custom GPT Builder may retain a previously imported schema when re-importing the same moving URL. If the imported schema is stale, delete the existing Action and create it again from the stable versioned URL.
 
 ## Recommended fine-grained PAT permissions
 
