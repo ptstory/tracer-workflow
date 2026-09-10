@@ -26,6 +26,33 @@ For every named Matt skill invocation, `Matt Planning`:
 The Custom GPT session remains disposable. Any result that authorizes later work
 must still be persisted to GitHub.
 
+## Vocabulary policy
+
+Prefer Matt's canonical vocabulary whenever Tracer and Matt mean the same thing.
+Do not maintain a Tracer synonym merely because the older workflow used one.
+Tracer-specific vocabulary should exist only for semantics that Matt's skills do
+not define.
+
+Examples:
+
+- planned work produced by `to-tickets` is a **ticket**;
+- relationships declared by `to-tickets` are **blocking edges**;
+- `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and
+  `wontfix` are the canonical **triage roles** unless a repository maps those
+  roles to different label strings;
+- `CONTEXT.md` is the domain glossary; hard-to-reverse, surprising trade-off
+  decisions belong in ADRs rather than being mixed into that glossary; and
+- the configured GitHub Issues instance is the repository's **issue tracker**.
+
+Tracer keeps its own terms where the semantics are additional coordination
+constraints: durable artifact/record, execution-input admission, evidence bundle,
+head-SHA freshness, check-run gate, publication state, HITL/AFK authority, and
+coordination plane.
+
+The rule is semantic, not branding: if the concepts are equivalent, use Matt's
+word. If Tracer adds a distinct invariant, give that invariant its own name rather
+than overloading Matt's term.
+
 ## What changes in the Tracer chain
 
 The planning boundary changes from a locally adopted `to-issues` stage to a
@@ -43,20 +70,38 @@ chat / PRD / messy idea
   -> PR / review / checks / landing
 ```
 
-Migration target:
+Migration target for work planned by us:
 
 ```text
 chat / PRD / messy idea
+  -> Matt Planning: to-spec (when the effort needs a durable spec)
   -> Matt Planning: to-tickets@<pinned upstream SHA>
-  -> approved GitHub tickets + dependency edges + planning provenance
-  -> readiness decision
-       -> action-ready: from-issue
-       -> needs deeper triage: triage-queue -> Matt Planning: triage
-       -> human stop: ready-for-human / needs-info / blocked
+  -> approved GitHub tickets + native blocking edges + planning provenance
+  -> Tracer execution-input admission
+       -> admissible: from-issue
+       -> planning artifact insufficient: return to planning / human clarification
+       -> blocked or human-owned decision: stop durably
   -> PR / review / checks / landing
 ```
 
-This removes a duplicated planning methodology from Tracer. Matt owns the
+Incoming issue/PR path:
+
+```text
+raw incoming issue / PR
+  -> triage-queue (optional shallow repository-wide selector)
+  -> Matt Planning or local harness: triage
+  -> canonical triage role + durable issue state
+  -> Tracer execution-input admission when the result is ready-for-agent
+  -> from-issue or human stop
+```
+
+This distinction is important: Matt's canonical `triage` is for raw incoming
+issues and requests. Tickets created by `to-tickets` are already the output of the
+planning flow and should not be sent through `triage` again. If Tracer rejects one
+of those tickets at an actor boundary, that is an execution-admission failure or
+planning defect, not a second triage pass.
+
+This removes duplicated planning methodology from Tracer. Matt owns the
 engineering method used to turn an idea into vertical slices. Tracer owns the
 coordination rules that determine whether the resulting GitHub artifacts are
 safe inputs to another actor.
@@ -64,14 +109,14 @@ safe inputs to another actor.
 ## Authority boundary
 
 The loaded Matt skill is authoritative for its engineering procedure: how to
-synthesize a spec, split work into tracer-bullet tickets, ask for approval, or
-perform deep triage.
+sharpen an idea, synthesize a spec, split work into tracer-bullet tickets, declare
+blocking edges, ask for approval, or triage an incoming issue.
 
 Tracer remains authoritative for workflow semantics that cross actor boundaries:
 
 - the exact GitHub artifact that authorizes the next stage;
-- issue and PR identity;
-- dependency and slice-contract state;
+- issue, PR, and commit identity;
+- slice-contract state when a downstream ticket consumes an upstream contract;
 - HITL / AFK authority;
 - current-head SHA identity and stale-evidence handling;
 - current remote and CI/check-run state;
@@ -79,15 +124,15 @@ Tracer remains authoritative for workflow semantics that cross actor boundaries:
 - human-stop and permission boundaries.
 
 If an upstream skill's tracker convention conflicts with a Tracer coordination
-invariant, the upstream methodology is preserved but the side effect must be
-mapped through the Tracer invariant. Upstream labels are not permission by
-syntax alone.
+invariant, preserve the upstream engineering methodology and constrain only the
+cross-boundary side effect. A label string is routing metadata; it is not by
+itself proof that Tracer's downstream admission checks have passed.
 
 ## `to-tickets` replaces `to-issues` as the planning method
 
-`to-issues` should become a legacy name rather than a separately maintained
-planning implementation. The canonical planning procedure is Matt's current
-`to-tickets` skill, loaded at invocation time.
+`to-issues` should become a legacy alias or migration shim rather than a
+separately maintained planning implementation. The canonical planning procedure
+is Matt's current `to-tickets` skill, loaded at invocation time.
 
 `to-tickets` contributes:
 
@@ -98,50 +143,58 @@ planning implementation. The canonical planning procedure is Matt's current
 - a user quiz over ticket granularity and dependencies before publication; and
 - issue publication only after approval.
 
-Tracer adds the coordination envelope around that procedure:
+Tracer adds only the coordination envelope around that procedure:
 
 - pin one upstream revision per invocation;
 - persist enough source provenance to identify the planning procedure that
   produced the durable tickets;
-- preserve native GitHub dependency edges where available;
-- preserve the Tracer HITL / AFK decision at the planning boundary; and
-- do not treat a `ready-for-agent` label as sufficient authorization unless the
-  issue satisfies Tracer's execution-input contract.
+- preserve native GitHub blocking edges where available;
+- preserve the Tracer HITL / AFK decision where that authority is required; and
+- validate the durable artifact at the handoff to execution rather than rerunning
+  the planning or triage methodology.
 
-## Readiness after ticket publication
+## Execution-input admission after ticket publication
 
-The important behavioral change is that `agent-brief` is no longer assumed to be
-mandatory for every newly planned issue.
+The old chain assumed `agent-brief` would sit between planning and implementation.
+That assumption should not survive merely as ceremony.
 
-A ticket produced by `to-tickets` may go directly to `from-issue` only when its
-GitHub record is already a sufficient durable execution input. At minimum that
-means the issue identifies the intended slice, acceptance conditions, blocking
-edges, and any required upstream contract strongly enough that execution does
-not depend on the planning chat.
+A ticket produced by `to-tickets` is already intended to be agent-ready in Matt's
+flow. Tracer's additional check is narrower: at the moment another independent
+actor is about to execute it, verify the durable GitHub artifact and current
+external state are sufficient for that handoff.
 
-If that is not true, the ticket is not action-ready even if an upstream procedure
-would normally apply a `ready-for-agent` label. It must instead enter deep
-triage. This keeps Tracer's rule semantic: readiness is a property of the durable
-artifact and current dependency state, not the presence of a label string.
+That admission check asks coordination questions, not planning questions:
+
+- Is this the intended ticket and repository?
+- Are its blocking edges currently satisfied?
+- If it consumes an upstream slice contract, is that contract present and strong
+  enough for the downstream work?
+- Is the relevant HITL/AFK authority known?
+- Does the durable GitHub record contain the information the execution actor must
+  have without relying on the planning chat?
+- Has any external state changed in a way that invalidates the handoff?
+
+If the answer is yes, proceed to `from-issue` without an obligatory `agent-brief`
+rewrite. If the answer is no, return the artifact to the appropriate producer or
+stop for the missing human decision. Do not call this `triage` unless the item is
+actually an incoming issue being processed by Matt's triage flow.
 
 ## Triage changes
 
-`triage-queue` and Matt's `triage` solve different scopes and should not be
-collapsed prematurely.
+`triage-queue` and Matt's `triage` solve different scopes and can coexist while
+Tracer is being thinned:
 
-- `triage-queue` remains useful as a shallow, repository-wide, read-only selector.
-  It answers which item deserves attention next and does not itself make an item
-  action-ready.
-- `Matt Planning: triage` becomes the preferred upstream method for deep triage
-  of one selected issue or PR once its output and Tracer's durable-brief contract
-  are proven equivalent in practice.
-- `agent-brief` is therefore transitional. It can eventually be retired or
-  reduced to a thin Tracer coordination/formatting layer if canonical Matt
-  `triage` reliably produces the durable scope, acceptance, and state needed by
-  downstream stages.
+- `triage-queue` is a shallow, repository-wide, read-only selector. It answers
+  which raw or stale item deserves attention next and changes nothing on GitHub.
+- Matt's `triage` is the canonical deep procedure for one incoming issue or PR.
+- Tickets produced by `to-tickets` skip Matt `triage`; they proceed to the
+  execution-input admission boundary.
 
-Until that equivalence is verified, existing `agent-brief` behavior remains the
-fallback for the currently implemented workflow.
+`agent-brief` is therefore transitional. For incoming items, it can eventually be
+retired or reduced to a thin Tracer coordination adapter if Matt `triage`
+reliably produces the durable state downstream actors need. For `to-tickets`
+output, it should not remain mandatory unless testing reveals a specific
+coordination gap that the upstream ticket does not cover.
 
 ## Durable provenance
 
@@ -160,8 +213,38 @@ actual GitHub source load for that invocation, never from a remembered or static
 value.
 
 This provenance records methodology, not execution authority. A later worker
-still acts from the ticket, dependency state, current repository state, and
+still acts from the ticket, blocking-edge state, current repository state, and
 Tracer gates.
+
+## Local alignment pass on tracer-workflow
+
+Run Matt's skills locally against `tracer-workflow` instead of trying to predict
+all integration differences from documentation alone.
+
+Recommended order:
+
+1. **`setup-matt-pocock-skills`** — let it inspect the repository and propose the
+   issue-tracker, triage-role, and domain-doc configuration Matt's other skills
+   expect. Review its proposed edits before writing them. Prefer adapting Tracer
+   to the canonical layout where there is no real semantic conflict.
+2. **`domain-modeling`** — audit `CONTEXT.md` for duplicate, fuzzy, or overloaded
+   terms. Replace Tracer synonyms with Matt vocabulary where they mean the same
+   thing; retain Tracer terms only for genuinely additional coordination
+   concepts. Keep `CONTEXT.md` a glossary rather than an implementation spec.
+3. **`writing-for-agents`** — review the agent-facing entry points after the
+   vocabulary settles so `AGENTS.md` and pointed-at docs describe the same model
+   that the local skills consume.
+4. Exercise **`to-spec` / `to-tickets`** on a real Tracer change and compare the
+   resulting durable tickets with what `from-issue` actually needs. Record
+   concrete gaps rather than preserving old stages preemptively.
+5. Exercise **`triage`** on a genuinely incoming/raw issue, not on a ticket that
+   `to-tickets` created, and compare its durable output with the remaining useful
+   parts of `agent-brief`.
+
+This local pass is allowed to change Tracer's documentation vocabulary and
+configuration. It is not allowed to silently weaken Tracer's cross-actor
+identity, freshness, permission, or evidence invariants merely to make the repo
+look more like upstream.
 
 ## What does not change
 
@@ -188,18 +271,20 @@ stops, so this planning integration does not replace the review gate by itself.
 
 ## Migration sequence
 
-1. Use `Matt Planning` for `to-tickets` while keeping the existing downstream
-   Tracer stages.
-2. Add durable planning provenance and validate readiness semantics on real
+1. Run the local alignment pass so Tracer's issue-tracker configuration, domain
+   vocabulary, and agent-facing docs stop fighting Matt's conventions.
+2. Use `Matt Planning` for `to-spec` / `to-tickets` while keeping the existing
+   downstream Tracer execution and review stages.
+3. Add durable planning provenance and validate execution-input admission on real
    tickets.
-3. Route non-action-ready tickets through the existing triage path.
-4. Trial `Matt Planning: triage` against the same issues and compare its durable
-   output with `agent-brief` requirements.
-5. Retire duplicated `to-issues` behavior once the new planning path is proven.
-6. Reduce or retire `agent-brief` only after the deep-triage contract is proven
-   equivalent.
+4. Remove mandatory `agent-brief` from the `to-tickets` path unless a concrete
+   missing coordination contract is demonstrated.
+5. Trial Matt `triage` on incoming issues and reduce or retire the overlapping
+   deep-triage behavior in `agent-brief` when equivalence is demonstrated.
+6. Retire `to-issues` as a separately maintained planning implementation; keep at
+   most a compatibility alias/shim if needed during migration.
 7. Treat review-method migration as a separate change.
 
 The intended endpoint is a thinner Tracer: upstream skills own reusable
-engineering methodology; Tracer owns identity, authority, freshness, transport,
-and durable coordination between independent actors.
+engineering methodology and vocabulary; Tracer owns identity, authority,
+freshness, transport, and durable coordination between independent actors.
