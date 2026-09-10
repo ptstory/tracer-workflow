@@ -99,8 +99,8 @@ Derive `review-round` as follows:
 - The first review of a PR therefore emits `review-round: 0`.
 - Non-conforming comments (missing marker or any required field) are not
   verdicts and do not increment the round.
-- Review responses, disposition comments, and any other PR comment do not
-  increment the round.
+- Review responses, disposition comments, visual-proof producer comments, and
+  any other PR comment do not increment the round.
 - A rebaseline caused by a late-created or materially amended binding issue
   resets the round counter; the next conforming verdict emits `review-round: 0`
   and `rebaseline: yes`.
@@ -188,6 +188,37 @@ On round `N > 0`, the reviewer compares the current evidence bundle against the
 prior round's evidence bundle. An unchanged test count alongside a claim of
 added coverage is an evidence inconsistency and must be reported as `blocked`.
 
+## Visual proof evidence
+
+Visual proof is producer-authored current-head evidence consumed by the fresh
+reviewer. The producer comment contract lives in
+`skills/visual-proof/references/comment-contract.md`; it does not add a new
+review-gate verdict state or required parser field.
+
+Every verdict comment includes a `### Visual proof` section whose reviewer status
+is exactly `PROVIDED`, `N/A`, or `MISSING`.
+
+- `PROVIDED` means a conforming `provided` producer comment names the current
+  PR head and its GitHub-hosted media is sufficient and scope-faithful for the
+  implemented issue claim.
+- `N/A` means the work is genuinely non-visual or cannot reasonably be rendered
+  at this implementation stage without out-of-scope integration.
+- `MISSING` means otherwise renderable visual work has no usable current-head
+  proof: absent, stale, materially insufficient, scope-overclaiming, or based on
+  an unjustified producer `n/a`.
+
+A producer `n/a` is advisory, never authority. The reviewer decides applicability
+from the governing issue, actual diff, available render surfaces, and the media
+itself. A stale proof comment never counts for the current head. Non-visual
+backend/CLI/internal work does not acquire a screenshot requirement.
+
+Visual-proof status is evidence, not a finding disposition. `MISSING` alone yields `blocked` with an empty `blocking-set:` because no repo-relative code file owns the evidence gap. If independent `fix-now` findings already require `needs-fix`, keep that verdict and list only their repo-relative paths in `blocking-set`; record the visual-proof gap as an additional merge precondition.
+
+`PROVIDED` and `N/A` do not override Standards/Spec findings or check-run
+readiness. Visual proof is re-evaluated against the current head on every review
+round, but that evidence re-evaluation does not authorize new code-finding
+discovery outside the round `N > 0` prior-blocking-set/diff rules.
+
 ## What the reader does per state
 
 - `merge-candidate` + SHA current → eligible to merge; human still owns the
@@ -197,7 +228,8 @@ added coverage is an evidence inconsistency and must be reported as `blocked`.
   fresh review.
 - `needs-human` → stop. No automatic fix pass may be launched, at any SHA.
 - `blocked` → stop, surface the blocker (for example parse failure,
-  required-check coverage gap, or evidence inconsistency).
+  required-check coverage gap, visual-proof evidence gap, or evidence
+  inconsistency).
 - SHA stale (any state) → do nothing; wait for a verdict on current head.
 
 `needs-human` is a hard stop for automated actors.
@@ -210,7 +242,7 @@ and stop rather than defaulting to round 0.
 The following consumers must change to conform to this contract:
 
 - `skills/review-gate/PROMPT.md` — emit `review-round:` and apply the round,
-  stale-finding, and circuit-breaker rules.
+  stale-finding, circuit-breaker, and visual-proof rules.
 - `skills/from-pr-review/SKILL.md` — require per-item disposition via
   `receiving-code-review` before any fixer batch, and align its disposition
   vocabulary.
