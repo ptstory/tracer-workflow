@@ -1,0 +1,368 @@
+openapi: 3.1.0
+
+info:
+  title: GitHub Read-Only Repository Access
+  description: >
+    Generic read-only GitHub access for repository inspection, code review,
+    auditing, planning, research, issue triage, pull request inspection,
+    commit resolution, and CI inspection. This schema exposes no mutation
+    endpoints.
+  version: 1.0.0
+
+servers:
+  - url: https://api.github.com
+
+paths:
+
+  /repos/{owner}/{repo}:
+    get:
+      operationId: getRepository
+      summary: Get repository metadata
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+      responses:
+        "200":
+          description: Repository metadata
+
+  /repos/{owner}/{repo}/branches/{branch}:
+    get:
+      operationId: getBranch
+      summary: Resolve a branch to its current commit
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - name: branch
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Branch metadata including current commit SHA
+
+  /repos/{owner}/{repo}/commits/{ref}:
+    get:
+      operationId: getCommit
+      summary: Get a commit by SHA, branch, or tag
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Commit metadata and changed files when available
+
+  /repos/{owner}/{repo}/git/trees/{tree_sha}:
+    get:
+      operationId: getGitTree
+      summary: Read a Git tree
+      description: Use recursive=1 to map repository contents efficiently.
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - name: tree_sha
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: recursive
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["1"]
+      responses:
+        "200":
+          description: Git tree entries
+
+  /repos/{owner}/{repo}/contents/{path}:
+    get:
+      operationId: getRepositoryContent
+      summary: Read a repository file or directory
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - name: path
+          in: path
+          required: true
+          description: Repository-relative file or directory path
+          schema:
+            type: string
+        - name: ref
+          in: query
+          required: false
+          description: Exact commit SHA, branch, or tag
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Repository content
+
+  /search/code:
+    get:
+      operationId: searchCode
+      summary: Search GitHub code
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: GitHub code-search query, including repo qualifier when appropriate
+          schema:
+            type: string
+        - $ref: "#/components/parameters/per_page"
+        - $ref: "#/components/parameters/page"
+      responses:
+        "200":
+          description: Code search results
+
+  /search/issues:
+    get:
+      operationId: searchIssuesAndPullRequests
+      summary: Search GitHub issues and pull requests
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [comments, reactions, created, updated]
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+        - $ref: "#/components/parameters/per_page"
+        - $ref: "#/components/parameters/page"
+      responses:
+        "200":
+          description: Issue and pull request search results
+
+  /repos/{owner}/{repo}/issues:
+    get:
+      operationId: listIssues
+      summary: List repository issues
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, closed, all]
+        - name: labels
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [created, updated, comments]
+        - name: direction
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+        - $ref: "#/components/parameters/per_page"
+        - $ref: "#/components/parameters/page"
+      responses:
+        "200":
+          description: Repository issues
+
+  /repos/{owner}/{repo}/issues/{issue_number}:
+    get:
+      operationId: getIssue
+      summary: Read one issue or pull request issue record
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - $ref: "#/components/parameters/issue_number"
+      responses:
+        "200":
+          description: Issue
+
+  /repos/{owner}/{repo}/issues/{issue_number}/comments:
+    get:
+      operationId: listIssueComments
+      summary: Read issue or pull request conversation comments
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - $ref: "#/components/parameters/issue_number"
+        - $ref: "#/components/parameters/per_page_100"
+        - $ref: "#/components/parameters/page"
+      responses:
+        "200":
+          description: Comments
+
+  /repos/{owner}/{repo}/pulls/{pull_number}:
+    get:
+      operationId: getPullRequest
+      summary: Read pull request metadata
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - $ref: "#/components/parameters/pull_number"
+      responses:
+        "200":
+          description: Pull request
+
+  /repos/{owner}/{repo}/pulls/{pull_number}/files:
+    get:
+      operationId: listPullRequestFiles
+      summary: Read changed files and patches for a pull request
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - $ref: "#/components/parameters/pull_number"
+        - $ref: "#/components/parameters/per_page_100"
+        - $ref: "#/components/parameters/page"
+      responses:
+        "200":
+          description: Changed files and patches
+
+  /repos/{owner}/{repo}/pulls/{pull_number}/reviews:
+    get:
+      operationId: listPullRequestReviews
+      summary: Read pull request reviews
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - $ref: "#/components/parameters/pull_number"
+        - $ref: "#/components/parameters/per_page_100"
+        - $ref: "#/components/parameters/page"
+      responses:
+        "200":
+          description: Pull request reviews
+
+  /repos/{owner}/{repo}/pulls/{pull_number}/comments:
+    get:
+      operationId: listPullRequestReviewComments
+      summary: Read inline pull request review comments
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - $ref: "#/components/parameters/pull_number"
+        - $ref: "#/components/parameters/per_page_100"
+        - $ref: "#/components/parameters/page"
+      responses:
+        "200":
+          description: Inline pull request review comments
+
+  /repos/{owner}/{repo}/actions/runs:
+    get:
+      operationId: listWorkflowRuns
+      summary: List GitHub Actions workflow runs
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: event
+          in: query
+          required: false
+          schema:
+            type: string
+        - $ref: "#/components/parameters/per_page"
+        - $ref: "#/components/parameters/page"
+      responses:
+        "200":
+          description: Workflow runs
+
+  /repos/{owner}/{repo}/actions/runs/{run_id}:
+    get:
+      operationId: getWorkflowRun
+      summary: Get one GitHub Actions workflow run
+      parameters:
+        - $ref: "#/components/parameters/owner"
+        - $ref: "#/components/parameters/repo"
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Workflow run
+
+components:
+  parameters:
+    owner:
+      name: owner
+      in: path
+      required: true
+      schema:
+        type: string
+
+    repo:
+      name: repo
+      in: path
+      required: true
+      schema:
+        type: string
+
+    issue_number:
+      name: issue_number
+      in: path
+      required: true
+      schema:
+        type: integer
+
+    pull_number:
+      name: pull_number
+      in: path
+      required: true
+      schema:
+        type: integer
+
+    per_page:
+      name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+
+    per_page_100:
+      name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 100
+
+    page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
