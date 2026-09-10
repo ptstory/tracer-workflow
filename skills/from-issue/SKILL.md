@@ -52,13 +52,16 @@ artifact is the execution input.
 - A handoff-only result is allowed only for genuine blockers or verified failures that cannot be recovered in the current worktree.
 - Do not emit another implementation handoff for the same issue; update or
   resume the existing lane instead.
+- Treat `visual-proof` as a producer-side evidence subroutine. It may attach
+  current-head evidence or explain N/A, but it never reviews the work or
+  authorizes readiness.
+- Treat `review-gate`, `from-pr-review`, and `receiving-code-review` as
+  subordinate judgment/review lanes; do not flatten them into `from-issue`.
 - The terminal completion result is one of four outcomes:
   - PR opened with a closing issue reference plus an evidence bundle.
   - Existing PR/worktree resumed and advanced.
   - Explicit durable blocker naming the exact missing prerequisite or decision.
   - Verified failure with the exact recovery state persisted.
-- Treat `review-gate`, `from-pr-review`, and `receiving-code-review` as
-  subordinate judgment/review lanes; do not flatten them into `from-issue`.
 
 ## Steps
 
@@ -70,9 +73,10 @@ artifact is the execution input.
    the dedicated issue branch/worktree and continue execution there.
 5. Implement the smallest safe slice.
 6. Verify locally.
-7. Commit, push, open or update the PR, and include the evidence bundle. Stop
-   there; review, check-run, and merge remain downstream.
-8. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the failure, and the next required recovery contract.
+7. Commit, push, open or update the PR, and include the evidence bundle.
+8. Run `visual-proof` for the final PR head before handoff when the slice is visually inspectable. For clearly non-visual work it may record `n/a`; if a later push changes the head, rerun `visual-proof` before review. Visual proof is evidence only and must not widen implementation scope merely to create a render surface.
+9. Stop there; fresh `review-gate`, check-run, and merge remain downstream.
+10. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the failure, and the next required recovery contract.
 
 ## Do not
 
@@ -80,3 +84,4 @@ artifact is the execution input.
 - Do not emit a second implementation handoff for the same issue.
 - Do not silently discard dirty worktree state.
 - Do not claim progress when a genuine blocker prevents execution.
+- Do not treat `visual-proof` as a second review gate or add out-of-scope product wiring solely to obtain a screenshot.
