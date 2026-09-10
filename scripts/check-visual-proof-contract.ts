@@ -26,7 +26,7 @@ function main(): void {
 
   issues.push(...requireSnippets("skills/visual-proof/SKILL.md", [
     "after the final implementation push",
-    "review-gate independently classifies the current-head evidence as `PROVIDED`, `N/A`, or `MISSING`",
+    "`review-gate` independently classifies the current-head evidence as `PROVIDED`, `N/A`, or `MISSING`",
     "gh pr comment <PR> --body-file <file> --attach",
     "Any later push makes this proof stale",
     "Do not commit transient screenshots/videos to the repository",
