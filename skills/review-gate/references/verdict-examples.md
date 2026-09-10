@@ -16,6 +16,10 @@ blocking-set:
 ### Spec
 - [low] [reject] docs/readme.md — this note is outside the issue scope.
 
+### Visual proof
+- status: N/A
+- backend-only change; no visual runtime surface is affected.
+
 ### Merge preconditions
 - head is still 0123456789abcdef0123456789abcdef01234567
 - all applicable required checks are green on the current head
@@ -41,6 +45,10 @@ blocking-set:
 
 ### Spec
 - [low] [reject] docs/readme.md — this note is outside the issue scope.
+
+### Visual proof
+- status: PROVIDED
+- current-head component screenshot demonstrates the standalone state claimed by the issue.
 
 ### Merge preconditions
 - head is still 0123456789abcdef0123456789abcdef01234567
@@ -69,9 +77,14 @@ rebaseline: yes
 ### Spec
 - [medium] [follow-up-issue] src/metrics.ts — add the optional dashboard work in a new issue.
 
+### Visual proof
+- status: MISSING
+- renderable UI work has no current-head proof; this evidence gap is not part of blocking-set.
+
 ### Merge preconditions
 - head is still 89abcdef0123456789abcdef0123456789abcdef
 - fix-now findings resolved
+- current-head visual proof supplied or independently classified N/A
 
 ### Post-merge
 - confirm Closes #456 closed the issue
@@ -93,6 +106,10 @@ blocking-set:
 
 ### Spec
 - [medium] [follow-up-issue] docs/spec.md — defer the new example to a separate issue.
+
+### Visual proof
+- status: N/A
+- the reviewed change is non-visual.
 
 ### Merge preconditions
 - head is still fedcba9876543210fedcba9876543210fedcba98
@@ -118,6 +135,10 @@ blocking-set:
 
 ### Spec
 - [low] [defer] docs/notes.md — record the downstream follow-up after the blocker clears.
+
+### Visual proof
+- status: N/A
+- no visual runtime behavior is in scope.
 
 ### Merge preconditions
 - head is still 00112233445566778899aabbccddeeff00112233
