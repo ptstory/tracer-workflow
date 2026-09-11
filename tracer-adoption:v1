@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "contract": "tracer-adoption:v1",
+  "reducers": {
+    "required": { "order": ["conflict", "fail", "unverifiable", "pass"], "empty": "reject" },
+    "advisory": { "order": ["conflict", "fail", "unverifiable", "pass"], "empty": "pass" }
+  },
+  "state_mapping": {
+    "required_pass": {
+      "advisory_pass": "adopted",
+      "advisory_fail": "partial",
+      "advisory_unverifiable_or_conflict": "blocked-or-unverifiable"
+    },
+    "required_fail": "not-adopted",
+    "required_unverifiable_or_conflict": "blocked-or-unverifiable",
+    "skipped": "explicit-only"
+  },
+  "invariants": [
+    {
+      "id": "contract.identity",
+      "description": "The file is the canonical tracer-adoption:v1 contract for issue #118.",
+      "status": "required",
+      "evidence": "The file parses as JSON with schema_version 1 and contract tracer-adoption:v1.",
+      "verdicts": {
+        "pass": "The contract identity is exact and stable.",
+        "fail": "The contract identity is missing or mismatched.",
+        "unverifiable": "The file cannot be parsed or read.",
+        "conflict": "A different contract identity claims authority."
+      },
+      "remediation": {
+        "class": "restore",
+        "action": "Restore the tracer-adoption contract artifact."
+      }
+    },
+    {
+      "id": "labels.registry",
+      "description": "Canonical labels map to actual GitHub labels.",
+      "status": "required",
+      "evidence": "The labels array lists every canonical/actual pair.",
+      "verdicts": {
+        "pass": "The canonical label registry matches the repository labels.",
+        "fail": "The repository labels are missing from the canonical registry.",
+        "unverifiable": "The label registry cannot be parsed.",
+        "conflict": "Observed labels disagree with the canonical registry."
+      },
+      "remediation": {
+        "class": "restore",
+        "action": "Restore the canonical-to-actual label mapping."
+      }
+    },
+    {
+      "id": "repo.workflow-pointer",
+      "description": "AGENTS.md and WORKFLOW.md point at the shared workflow pointer.",
+      "status": "required",
+      "evidence": "AGENTS.md contains Label authority: tracer-adoption:v1; WORKFLOW.md contains setup-matt-pocock-skills.",
+      "verdicts": {
+        "pass": "The workflow pointer is present in the repo docs.",
+        "fail": "The workflow pointer is missing from AGENTS.md or WORKFLOW.md.",
+        "unverifiable": "The repo docs cannot be read.",
+        "conflict": "The repo docs point at a different workflow pointer."
+      },
+      "remediation": {
+        "class": "restore",
+        "action": "Restore the workflow pointer contract in AGENTS.md and WORKFLOW.md."
+      }
+    },
+    {
+      "id": "github.access",
+      "description": "The doctor observes GitHub label access in read-only mode.",
+      "status": "advisory",
+      "evidence": "gh label list returns JSON for the repository slug resolved from origin.",
+      "verdicts": {
+        "pass": "The read-only GitHub label probe succeeds.",
+        "fail": "The read-only GitHub label probe fails.",
+        "unverifiable": "GitHub access cannot be probed.",
+        "conflict": "The probe reaches a different repository than origin."
+      },
+      "remediation": {
+        "class": "inspect",
+        "action": "Inspect GitHub CLI access for this repo."
+      }
+    }
+  ],
+  "repo": {
+    "workflow_pointer": "setup-matt-pocock-skills",
+    "evidence": {
+      "agents": "Label authority: tracer-adoption:v1",
+      "workflow": "setup-matt-pocock-skills"
+    }
+  },
+  "github": {
+    "identity": "a GitHub repository slug from origin remote",
+    "access": "read-only label inventory"
+  },
+  "labels": [
+    { "canonical": "needs-triage", "actual": "needs-triage" },
+    { "canonical": "needs-info", "actual": "needs-info" },
+    { "canonical": "ready-for-agent", "actual": "ready-for-agent" },
+    { "canonical": "ready-for-human", "actual": "ready-for-human" },
+    { "canonical": "wontfix", "actual": "wontfix" },
+    { "canonical": "bug", "actual": "bug" },
+    { "canonical": "enhancement", "actual": "enhancement" }
+  ]
+}

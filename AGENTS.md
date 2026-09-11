@@ -12,23 +12,9 @@ GitHub (`gh`). Authoritative for issue scope, acceptance criteria, and state.
 
 main
 
-## Triage label mapping (canonical -> actual)
+## Triage label mapping
 
-The canonical labels are intended to map identically:
-
-```
-needs-triage    -> needs-triage
-needs-info      -> needs-info
-ready-for-agent -> ready-for-agent
-ready-for-human -> ready-for-human
-wontfix         -> wontfix
-bug             -> bug
-enhancement     -> enhancement
-```
-
-Canonical labels were verified or created with the requested colors. Existing
-labels were preserved, including `ready-for-agent` and `wontfix`; do not
-recreate `bug` or `enhancement`.
+The root [`tracer-adoption:v1`](tracer-adoption:v1) artifact is the machine-readable source of truth for canonical-to-actual GitHub label mappings. Do not duplicate that mapping here.
 
 ## Workflow contract
 
