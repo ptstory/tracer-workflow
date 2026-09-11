@@ -28,3 +28,17 @@ and safety rules live in `.agents/repo-context.md`.
 ## TODO
 
 <!-- scaffold leaves repo-specific TODOs here -->
+
+## Agent skills
+
+### Issue tracker
+
+GitHub is the authoritative issue tracker; use `gh` for all issue operations. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+This repo uses the canonical triage labels unchanged: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository. See `docs/agents/domain.md`.
