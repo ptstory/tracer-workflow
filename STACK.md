@@ -2,6 +2,18 @@
 
 Durable append-only record of agent-stack configuration changes and breakage findings, because diagnoses that live only in chat transcripts get re-derived from scratch weeks later.
 
+## 2026-09-11
+
+Findings:
+- OpenCode advertises every discoverable skill description in the system prompt at session start. (disk) On this machine, the advertised descriptions cost 17,793 input tokens: a trivial `opencode run "reply with the single word ok"` at `openai/gpt-5.6-terra`/`high` fell from 35,185 to 17,392 input tokens when skills were removed.
+- Method: single-variable ablation. A clean-config baseline was established; each skill root was moved aside individually; the trivial run was executed; `tokens_input` was read from the newest row in `~/.local/share/opencode/opencode.db`; then the root was restored.
+- Per-directory ablation deltas were `~/.agents/skills` 10,619 tokens across 109 skills, `~/.codex/skills` 7,674 across 286, and `~/.config/opencode/skills` 5,393 across 56. (disk) Their 23,686-token sum exceeds the 17,793-token total because the sets overlap: `.agents` and `.codex` share 31 skill IDs, and `codemap`, `simplify`, and `caveman` are symlinked from `.config/opencode/skills` into `.agents/skills`; each one-root delta therefore overstates its contribution.
+- `permission.skill` with `{ "*": "deny" }` removes the descriptions from the model-facing prompt rather than only blocking invocation. (disk) The deny-all measurement agrees with the ablation total. Wildcards are supported; rules are last-match-wins, with the catch-all first.
+- Cost is driven by skill count, not description length. (disk) The 10,619-token `.agents/skills` delta against 26,971 description characters is about 2.5 characters per token, well below prose ratios, indicating that per-entry name and formatting overhead dominates. The 25 longest descriptions account for roughly 11,600 of the 26,971 characters, so trimming verbose descriptions is a small lever.
+- Against 30-day telemetry of 1,770 sessions, 124M input tokens, and 1.455B cache-read tokens, the measured cost is about 2 percent of token volume. (disk) The material effect is context-window headroom at session start, not quota.
+- Open and unresolved: which copy wins for the 31 duplicate skill IDs; why `~/.codex/skills` is read by OpenCode despite no config or plugin reference; and six broken symlinks, five of which point into `~/Code/vibecoding/messages/skills/`.
+- Next step recorded: `~/.config/opencode/plugins/skill-usage.js` will log skill tool invocations to build an evidence-based allowlist rather than a guessed one.
+
 ## 2026-09-05
 
 Findings:
