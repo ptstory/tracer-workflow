@@ -31,6 +31,13 @@ Candidates enter here before they enter the stack.
 - Reason: not yet researched — recovered from memory, details to be filled from chat archaeology.
 - Taken: nothing
 
+## mattpocock/sandcastle — 2026-09-11
+- Source: mattpocock/sandcastle (MIT, TypeScript library orchestrating sandboxed coding agents via sandcastle.run(); Docker/Podman/Vercel sandbox providers; agent providers for claude-code, codex, pi, cursor, opencode, copilot).
+- Claims: per-run sandbox isolation with three branch strategies (head, merge-to-head, branch); schema-validated structured output extracted from a tagged stdout block with bounded retry that resumes the same session; a split between idle timeout before a completion signal and a grace timeout after it so commits survive a hanging agent process; prompt files with {{KEY}} substitution and !`command` expansion where substituted values are inert; sandbox.exec() for harness-run verification between agent runs.
+- Verdict: take-the-idea
+- Reason: the library assumes a TypeScript harness is the coordination bus, which conflicts with tracer-workflow's GitHub-as-bus design, and opencode is on its non-resumable provider list so the structured-output retry and session fork do not run against the current execution seat. The mechanisms are portable independently of the library.
+- Taken: nothing yet — four mechanisms logged for later evaluation against the verdict contract parser, the AFK dispatcher in #40, prompt interpolation in from-issue/agent-brief, and the gate-readiness workflow.
+
 ## senior-dev persona skill, name forgotten — date unknown
 - Source: recovered from memory
 - Claims: details to be filled from chat archaeology.
