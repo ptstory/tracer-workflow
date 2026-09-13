@@ -1,0 +1,277 @@
+openapi: 3.1.0
+info:
+  title: Review Gate GitHub API
+  version: 1.0.0
+  description: >
+    Narrow GitHub surface for an independent PR reviewer. All operations are
+    read-only except postReviewGateComment, which creates a normal PR timeline
+    comment. No merge, push, ref, label, workflow-dispatch, review-state, or
+    repository-file write endpoints are exposed.
+servers:
+  - url: https://api.github.com
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    Owner:
+      name: owner
+      in: path
+      required: true
+      schema: { type: string }
+    Repo:
+      name: repo
+      in: path
+      required: true
+      schema: { type: string }
+    PullNumber:
+      name: pull_number
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+  schemas:
+    AnyObject:
+      type: object
+      additionalProperties: true
+    AnyArray:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+paths:
+  /repos/{owner}/{repo}/pulls/{pull_number}:
+    get:
+      operationId: getPullRequest
+      summary: Get live pull request metadata including current head SHA.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - $ref: '#/components/parameters/PullNumber'
+      responses:
+        '200':
+          description: Pull request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyObject' }
+
+  /repos/{owner}/{repo}/pulls/{pull_number}/files:
+    get:
+      operationId: listPullRequestFiles
+      summary: List changed files and patches for a pull request. Paginate until complete.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - $ref: '#/components/parameters/PullNumber'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Changed files
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyArray' }
+
+  /repos/{owner}/{repo}/pulls/{pull_number}/commits:
+    get:
+      operationId: listPullRequestCommits
+      summary: List commits belonging to the pull request.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - $ref: '#/components/parameters/PullNumber'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Pull request commits
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyArray' }
+
+  /repos/{owner}/{repo}/issues/{issue_number}:
+    get:
+      operationId: getIssueOrPullRequest
+      summary: Get a linked issue/spec or issue-shaped pull request metadata.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - name: issue_number
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Issue
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyObject' }
+
+  /repos/{owner}/{repo}/issues/{issue_number}/comments:
+    get:
+      operationId: listIssueComments
+      summary: List normal timeline comments on an issue or pull request.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - name: issue_number
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Timeline comments
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyArray' }
+    post:
+      operationId: postReviewGateComment
+      summary: >
+        Post the final canonical Review Gate record as a normal PR timeline
+        comment. Use only on the target pull request and only after re-fetching
+        the PR and confirming the reviewed head SHA is still current.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - name: issue_number
+          in: path
+          required: true
+          description: Must be the target pull request number.
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  description: >
+                    Complete canonical Review Record. First line must be
+                    "## review-gate: <state>" and it must include a head-sha line.
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyObject' }
+
+  /repos/{owner}/{repo}/pulls/{pull_number}/reviews:
+    get:
+      operationId: listPullRequestReviews
+      summary: List formal GitHub reviews for the pull request.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - $ref: '#/components/parameters/PullNumber'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Reviews
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyArray' }
+
+  /repos/{owner}/{repo}/pulls/{pull_number}/comments:
+    get:
+      operationId: listPullRequestReviewComments
+      summary: List line-level review comments on a pull request.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - $ref: '#/components/parameters/PullNumber'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Review comments
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyArray' }
+
+  /repos/{owner}/{repo}/commits/{ref}/check-runs:
+    get:
+      operationId: listCheckRunsForRef
+      summary: List check runs for the exact reviewed commit SHA.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - name: ref
+          in: path
+          required: true
+          description: Exact commit SHA being reviewed.
+          schema: { type: string }
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Check runs
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyObject' }
+
+  /repos/{owner}/{repo}/commits/{ref}/status:
+    get:
+      operationId: getCombinedCommitStatus
+      summary: Get combined commit status for the exact reviewed SHA.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - name: ref
+          in: path
+          required: true
+          description: Exact commit SHA being reviewed.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Combined status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnyObject' }
+
+  /repos/{owner}/{repo}/contents/{path}:
+    get:
+      operationId: getRepositoryContent
+      summary: >
+        Get a repository file or directory at an explicit ref. Use when a patch
+        is missing/truncated or surrounding code is needed to verify a finding.
+      parameters:
+        - $ref: '#/components/parameters/Owner'
+        - $ref: '#/components/parameters/Repo'
+        - name: path
+          in: path
+          required: true
+          schema: { type: string }
+        - name: ref
+          in: query
+          required: true
+          description: Prefer the exact reviewed head SHA.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Repository content
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AnyObject'
+                  - $ref: '#/components/schemas/AnyArray'
