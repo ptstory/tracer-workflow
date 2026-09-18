@@ -8,8 +8,11 @@ issue as written, carrying none of the planning thread's assumptions. Replace
 
 ---
 
-Review `<PR_URL>` against `<ISSUE_URL>` using the superpowers `requesting-code-review`
-skill (producer) and classify each finding with `receiving-code-review` dispositions.
+Review `<PR_URL>` against `<ISSUE_URL>` using the procedure below. This prompt and
+`references/verdict-contract.md` are authoritative; do not depend on external
+`requesting-code-review` or `receiving-code-review` skills. Validate each finding
+against the live diff/code and binding issue, then classify it with the contract
+dispositions.
 
 If this is round `N > 0`, provide these labeled inputs to the reviewer:
 
