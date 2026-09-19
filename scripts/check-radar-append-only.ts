@@ -2,14 +2,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const RADAR_PATH = "RADAR.md";
-const baseRef = process.argv[2];
 
-if (!baseRef) {
-  console.error("usage: bun scripts/check-radar-append-only.ts <base-ref>");
-  process.exit(2);
-}
-
-function splitEntries(text: string): string[] {
+export function splitEntries(text: string): string[] {
   const starts = [...text.matchAll(/^## /gm)].map((match) => match.index!);
 
   if (starts.length === 0) {
@@ -17,43 +11,70 @@ function splitEntries(text: string): string[] {
   }
 
   return starts.map((start, index) =>
-    text.slice(start, starts[index + 1] ?? text.length),
+    text
+      .slice(start, starts[index + 1] ?? text.length)
+      .replace(/(?:\r?\n[ \t]*)+$/u, ""),
   );
 }
 
-const current = readFileSync(RADAR_PATH, "utf8");
+export function findAppendOnlyViolation(
+  baseText: string,
+  currentText: string,
+): string | null {
+  const baseEntries = splitEntries(baseText);
+  const currentEntries = splitEntries(currentText);
 
-let base: string;
-try {
-  base = execFileSync("git", ["show", `${baseRef}:${RADAR_PATH}`], {
-    encoding: "utf8",
-  });
-} catch {
-  console.error(
-    `unable to read ${RADAR_PATH} from base ref ${baseRef}; ensure the base branch was fetched`,
-  );
-  process.exit(2);
+  let cursor = 0;
+
+  for (const entry of baseEntries) {
+    const match = currentEntries.indexOf(entry, cursor);
+
+    if (match === -1) {
+      return entry.split("\n", 1)[0] ?? "unknown entry";
+    }
+
+    cursor = match + 1;
+  }
+
+  return null;
 }
 
-const baseEntries = splitEntries(base);
-const currentEntries = splitEntries(current);
+function main(): void {
+  const baseRef = process.argv[2];
 
-let cursor = 0;
+  if (!baseRef) {
+    console.error("usage: bun scripts/check-radar-append-only.ts <base-ref>");
+    process.exit(2);
+  }
 
-for (const entry of baseEntries) {
-  const match = currentEntries.indexOf(entry, cursor);
+  const current = readFileSync(RADAR_PATH, "utf8");
 
-  if (match === -1) {
-    const heading = entry.split("\n", 1)[0] ?? "unknown entry";
+  let base: string;
+  try {
+    base = execFileSync("git", ["show", `${baseRef}:${RADAR_PATH}`], {
+      encoding: "utf8",
+    });
+  } catch {
     console.error(
-      `${RADAR_PATH} append-only violation: existing entry changed, disappeared, or moved: ${heading}`,
+      `unable to read ${RADAR_PATH} from base ref ${baseRef}; ensure the base branch was fetched`,
+    );
+    process.exit(2);
+  }
+
+  const violation = findAppendOnlyViolation(base, current);
+
+  if (violation) {
+    console.error(
+      `${RADAR_PATH} append-only violation: existing entry changed, disappeared, or moved: ${violation}`,
     );
     process.exit(1);
   }
 
-  cursor = match + 1;
+  console.log(
+    `${RADAR_PATH} append-only check passed: preserved ${splitEntries(base).length} existing entries; current file has ${splitEntries(current).length} entries`,
+  );
 }
 
-console.log(
-  `${RADAR_PATH} append-only check passed: preserved ${baseEntries.length} existing entries; current file has ${currentEntries.length} entries`,
-);
+if (import.meta.main) {
+  main();
+}
