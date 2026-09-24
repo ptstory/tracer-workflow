@@ -19,11 +19,23 @@ components:
   schemas:
     AnyObject:
       type: object
+      properties:
+        _placeholder:
+          type: string
+          description: >
+            Placeholder property for Custom GPT OpenAPI importer compatibility.
+            GitHub responses may contain arbitrary additional fields.
       additionalProperties: true
     AnyArray:
       type: array
       items:
         type: object
+        properties:
+          _placeholder:
+            type: string
+            description: >
+              Placeholder property for Custom GPT OpenAPI importer compatibility.
+              GitHub array items may contain arbitrary additional fields.
         additionalProperties: true
 paths:
   /repos/{owner}/{repo}/pulls/{pull_number}:
