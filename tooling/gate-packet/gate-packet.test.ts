@@ -159,7 +159,7 @@ function runGatePacket(h: Harness, args: string[] = []) {
 
 function gateComment(headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
   return {
-    body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreview-round: 1\nreviewed-files: 1\n`,
+    body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreview-round: 1\nreviewed-files: 1\nblocking-set: ${verdict === "needs-fix" ? "src/app.ts" : ""}\n`,
     createdAt: at,
   };
 }
@@ -373,7 +373,7 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     state.diffs[`${repo}#2`] = { text: "diff --git a/b.txt b/b.txt\n+small\n" };
     writeGhStub(harness, state);
 
-    const result = runGatePacket(harness, ["--stdout", "--budget", "500"]);
+    const result = runGatePacket(harness, ["--stdout", "--budget", "550"]);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");

@@ -5,6 +5,7 @@ type GateComment = {
   headSha: string;
   reviewRound: number;
   reviewedFiles: number;
+  blockingSet: string[];
   commentedAt: string;
 };
 
@@ -42,7 +43,15 @@ function parseGateBody(body: string): Omit<GateComment, "commentedAt"> | null {
   const reviewedFiles = parseIntegerField(body, "reviewed-files");
   if (reviewedFiles === null) return null;
 
-  return { verdict, headSha: headShaMatch[1], reviewRound, reviewedFiles };
+  const blockingSetMatch = body.match(/^blocking-set:[ \t]*([^\r\n]*)\r?$/m);
+  if (!blockingSetMatch) return null;
+  const blockingSet = blockingSetMatch[1].trim()
+    ? blockingSetMatch[1].split(",").map((path) => path.trim())
+    : [];
+  if (blockingSet.some((path) => !path || path.startsWith("/") || path.split("/").includes(".."))) return null;
+  if (verdict !== "needs-fix" && blockingSet.length > 0) return null;
+
+  return { verdict, headSha: headShaMatch[1], reviewRound, reviewedFiles, blockingSet };
 }
 
 function parseGateComment(comments: Comment[]): ParseGateCommentResult {

@@ -18,7 +18,7 @@ describe("parseGateComment", () => {
   test("parses a conforming verdict with its round", () => {
     const comment = parseGateComment([
       {
-        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 3\n",
+        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 3\nblocking-set: src/app.ts\n",
         createdAt: "2026-01-01T00:00:00Z",
       },
     ]);
@@ -30,6 +30,7 @@ describe("parseGateComment", () => {
         headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         reviewRound: 0,
         reviewedFiles: 3,
+        blockingSet: ["src/app.ts"],
         commentedAt: "2026-01-01T00:00:00Z",
       },
     });
@@ -61,6 +62,16 @@ describe("parseGateComment", () => {
         createdAt: "2026-01-04T00:00:00Z",
       },
     });
+  });
+
+  test("ignores a newer marked comment missing blocking-set", () => {
+    const valid = "## review-gate: merge-candidate\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 2\nblocking-set: \n";
+    const latest = latestConformingGateComment([
+      { body: valid, createdAt: "2026-01-01T00:00:00Z" },
+      { body: valid.replace("blocking-set: \n", ""), createdAt: "2026-01-02T00:00:00Z" },
+    ]);
+    expect(latest?.commentedAt).toBe("2026-01-01T00:00:00Z");
+    expect(parseGateBody(valid.replace("blocking-set: \n", ""))).toBeNull();
   });
 
   test("treats a verdict with non-integer review-round as invalid", () => {

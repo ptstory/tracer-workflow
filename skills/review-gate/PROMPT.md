@@ -132,5 +132,8 @@ Rules:
 - If neither path is satisfied, or there is no current-head evidence, emit
   `blocked` rather than green.
 - Older-head results never count.
+- The `review-gate/ready` commit status and the gate-readiness check run are
+  outputs of the advisory gate, not independent readiness evidence. Exclude
+  both from the check-run and status signals used to reach a verdict.
 - Branch protection is not required.
 - Merge remains HITL.

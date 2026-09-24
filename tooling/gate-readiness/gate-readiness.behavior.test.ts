@@ -165,6 +165,7 @@ function runWorkflow(fixture: WorkflowFixture) {
       REPOSITORY: "acme/repo",
       PR_NUMBER: String(fixture.prNumber),
       INPUT_PR_NUMBER: String(fixture.prNumber),
+      GATE_PARSER_PATH: join(repoRoot, "tooling/lib/verdict.ts"),
     },
     encoding: "utf8",
   });
@@ -176,7 +177,7 @@ function runWorkflow(fixture: WorkflowFixture) {
 }
 
 const currentReviewGateComment = {
-  body: "## review-gate: merge-candidate\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 1\nreviewed-files: 2\n",
+  body: "## review-gate: merge-candidate\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 1\nreviewed-files: 2\nblocking-set: \n",
   created_at: "2026-01-01T00:00:00Z",
 };
 
@@ -311,6 +312,33 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(commentLog).not.toContain("ready: false");
   });
 
+  test("ignores the advisory status and a newer malformed verdict", () => {
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "workflow_call",
+      prNumber: 98,
+      pullJson: {
+        head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        body: "Fixes #97",
+        labels: [],
+      },
+      commentsJson: [
+        currentReviewGateComment,
+        {
+          body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 2\nreviewed-files: 2\n",
+          created_at: "2026-01-02T00:00:00Z",
+        },
+      ],
+      checkRunsJson: [{ name: "gate-readiness", app: { slug: "github-actions" }, status: "completed", conclusion: "success" }],
+      statusesJson: [{ context: "review-gate/ready", state: "success", created_at: "2026-01-01T00:00:00Z" }],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- review gate verdict: merge-candidate");
+    expect(commentLog).toContain("- readiness: false");
+    expect(commentLog).toContain("no completed check runs or commit statuses found");
+    expect(ghLog).toContain("/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    expect(ghLog).toContain("\"method\":\"POST\"");
+  });
+
   test("same-name check runs from distinct apps stay separate", () => {
     const { result, commentLog } = runWorkflow({
       eventName: "pull_request",
@@ -325,7 +353,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
       prNumber: 98,
       commentsJson: [
         {
-          body: "## review-gate: merge-candidate\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 1\nreviewed-files: 2\n",
+          body: "## review-gate: merge-candidate\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 1\nreviewed-files: 2\nblocking-set: \n",
           created_at: "2026-01-01T00:00:00Z",
         },
       ],

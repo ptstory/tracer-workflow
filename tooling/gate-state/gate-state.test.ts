@@ -101,7 +101,7 @@ function gateRows(draft: boolean): unknown[] {
       headRefOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       comments: [
         {
-          body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\n",
+          body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/app.ts\n",
           createdAt: "2026-01-01T00:00:00Z",
         },
       ],
@@ -113,7 +113,7 @@ function gateRows(draft: boolean): unknown[] {
       headRefOid: "cccccccccccccccccccccccccccccccccccccccc",
       comments: [
         {
-          body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
+          body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/app.ts\n",
           createdAt: "2026-01-02T00:00:00Z",
         },
       ],
@@ -179,7 +179,7 @@ describe("tooling/gate-state/gate-state.ts", () => {
         isDraft: false,
         comments: [
           {
-            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/app.ts\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
           {
@@ -209,7 +209,7 @@ describe("tooling/gate-state/gate-state.ts", () => {
             headRefOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             comments: [
               {
-                body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\n",
+                body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/app.ts\n",
                 createdAt: "2026-01-01T00:00:00Z",
               },
             ],
@@ -221,7 +221,7 @@ describe("tooling/gate-state/gate-state.ts", () => {
             headRefOid: "cccccccccccccccccccccccccccccccccccccccc",
             comments: [
               {
-                body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
+                body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/app.ts\n",
                 createdAt: "2026-01-02T00:00:00Z",
               },
             ],

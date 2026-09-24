@@ -3,7 +3,6 @@ name: Gate Readiness
 on:
   workflow_call:
     inputs:
-      # workflow_call has no pull_request payload, so callers must provide the PR number explicitly.
       pr-number:
         description: PR number to evaluate.
         required: true
@@ -15,12 +14,21 @@ permissions:
   issues: write # issue comments + labels
   pull-requests: write # PR comment writeback; workflow_call metadata lookup stays read-only via gh api
   checks: read # check-runs lookup
-  statuses: read # commit statuses lookup
+  statuses: write # commit status writeback and lookup
 
 jobs:
   gate-readiness:
     runs-on: ubuntu-latest
     steps:
+      - name: Check out gate parser
+        uses: actions/checkout@v4
+        with:
+          repository: ptstory/tracer-workflow
+          ref: ${{ github.job_workflow_sha || 'gate-v1' }}
+          path: gate-source
+          persist-credentials: false
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
       - name: Evaluate readiness
         shell: bash
         env:
@@ -123,29 +131,16 @@ jobs:
           fi
           comments_json="$(printf '%s' "$comments_json_raw" | jq -s 'add // []')"
 
-          latest_review_gate_json="$(printf '%s' "$comments_json" | jq -c '
-            map(select(.body | startswith("## review-gate:")))
-            | sort_by(.created_at)
-            | last // null
+          review_gate_details="$(printf '%s' "$comments_json" | bun -e '
+            const { latestConformingGateComment } = await import(process.env.GATE_PARSER_PATH || "./gate-source/tooling/lib/verdict.ts");
+            const comments = await Bun.stdin.json();
+            const verdict = latestConformingGateComment(comments.map((comment: { body: string; created_at: string }) => ({ body: comment.body, createdAt: comment.created_at })));
+            console.log(JSON.stringify(verdict));
           ')"
-          review_gate_details="null"
-
-          if [ "$latest_review_gate_json" = "null" ]; then
+          if [ "$review_gate_details" = "null" ]; then
             marker_parse_status="none"
           else
-            review_gate_details="$(printf '%s' "$latest_review_gate_json" | jq -c '
-              try {
-                verdict: (.body | capture("^## review-gate:\\s*(?<verdict>\\S+)").verdict),
-                head_sha: (.body | capture("(?m)^head-sha:\\s*(?<head_sha>[0-9a-f]{40})\\s*$").head_sha),
-                review_round: (.body | capture("(?m)^review-round:\\s*(?<review_round>\\d+)\\s*$").review_round | tonumber),
-                reviewed_files: (.body | capture("(?m)^reviewed-files:\\s*(?<reviewed_files>\\d+)\\s*$").reviewed_files | tonumber)
-              } catch null
-            ')"
-            if [ "$review_gate_details" = "null" ]; then
-              marker_parse_status="invalid"
-            else
-              marker_parse_status="valid"
-            fi
+            marker_parse_status="valid"
           fi
 
           review_gate_state="ungated"
@@ -155,9 +150,9 @@ jobs:
           review_gate_files=""
           if [ "$review_gate_details" != "null" ]; then
             review_gate_verdict="$(printf '%s' "$review_gate_details" | jq -r '.verdict')"
-            review_gate_head_sha="$(printf '%s' "$review_gate_details" | jq -r '.head_sha')"
-            review_gate_round="$(printf '%s' "$review_gate_details" | jq -r '.review_round')"
-            review_gate_files="$(printf '%s' "$review_gate_details" | jq -r '.reviewed_files')"
+            review_gate_head_sha="$(printf '%s' "$review_gate_details" | jq -r '.headSha')"
+            review_gate_round="$(printf '%s' "$review_gate_details" | jq -r '.reviewRound')"
+            review_gate_files="$(printf '%s' "$review_gate_details" | jq -r '.reviewedFiles')"
             if [ "$review_gate_head_sha" = "$head_sha" ]; then
               review_gate_state="current"
             else
@@ -165,19 +160,15 @@ jobs:
             fi
           fi
 
-          # Exact selection rule: ignore only GitHub Actions check-runs from this workflow job
-          # (name: gate-readiness, app.slug: github-actions). They can be in-progress on the
-          # active run or failed/successful on a stale rerun for the same SHA; all other checks
-          # and all commit statuses for the head SHA still participate in readiness gating.
           if ! gh_api_capture check_runs_json_raw "GET repos/$repo/commits/$head_sha/check-runs --paginate" "repos/$repo/commits/$head_sha/check-runs" --paginate; then
             exit 1
           fi
           check_runs_json="$(printf '%s' "$check_runs_json_raw" | jq -s '[.[].check_runs[]?]')"
-          signal_check_runs_json="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.app.slug != "github-actions" or .name != "gate-readiness")]')"
+          signal_check_runs_json="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.app.slug != "github-actions" or ((.name != "gate-readiness") and ((.name // "") | endswith(" / gate-readiness") | not)))]')"
           if ! gh_api_capture statuses_json_raw "GET repos/$repo/commits/$head_sha/statuses --paginate" "repos/$repo/commits/$head_sha/statuses" --paginate; then
             exit 1
           fi
-          statuses_json="$(printf '%s' "$statuses_json_raw" | jq -s 'add // []')"
+          statuses_json="$(printf '%s' "$statuses_json_raw" | jq -s '[.[][] | select(.context != "review-gate/ready")]')"
           current_check_runs_json="$(printf '%s' "$signal_check_runs_json" | jq -c '
             sort_by((.app.slug // ""), (.name // ""), (.run_number // 0), (.run_attempt // 0), (.run_started_at // .started_at // .created_at // ""), (.id // 0))
             | group_by([(.app.slug // ""), (.name // "")])
@@ -288,6 +279,13 @@ jobs:
           else
             gh_api "POST repos/$repo/issues/$pr_number/comments" -X POST "repos/$repo/issues/$pr_number/comments" -f body="$comment_body" >/dev/null
           fi
+
+          status_state="failure"
+          status_description="${failures[0]:-Ready for review gate}"
+          if [ "$ready" = "true" ]; then
+            status_state="success"
+          fi
+          gh_api "POST repos/$repo/statuses/$head_sha" -X POST "repos/$repo/statuses/$head_sha" -f state="$status_state" -f context="review-gate/ready" -f description="${status_description:0:140}" >/dev/null
 
           if [ "$ready" = "true" ]; then
             if [ "$has_ready_label" != "true" ]; then

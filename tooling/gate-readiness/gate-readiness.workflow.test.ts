@@ -48,7 +48,8 @@ describe(".github/workflows/gate-readiness.yml", () => {
 
     expect(script).toContain("gh_api() {");
     expect(script).toContain("gate-readiness: gh api");
-    expect(script).toContain(`signal_check_runs_json="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.app.slug != "github-actions" or .name != "gate-readiness")]')"`);
+    expect(script).toContain('endswith(" / gate-readiness")');
+    expect(script).toContain('select(.context != "review-gate/ready")');
     expect(script).toContain("sort_by((.app.slug // \"\"), (.name // \"\"), (.run_number // 0), (.run_attempt // 0), (.run_started_at // .started_at // .created_at // \"\"), (.id // 0))");
     expect(script).toContain("group_by([(.app.slug // \"\"), (.name // \"\")])");
     expect(script).not.toContain("group_by(.name)");

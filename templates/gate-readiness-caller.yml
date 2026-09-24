@@ -1,0 +1,25 @@
+name: Gate Readiness
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  checks: read
+  statuses: write
+
+jobs:
+  gate-readiness:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '## review-gate:'))
+    uses: ptstory/tracer-workflow/.github/workflows/gate-readiness.yml@gate-v1
+    with:
+      pr-number: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event.issue.number }}
+    secrets: inherit
