@@ -132,5 +132,6 @@ Rules:
 - If neither path is satisfied, or there is no current-head evidence, emit
   `blocked` rather than green.
 - Older-head results never count.
+- A PR with `Door: one-way` cannot receive a ready (`merge-candidate`) verdict and routes to `needs-human`; the Evidence section is only a pointer to verify, never evidence itself.
 - Branch protection is not required.
 - Merge remains HITL.
