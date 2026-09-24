@@ -9,12 +9,12 @@ Closes #<n>
 
 ## Summary
 
-<brief change and reason; use a compact diagram, diff sketch, or tree when it clarifies the change>
+<visual summary: pseudocode block, call tree, component tree, shallow file tree, Mermaid diagram, or diff sketch; optionally one sentence of text; prose alone does not satisfy Summary>
 
 ## Evidence
 
 - Head SHA: <full 40-character PR head SHA>
-- Test node IDs run: <exact node IDs, or "none (no tests run)">
+- Test node IDs exercising changed paths: <only relevant node IDs; if none, one line stating no test exercises the change, not a suite listing>
 - Verification: <link to CI run for this head, or literal command and exit status; include relevant output>
 - Before / after: <failing and passing output, screenshots, or "not applicable" with reason>
 
@@ -27,6 +27,6 @@ Blast Radius: <free-text scope and potential ramifications>
 
 Replace `Door: one-way|two-way` with exactly one of `Door: one-way` or `Door: two-way` on its own line. A one-way door is destructive or difficult to reverse; a two-way door is cheap to roll back. Explain relevant rollback constraints and impacts in Blast Radius, without constraining it to a one-word label.
 
-Bind `Closes #<n>` to the governing issue, not a related issue. Summary should make the key change legible in the issue's domain language; select only the visual form that helps, such as pseudocode for logic, a call tree for flow, a component tree for UI, a shallow file tree for responsibilities, or a diff sketch for a small change.
+Bind `Closes #<n>` to the governing issue, not a related issue. Summary must be a visual: a pseudocode block, call tree, component tree, shallow file tree, Mermaid diagram, or diff sketch, optionally with one sentence of text. Prose alone does not satisfy Summary.
 
-Evidence is a pointer to verification, not proof by assertion. List exact test node IDs actually run (use `none (no tests run)` when applicable) and provide a CI run link tied to the PR head or the literal local command, exit status, and relevant output. For multiple verification steps, list each separately. State the head SHA so local evidence can be checked against the final diff; regenerate the bundle after a rebase or conflict resolution. Prose such as "tests pass" or "coverage added" does not substitute for executable results. Include before/after evidence when applicable, especially for behavior fixes or visual changes, and explain when it is not applicable. Reviewers must open the linked run or verify the command and result against the current head; the PR body itself is never the evidence.
+Evidence is a pointer to verification, not proof by assertion. List only the test node IDs that exercise the changed paths, plus the CI run link for the current head. If no test exercises the change (docs-only, config-only), state that in one line instead of listing the suite. A full-suite count ("124 pass, 0 fail") may appear as one line, never as an enumerated list. For multiple verification steps, list each separately. State the head SHA so local evidence can be checked against the final diff; regenerate the bundle after a rebase or conflict resolution. Prose such as "tests pass" or "coverage added" does not substitute for executable results. Include before/after evidence when applicable, especially for behavior fixes or visual changes, and explain when it is not applicable. Reviewers must open the linked run or verify the command and result against the current head; the PR body itself is never the evidence.
