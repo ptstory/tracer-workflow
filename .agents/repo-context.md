@@ -49,7 +49,7 @@ bun run typecheck
 
 # Review-gate poller smoke run (requires authenticated gh and opencode).
 cd tooling/review-gate-poller
-RG_REPO=<owner/repo> RG_WORKDIR=<repo-working-dir> bun poller.ts
+TRACER_REVIEWER_LOGINS=<comma-separated-logins> RG_REPO=<owner/repo> RG_WORKDIR=<repo-working-dir> bun poller.ts
 
 # Unbacked-work monitor manual invocation; set roots and output explicitly.
 UNBACKED_WORK_ROOTS=<comma-separated-roots> \

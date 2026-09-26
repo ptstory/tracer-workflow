@@ -17,7 +17,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { parseGateComment, type GateComment } from "../lib/verdict";
+import { parseGateComment, reviewerLogins, type GateComment } from "../lib/verdict";
 
 // --- config -------------------------------------------------------------------
 
@@ -25,10 +25,6 @@ const REPO = process.env.RG_REPO; // e.g. "ptstory/themarkergirl.com"
 const STATE_PATH =
   process.env.RG_STATE_PATH ??
   `${process.env.HOME}/.local/state/review-gate/actioned.json`;
-
-// The reviewer identity whose comments we treat as verdicts. If unset, any author's
-// gate-marked comment counts — fine for a single-maintainer repo.
-const REVIEWER_LOGIN = process.env.RG_REVIEWER_LOGIN;
 
 const MAX_ATTEMPTS = 5;
 const BASE_RETRY_DELAY_MS = 60_000;
@@ -86,10 +82,7 @@ function prComments(n: number): Comment[] {
 /** Latest gate verdict on a PR, or null. Latest by comment creation time. */
 function latestVerdict(n: number): GateComment | null {
   const comments = prComments(n);
-  const authoredComments = comments
-    .filter((comment) => !REVIEWER_LOGIN || comment.author.login === REVIEWER_LOGIN)
-    .map((comment) => ({ body: comment.body, createdAt: comment.createdAt }));
-  const parsed = parseGateComment(authoredComments);
+  const parsed = parseGateComment(comments);
   if (parsed.kind === "parsed") return parsed.verdict;
   if (parsed.kind === "invalid") {
     const reason = parsed.comment.body.split(/\r?\n/).find((line) => line.trim()) ?? parsed.comment.body;
@@ -321,6 +314,7 @@ function shouldAttempt(record: StateRecord, now: number): boolean {
 // --- main ---------------------------------------------------------------------
 
 function main(): void {
+  reviewerLogins();
   const state = loadState();
   const now = nowMs();
 

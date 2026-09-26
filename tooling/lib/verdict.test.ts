@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
 import { latestConformingGateComment, parseGateBody, parseGateComment } from "./verdict";
 import type { Verdict } from "./verdict";
@@ -14,11 +14,14 @@ function extractVerdictBlocks(text: string): string[] {
   return [...text.matchAll(/```verdict\s*\n([\s\S]*?)\n```/g)].map((match) => match[1]);
 }
 
+beforeEach(() => { process.env.TRACER_REVIEWER_LOGINS = "reviewer"; });
+
 describe("parseGateComment", () => {
   test("parses a conforming verdict with its round", () => {
     const comment = parseGateComment([
       {
         body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 3\n",
+        author: { login: "reviewer" },
         createdAt: "2026-01-01T00:00:00Z",
       },
     ]);
@@ -35,12 +38,37 @@ describe("parseGateComment", () => {
     });
   });
 
+  test("ignores a newer untrusted marker and reports its author", () => {
+    const warn = console.warn;
+    const messages: string[] = [];
+    console.warn = (message: string) => { messages.push(message); };
+    try {
+      const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n";
+      const comments = [
+        { author: { login: "reviewer" }, body, createdAt: "2026-01-01T00:00:00Z" },
+        { author: { login: "attacker" }, body, createdAt: "2026-01-02T00:00:00Z" },
+      ];
+      expect(parseGateComment(comments).kind).toBe("parsed");
+      expect(latestConformingGateComment(comments)?.commentedAt).toBe("2026-01-01T00:00:00Z");
+      expect(messages).toContain("Ignoring review-gate comment from non-allowlisted author attacker");
+    } finally {
+      console.warn = warn;
+    }
+  });
+
+  test("fails closed without an allowlist", () => {
+    delete process.env.TRACER_REVIEWER_LOGINS;
+    expect(() => parseGateComment([])).toThrow("TRACER_REVIEWER_LOGINS");
+    expect(() => latestConformingGateComment([])).toThrow("TRACER_REVIEWER_LOGINS");
+  });
+
   test("returns none when there is no verdict marker", () => {
     expect(
       parseGateComment([
         {
           body: "not a gate comment",
-          createdAt: "2026-01-03T00:00:00Z",
+          author: { login: "reviewer" },
+        createdAt: "2026-01-03T00:00:00Z",
         },
       ]),
     ).toEqual({ kind: "none" });
@@ -51,13 +79,15 @@ describe("parseGateComment", () => {
       parseGateComment([
         {
           body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreviewed-files: 1\n",
-          createdAt: "2026-01-04T00:00:00Z",
+          author: { login: "reviewer" },
+        createdAt: "2026-01-04T00:00:00Z",
         },
       ]),
     ).toEqual({
       kind: "invalid",
       comment: {
         body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreviewed-files: 1\n",
+        author: { login: "reviewer" },
         createdAt: "2026-01-04T00:00:00Z",
       },
     });
@@ -68,13 +98,15 @@ describe("parseGateComment", () => {
       parseGateComment([
         {
           body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: zero\nreviewed-files: 1\n",
-          createdAt: "2026-01-01T00:00:00Z",
+          author: { login: "reviewer" },
+        createdAt: "2026-01-01T00:00:00Z",
         },
       ]),
     ).toEqual({
       kind: "invalid",
       comment: {
         body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: zero\nreviewed-files: 1\n",
+        author: { login: "reviewer" },
         createdAt: "2026-01-01T00:00:00Z",
       },
     });
@@ -114,7 +146,7 @@ describe("verdict examples", () => {
       expect(parsed.verdict).toBe(marker);
 
       const createdAt = `2026-02-0${index + 1}T00:00:00Z`;
-      const latest = latestConformingGateComment([{ body: block, createdAt }]);
+      const latest = latestConformingGateComment([{ author: { login: "reviewer" }, body: block, createdAt }]);
 
       if (!latest) throw new Error("expected latest conforming verdict");
       expect(latest).toEqual({

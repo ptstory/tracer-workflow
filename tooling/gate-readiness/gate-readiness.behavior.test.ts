@@ -27,6 +27,7 @@ type WorkflowFixture = {
   checkRunsJson: unknown[];
   statusesJson: unknown[];
   blockPulls?: boolean;
+  reviewerLogins?: string;
   failure?: {
     endpointIncludes: string;
     method?: string;
@@ -163,6 +164,7 @@ function runWorkflow(fixture: WorkflowFixture) {
       GITHUB_EVENT_PATH: harness.eventPath,
       GITHUB_TOKEN: "token",
       REPOSITORY: "acme/repo",
+      TRACER_REVIEWER_LOGINS: fixture.reviewerLogins ?? "reviewer",
       PR_NUMBER: String(fixture.prNumber),
       INPUT_PR_NUMBER: String(fixture.prNumber),
     },
@@ -176,11 +178,50 @@ function runWorkflow(fixture: WorkflowFixture) {
 }
 
 const currentReviewGateComment = {
+  user: { login: "reviewer" },
   body: "## review-gate: merge-candidate\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 1\nreviewed-files: 2\n",
   created_at: "2026-01-01T00:00:00Z",
 };
 
 describe(".github/workflows/gate-readiness.yml behavior", () => {
+  test("rejects unset reviewer configuration before reading comments", () => {
+    const { result, commentLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98, reviewerLogins: " , ",
+      commentsJson: [currentReviewGateComment], checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("TRACER_REVIEWER_LOGINS must contain at least one reviewer login");
+    expect(commentLog).toBe("");
+  });
+
+  test("ignores newer non-allowlisted verdicts and reports their author", () => {
+    const { result, commentLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98, reviewerLogins: " other, reviewer ",
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [currentReviewGateComment, {
+        user: { login: "attacker" },
+        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 2\nreviewed-files: 1\n",
+        created_at: "2026-01-02T00:00:00Z",
+      }],
+      checkRunsJson: [], statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- review gate verdict: merge-candidate");
+    expect(commentLog).toContain("- ignored review-gate authors: attacker");
+    expect(commentLog).toContain("- readiness: true");
+  });
+
+  test("an untrusted verdict alone cannot establish readiness", () => {
+    const { result, commentLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [{ ...currentReviewGateComment, user: { login: "attacker" } }],
+      checkRunsJson: [], statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- review gate state: ungated");
+    expect(commentLog).toContain("- readiness: false");
+  });
   test("pull_request uses event payload data and never touches the pulls endpoint", () => {
     const { result, ghLog, commentLog } = runWorkflow({
       eventName: "pull_request",
@@ -325,6 +366,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
       prNumber: 98,
       commentsJson: [
         {
+          user: { login: "reviewer" },
           body: "## review-gate: merge-candidate\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 1\nreviewed-files: 2\n",
           created_at: "2026-01-01T00:00:00Z",
         },
