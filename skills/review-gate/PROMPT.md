@@ -125,6 +125,7 @@ Rules:
     blocking set, and everything else becomes `follow-up-issue`
 - `merge-candidate` only if zero `fix-now` findings remain and the target branch's
   required status-check configuration satisfies one of these paths:
+  Determine the configuration from getBranch (protection.required_status_checks) and getRulesForBranch. If both show no required checks, apply the no-required-check path. If either call fails, emit `blocked` and name the failed call.
   - configured path: all applicable required checks are green at the current
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head
@@ -134,5 +135,8 @@ Rules:
 - Older-head results never count.
 - A PR with `Door: one-way` cannot receive a ready (`merge-candidate`) verdict and routes to `needs-human`; the Evidence section is only a pointer to verify, never evidence itself.
 - Use `skills/from-issue/references/pr-body-contract.md` for the PR body contract.
+  Judge whether the Docs line adequately lists updated documentation or explains
+  why none was needed. If a PR changes behavior and the Docs line is missing or
+  unjustified, emit a `fix-now` finding.
 - Branch protection is not required.
 - Merge remains HITL.
