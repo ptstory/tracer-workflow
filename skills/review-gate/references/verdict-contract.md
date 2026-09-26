@@ -27,15 +27,19 @@ Required fields immediately below the marker:
   that the round's blocking findings are against; empty when the verdict state
   is not `needs-fix`
 - `next-action:` — one concrete copy-pasteable command or invocation for the
-  verdict state; never empty. Readers that do not yet parse this field remain
-  compatible until the follow-up enforcement change lands.
+  verdict state; never empty on newly emitted verdicts. Historical verdicts
+  emitted before this field was required remain valid without it for round
+  history and circuit-breaker derivation. Readers that do not yet parse this
+  field remain compatible until the follow-up enforcement change lands.
 
 Conditional marker immediately below the required fields:
 
 - `rebaseline:` — literal `yes` only on the fresh round-0 verdict after a
   late-created or materially amended binding issue; omitted otherwise
 
-A comment missing any required field is not a verdict and readers ignore it.
+A newly emitted comment missing any required field is not a verdict and readers
+ignore it. Historical comments are judged by the schema in effect when they
+were emitted; the new writer requirement does not invalidate prior verdicts.
 
 ## Comment-only, no ref mutation
 
@@ -118,11 +122,16 @@ Round `N > 0` reviews:
 Derive `review-round` as follows:
 
 - `review-round` equals the number of prior conforming verdict comments on the
-  PR for the current spec baseline — comments carrying the marker and all
-  required fields.
+  PR for the current spec baseline. Count trusted historical comments emitted
+  before `next-action:` became required when they carry the marker and the
+  previously required `head-sha:`, `review-round:`, `reviewed-files:`, and
+  `blocking-set:` fields, even if `next-action:` is absent. Count later comments
+  only when all five fields are present. Preserve these earlier rounds when
+  applying the stale-finding rule and counting corrective rounds for the
+  circuit breaker; the schema change alone is not a rebaseline.
 - The first review of a PR therefore emits `review-round: 0`.
-- Non-conforming comments (missing marker or any required field) are not
-  verdicts and do not increment the round.
+- Comments missing the marker or a field required at the time of emission are
+  not verdicts and do not increment the round.
 - Review responses, disposition comments, and any other PR comment do not
   increment the round.
 - A rebaseline caused by a late-created or materially amended binding issue

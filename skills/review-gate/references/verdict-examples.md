@@ -29,6 +29,21 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 
 ## merge-candidate (no required checks configured, non-draft PR)
 
+For this round-1 example, the prior trusted round-0 verdict was emitted before
+`next-action:` became mandatory. Its historical header was:
+
+```text
+## review-gate: needs-fix
+head-sha: 89abcdef0123456789abcdef0123456789abcdef
+review-round: 0
+reviewed-files: 4
+blocking-set: src/auth.ts
+```
+
+The missing `next-action:` does not erase that valid prior round. The new
+verdict below uses the current writer schema, retains round 1, and counts the
+legacy round when evaluating stale findings and the corrective-round breaker.
+
 ```verdict
 ## review-gate: merge-candidate
 

@@ -101,12 +101,17 @@ Rules:
     and decide the named policy, scope, or circuit-breaker question; never
     launch an automated fix pass.
 - Derive `review-round` as the number of prior conforming verdict comments for
-  the current spec baseline — comments carrying the marker and all required
-  fields. A rebaseline resets the count, and the first review after that emits
-  `review-round: 0` and `rebaseline: yes`.
-- Non-conforming comments are not verdicts and do not increment the round.
-  Review responses, disposition comments, and any other PR comment do not
-  increment the round.
+  the current spec baseline. For historical comments emitted before this
+  `next-action:` requirement, count a trusted comment with the marker and the
+  previously required `head-sha:`, `review-round:`, `reviewed-files:`, and
+  `blocking-set:` fields even without `next-action:`. For newer comments,
+  require all five fields, including `next-action:`. Never reset a round merely
+  because an earlier valid verdict predates this field. A rebaseline resets
+  the count, and the first review after that emits `review-round: 0` and
+  `rebaseline: yes`.
+- Comments not conforming to the schema in effect when emitted are not verdicts
+  and do not increment the round. Review responses, disposition comments, and
+  any other PR comment do not increment the round.
 - If the count cannot be determined, emit `blocked` rather than guessing.
 - If you can't post the comment (connector read-only), output the block and stop —
   do not claim it posted.
