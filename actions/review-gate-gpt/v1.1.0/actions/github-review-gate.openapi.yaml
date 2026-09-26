@@ -16,40 +16,26 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-  parameters:
-    Owner:
-      name: owner
-      in: path
-      required: true
-      schema: { type: string }
-    Repo:
-      name: repo
-      in: path
-      required: true
-      schema: { type: string }
-    PullNumber:
-      name: pull_number
-      in: path
-      required: true
-      schema: { type: integer, minimum: 1 }
-    PerPage:
-      name: per_page
-      in: query
-      required: false
-      schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
-    Page:
-      name: page
-      in: query
-      required: false
-      schema: { type: integer, minimum: 1, default: 1 }
   schemas:
     AnyObject:
       type: object
+      properties:
+        _placeholder:
+          type: string
+          description: >
+            Placeholder property for Custom GPT OpenAPI importer compatibility.
+            GitHub responses may contain arbitrary additional fields.
       additionalProperties: true
     AnyArray:
       type: array
       items:
         type: object
+        properties:
+          _placeholder:
+            type: string
+            description: >
+              Placeholder property for Custom GPT OpenAPI importer compatibility.
+              GitHub array items may contain arbitrary additional fields.
         additionalProperties: true
 paths:
   /repos/{owner}/{repo}/branches/{branch}:
@@ -57,8 +43,14 @@ paths:
       operationId: getBranch
       summary: Get branch protection and required status-check contexts for the target branch.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
         - name: branch
           in: path
           required: true
@@ -75,8 +67,14 @@ paths:
       operationId: getRulesForBranch
       summary: Get active ruleset rules for the target branch, including required_status_checks rules.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
         - name: branch
           in: path
           required: true
@@ -93,9 +91,18 @@ paths:
       operationId: getPullRequest
       summary: Get live pull request metadata including current head SHA.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
-        - $ref: '#/components/parameters/PullNumber'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
+        - name: pull_number
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
       responses:
         '200':
           description: Pull request
@@ -108,11 +115,26 @@ paths:
       operationId: listPullRequestFiles
       summary: List changed files and patches for a pull request. Paginate until complete.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
-        - $ref: '#/components/parameters/PullNumber'
-        - $ref: '#/components/parameters/PerPage'
-        - $ref: '#/components/parameters/Page'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
+        - name: pull_number
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
       responses:
         '200':
           description: Changed files
@@ -125,11 +147,26 @@ paths:
       operationId: listPullRequestCommits
       summary: List commits belonging to the pull request.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
-        - $ref: '#/components/parameters/PullNumber'
-        - $ref: '#/components/parameters/PerPage'
-        - $ref: '#/components/parameters/Page'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
+        - name: pull_number
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
       responses:
         '200':
           description: Pull request commits
@@ -142,8 +179,14 @@ paths:
       operationId: getIssueOrPullRequest
       summary: Get a linked issue/spec or issue-shaped pull request metadata.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
         - name: issue_number
           in: path
           required: true
@@ -160,14 +203,26 @@ paths:
       operationId: listIssueComments
       summary: List normal timeline comments on an issue or pull request.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
         - name: issue_number
           in: path
           required: true
           schema: { type: integer, minimum: 1 }
-        - $ref: '#/components/parameters/PerPage'
-        - $ref: '#/components/parameters/Page'
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
       responses:
         '200':
           description: Timeline comments
@@ -181,8 +236,14 @@ paths:
         comment. Use only on the target pull request and only after re-fetching
         the PR and confirming the reviewed head SHA is still current.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
         - name: issue_number
           in: path
           required: true
@@ -215,11 +276,26 @@ paths:
       operationId: listPullRequestReviews
       summary: List formal GitHub reviews for the pull request.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
-        - $ref: '#/components/parameters/PullNumber'
-        - $ref: '#/components/parameters/PerPage'
-        - $ref: '#/components/parameters/Page'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
+        - name: pull_number
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
       responses:
         '200':
           description: Reviews
@@ -232,11 +308,26 @@ paths:
       operationId: listPullRequestReviewComments
       summary: List line-level review comments on a pull request.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
-        - $ref: '#/components/parameters/PullNumber'
-        - $ref: '#/components/parameters/PerPage'
-        - $ref: '#/components/parameters/Page'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
+        - name: pull_number
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
       responses:
         '200':
           description: Review comments
@@ -249,15 +340,27 @@ paths:
       operationId: listCheckRunsForRef
       summary: List check runs for the exact reviewed commit SHA.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
         - name: ref
           in: path
           required: true
           description: Exact commit SHA being reviewed.
           schema: { type: string }
-        - $ref: '#/components/parameters/PerPage'
-        - $ref: '#/components/parameters/Page'
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
       responses:
         '200':
           description: Check runs
@@ -270,8 +373,14 @@ paths:
       operationId: getCombinedCommitStatus
       summary: Get combined commit status for the exact reviewed SHA.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
         - name: ref
           in: path
           required: true
@@ -291,8 +400,14 @@ paths:
         Get a repository file or directory at an explicit ref. Use when a patch
         is missing/truncated or surrounding code is needed to verify a finding.
       parameters:
-        - $ref: '#/components/parameters/Owner'
-        - $ref: '#/components/parameters/Repo'
+        - name: owner
+          in: path
+          required: true
+          schema: { type: string }
+        - name: repo
+          in: path
+          required: true
+          schema: { type: string }
         - name: path
           in: path
           required: true
