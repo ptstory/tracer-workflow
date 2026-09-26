@@ -2,19 +2,19 @@
 name: from-pr-review
 description: >
   Process code-review feedback on an existing GitHub PR: read the review
-  threads, apply the fixes that receiving-code-review approves, verify against
+  threads, apply the fixes approved under references/disposition-rules.md, verify against
   real check-runs for the new head SHA, reply to each thread, re-push, and emit a
   handoff. This is the mechanical return leg of the review loop. It does NOT
-  decide whether feedback is valid — every judgment call is delegated to
-  receiving-code-review. Use after a reviewer (requesting-code-review, ChatGPT,
+  decide whether feedback is valid without following
+  references/disposition-rules.md. Use after a reviewer (requesting-code-review, ChatGPT,
   or human) has left feedback on a PR that needs to be addressed.
 ---
 
 # from-pr-review
 
-Plumbing for the review return leg. `receiving-code-review` is the brain; this is
+Plumbing for the review return leg. `references/disposition-rules.md` is the brain; this is
 the hands. Never decide whether a review item is good — collect the items,
-delegate each to `receiving-code-review`, execute its verdict, prove the result
+apply `references/disposition-rules.md` to each, execute its verdict, prove the result
 against actual check-run state, and hand back.
 
 ## Inputs
@@ -27,13 +27,13 @@ against actual check-run state, and hand back.
   the check-run gate and HITL/AFK rules in `WORKFLOW.md`). HITL issues: human
   merges. AFK issues: merge is a distinct step outside this skill.
 - **Never resolve a thread you did not act on.** A reply that says "fixed" must
-  correspond to a pushed change or an explicit deferral verdict from
-  `receiving-code-review`.
+  correspond to a pushed change or an explicit deferral verdict under
+  `references/disposition-rules.md`.
 - **Never assert readiness from reported output.** Readiness comes from check-run
   state for the head SHA you just pushed, read via `gh`/API. A local "tests pass"
   is evidence for the bundle, not a readiness verdict.
-- Do not open follow-up issues silently — only when `receiving-code-review`
-  returns a `follow-up-issue` verdict, and record the created issue number in the
+- Do not open follow-up issues silently — only when `references/disposition-rules.md`
+  yields a `follow-up-issue` verdict, and record the created issue number in the
   handoff.
 
 ## Steps
@@ -52,21 +52,27 @@ against actual check-run state, and hand back.
    thread id, file/area, the reviewer's ask, current state. Before building the
    ledger, read `review-round:` from the latest verdict comment and apply the
    round-aware rules in
-   `skills/review-gate/references/verdict-contract.md`. On `needs-human`, stop
+   `skills/review-gate/references/verdict-contract.md`. Read this file from the repo
+   when running inside tracer-workflow; otherwise fetch it with
+   `gh api repos/ptstory/tracer-workflow/contents/skills/review-gate/references/verdict-contract.md -H "Accept: application/vnd.github.raw"`.
+   If neither works, stop; never proceed without the contract. On `needs-human`, stop
    and hand back; do not run a fix pass at any SHA. On round `N > 0`, apply the
    contract's stale-finding rule and its correctness/security exception.
    Non-actionable chatter is marked and skipped, not dropped.
 
 4. **Delegate judgment and record the disposition ledger.** For each ledger row,
-   hand the item to `receiving-code-review` and record the returned disposition
+   apply `references/disposition-rules.md` and record the returned disposition
    ledger entry before any fix work begins. Each row must preserve the finding as
    the reviewer stated it, the severity the reviewer assigned, the returned
    disposition, and one line of reasoning for that disposition. Reviewer severity
    is input to judgment, not the judgment itself; a reviewer-marked fix-now may
    come back `follow-up-issue`. Use the canonical disposition vocabulary from
    `skills/review-gate/references/verdict-contract.md`: `fix-now`,
-   `follow-up-issue`, `defer`, `reject`, `needs-human`. Do not override the
-   returned disposition. Do not add "good catch" framing — `receiving-code-review`
+   `follow-up-issue`, `defer`, `reject`, `needs-human`. Read this file from the repo
+   when running inside tracer-workflow; otherwise fetch it with
+   `gh api repos/ptstory/tracer-workflow/contents/skills/review-gate/references/verdict-contract.md -H "Accept: application/vnd.github.raw"`.
+   If neither works, stop; never proceed without the contract. Do not override the
+   returned disposition. Do not add "good catch" framing — `references/disposition-rules.md`
    forbids it and so does this skill.
 
 5. **Plan the minimal response pass.** Build the fixer batch ONLY from rows whose
@@ -112,7 +118,7 @@ against actual check-run state, and hand back.
 
 ## Do not
 
-- Do not decide feedback validity — that is `receiving-code-review`.
+- Do not decide feedback validity — that follows `references/disposition-rules.md`.
 - Do not merge.
 - Do not claim readiness off local or reported output.
 - Do not resolve threads you did not address.
