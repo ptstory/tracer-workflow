@@ -357,3 +357,13 @@ Findings recorded at the time. All four remained unfixed until 2026-08-18:
   2.2.8.
 - NORTH_STAR.md, revised 2026-07-23, was confirmed absent from disk anywhere
   under ~/Code. The document governing stage sequencing is lost.
+
+## 2026-09-26
+
+Findings and changes:
+- Herdr/Crush native integration: Crush reports pane state to Herdr only when `HERDR_ENV=1`, `HERDR_SOCKET_PATH`, and `HERDR_PANE_ID` are all set (source: charmbracelet/crush `internal/herdr/client.go`). If any is missing, it disables itself and logs only at debug level. (session) Every pane showed `agent_status "unknown"` and `herdr agent list` was empty because the pre-existing Herdr panes lacked the `HERDR_*` environment variables. Why they lacked them is unknown. A freshly split pane had all of them, and Crush launched there registered as `crush`, status idle. Diagnostic: `env | grep -i herdr` inside the pane. Fix: close old panes, launch Crush only in new ones.
+- herdr skill: removed from `npx skills` management with `npx skills remove -g -s herdr -y`. Now written from the installed binary with `herdr --skill` (herdr 0.9.1) to `~/.agents/skills/herdr/SKILL.md`, symlinked from the Crush and Claude skill directories. (disk) The repo-sourced copy had drifted from the binary: it lacked the `--machine` section and the calling-pane default for `pane split`.
+- brag: removed from the skills lockfile with `npx skills remove -g -s brag -y`. The 2026-09-25 move to `~/.agents/skills-disabled/brag` had not removed it from the lockfile, so a manual `npx skills upgrade` on 2026-09-26 reinstalled it into `~/.agents/skills`, where Crush loads it. The parked copy remains.
+- Daily skills job: `~/.local/bin/skills-autoupdate` runs under LaunchAgent `com.perrystory.skills-autoupdate` at 09:07, logging to `~/Library/Logs/skills-autoupdate.log`. It refreshes the herdr skill from the binary, runs `npx --yes skills update -g -y`, and prints a WARNING line if `~/.agents/skills/brag` reappears.
+- Homebrew: `brew autoupdate start 1d --upgrade`, cleanup off. The Crush and OpenCode taps were trusted so they upgrade too. Measurement note: agent CLI binaries can now change daily; running sessions keep the old binary until restarted.
+- Not changed: `herdr integration status` reports the claude (v9 < v10) and opencode (v11 < v12) hooks outdated.
