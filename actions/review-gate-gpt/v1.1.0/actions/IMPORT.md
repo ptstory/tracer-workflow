@@ -14,4 +14,6 @@ The token's `repo` scope grants broader GitHub permissions than the Action expos
 
 ## Versioning
 
+`v1.1.0` was amended once on 2026-09-26 after #159 merged a schema that the Custom GPT importer rejected because of parameter `$ref`s and property-less `AnyObject` and `AnyArray` schemas. No import of the original schema ever succeeded, so the pinned version was corrected in place. The immutability rule applies from this amendment forward.
+
 Treat `v1.1.0` as immutable. A schema change requires a new version path rather than editing this schema in place. Import the new pinned raw URL only after that version is reviewed and merged.
