@@ -32,8 +32,8 @@
         <string>ptstory/themarkergirl.com</string>
         <key>RG_WORKDIR</key>
         <string>/Users/perrystory/Code/vibecoding/themarkergirl.com</string>
-        <!-- optional: restrict verdicts to one reviewer login -->
-        <!-- <key>RG_REVIEWER_LOGIN</key><string>ptstory</string> -->
+        <key>TRACER_REVIEWER_LOGINS</key>
+        <string>REPLACE_WITH_REVIEWER_LOGIN</string>
         <!-- gh and opencode need PATH; launchd's default PATH is minimal -->
         <key>PATH</key>
         <string>/opt/homebrew/bin:/Users/perrystory/.bun/bin:/usr/bin:/bin:/usr/local/bin</string>

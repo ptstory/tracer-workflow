@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execFileSync } from "node:child_process";
-import { latestConformingGateComment, type GateComment } from "../lib/verdict";
+import { latestConformingGateComment, reviewerLogins, type GateComment } from "../lib/verdict";
 
 const REPOS = [
   "ptstory/core-tweaks",
@@ -14,6 +14,7 @@ const REPOS = [
 ] as const;
 
 type PRComment = {
+  author: { login: string } | null;
   body: string;
   createdAt: string;
 };
@@ -88,6 +89,7 @@ function classifyGateState(repo: string, pr: OpenPR): GateState {
 }
 
 function collectGateStates(repos: readonly string[] = REPOS): GateState[] {
+  reviewerLogins();
   const rows: GateState[] = [];
 
   for (const repo of repos) {

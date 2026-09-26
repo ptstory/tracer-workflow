@@ -75,11 +75,12 @@ esac
   );
 }
 
-function runGateState(h: Harness, args: string[] = []) {
+function runGateState(h: Harness, args: string[] = [], reviewerLogins = "reviewer") {
   return spawnSync("bun", ["tooling/gate-state/gate-state.ts", ...args], {
     cwd: repoRoot,
     env: {
       ...process.env,
+      TRACER_REVIEWER_LOGINS: reviewerLogins,
       PATH: `${h.binDir}:${process.env.PATH ?? ""}`,
     },
     encoding: "utf8",
@@ -102,6 +103,7 @@ function gateRows(draft: boolean): unknown[] {
       comments: [
         {
           body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\n",
+          author: { login: "reviewer" },
           createdAt: "2026-01-01T00:00:00Z",
         },
       ],
@@ -114,6 +116,7 @@ function gateRows(draft: boolean): unknown[] {
       comments: [
         {
           body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
+          author: { login: "reviewer" },
           createdAt: "2026-01-02T00:00:00Z",
         },
       ],
@@ -126,11 +129,20 @@ describe("tooling/gate-state/gate-state.ts", () => {
   let harness: Harness;
 
   beforeEach(() => {
+    process.env.TRACER_REVIEWER_LOGINS = "reviewer";
     harness = makeHarness();
   });
 
   afterEach(() => {
     rmSync(harness.root, { recursive: true, force: true });
+  });
+
+  test("fails closed before querying PRs without reviewer configuration", () => {
+    writeGhStub(harness, {});
+    const result = runGateState(harness, ["--json"], "");
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("TRACER_REVIEWER_LOGINS must contain at least one reviewer login");
+    expect(readFileSync(harness.ghLog, "utf8")).toBe("");
   });
 
   test("classifies ungated, current, and stale PRs in the default table", () => {
@@ -180,11 +192,13 @@ describe("tooling/gate-state/gate-state.ts", () => {
         comments: [
           {
             body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreview-round: 0\nreviewed-files: 1\n",
-            createdAt: "2026-01-01T00:00:00Z",
+            author: { login: "reviewer" },
+          createdAt: "2026-01-01T00:00:00Z",
           },
           {
             body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreviewed-files: 1\n",
-            createdAt: "2026-01-02T00:00:00Z",
+            author: { login: "reviewer" },
+          createdAt: "2026-01-02T00:00:00Z",
           },
         ],
       }).gateState,
@@ -210,7 +224,8 @@ describe("tooling/gate-state/gate-state.ts", () => {
             comments: [
               {
                 body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\n",
-                createdAt: "2026-01-01T00:00:00Z",
+                author: { login: "reviewer" },
+          createdAt: "2026-01-01T00:00:00Z",
               },
             ],
             isDraft: true,
@@ -222,7 +237,8 @@ describe("tooling/gate-state/gate-state.ts", () => {
             comments: [
               {
                 body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
-                createdAt: "2026-01-02T00:00:00Z",
+                author: { login: "reviewer" },
+          createdAt: "2026-01-02T00:00:00Z",
               },
             ],
             isDraft: false,

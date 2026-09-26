@@ -101,6 +101,7 @@ function runPoller(h: Harness, extraEnv: Record<string, string> = {}) {
       ...process.env,
       PATH: `${h.binDir}:${process.env.PATH ?? ""}`,
       RG_REPO: "acme/repo",
+      TRACER_REVIEWER_LOGINS: "review-bot",
       RG_STATE_PATH: h.statePath,
       RG_WORKDIR: h.workdir,
       ...extraEnv,
@@ -147,6 +148,13 @@ describe("tooling/review-gate-poller/poller.ts", () => {
 
   afterEach(() => {
     rmSync(harness.root, { recursive: true, force: true });
+  });
+
+  test("fails closed when reviewer allowlist is unset", () => {
+    const result = runPoller(harness, { TRACER_REVIEWER_LOGINS: "" });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("TRACER_REVIEWER_LOGINS must contain at least one reviewer login");
+    expect(readFileSync(harness.ghLog, "utf8")).toBe("");
   });
 
   test("writes durable in-progress state before launching opencode", () => {

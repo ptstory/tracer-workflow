@@ -6,10 +6,11 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { REPOS } from "../gate-state/gate-state";
+import { latestGateComment } from "./gate-packet";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
-type Comment = { body: string; createdAt: string };
+type Comment = { author: { login: string }; body: string; createdAt: string };
 
 type ListPR = {
   number: number;
@@ -151,6 +152,7 @@ function runGatePacket(h: Harness, args: string[] = []) {
     cwd: repoRoot,
     env: {
       ...process.env,
+      TRACER_REVIEWER_LOGINS: "reviewer",
       PATH: `${h.binDir}:${process.env.PATH ?? ""}`,
     },
     encoding: "utf8",
@@ -159,6 +161,7 @@ function runGatePacket(h: Harness, args: string[] = []) {
 
 function gateComment(headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
   return {
+    author: { login: "reviewer" },
     body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreview-round: 1\nreviewed-files: 1\n`,
     createdAt: at,
   };
@@ -166,6 +169,7 @@ function gateComment(headSha: string, verdict = "needs-fix", at = "2026-01-01T00
 
 function invalidGateComment(headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
   return {
+    author: { login: "reviewer" },
     body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreviewed-files: 1\n`,
     createdAt: at,
   };
@@ -175,12 +179,19 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
   let harness: Harness;
 
   beforeEach(() => {
+    process.env.TRACER_REVIEWER_LOGINS = "reviewer";
     harness = makeHarness();
     writePbcopyStub(harness);
   });
 
   afterEach(() => {
     rmSync(harness.root, { recursive: true, force: true });
+  });
+
+  test("returns only trusted prior verdicts even when an untrusted verdict is newer", () => {
+    const trusted = gateComment("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const untrusted = { ...gateComment("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "needs-fix", "2026-01-02T00:00:00Z"), author: { login: "attacker" } };
+    expect(latestGateComment([trusted, untrusted])).toEqual(trusted);
   });
 
   test("filters drafts and current PRs and copies the remaining packets to the clipboard by default", () => {
