@@ -8,7 +8,23 @@ type GateComment = {
   commentedAt: string;
 };
 
-type Comment = { body: string; createdAt: string };
+type Comment = { author: { login: string } | null; body: string; createdAt: string };
+
+function reviewerLogins(): Set<string> {
+  const logins = new Set((process.env.TRACER_REVIEWER_LOGINS ?? "").split(",").map((login) => login.trim().toLowerCase()).filter(Boolean));
+  if (logins.size === 0) throw new Error("TRACER_REVIEWER_LOGINS must contain at least one reviewer login");
+  return logins;
+}
+
+function trustedComments(comments: Comment[]): Comment[] {
+  const logins = reviewerLogins();
+  return comments.filter((comment) => {
+    if (!comment.body.startsWith("## review-gate:")) return false;
+    if (comment.author?.login && logins.has(comment.author.login.toLowerCase())) return true;
+    console.warn(`Ignoring review-gate comment from non-allowlisted author ${comment.author?.login ?? "unknown"}`);
+    return false;
+  });
+}
 
 const VALID_VERDICTS = new Set<Verdict>(["needs-fix", "merge-candidate", "needs-human", "blocked"]);
 
@@ -48,8 +64,7 @@ function parseGateBody(body: string): Omit<GateComment, "commentedAt"> | null {
 function parseGateComment(comments: Comment[]): ParseGateCommentResult {
   let latestMarked: Comment | null = null;
 
-  for (const comment of comments) {
-    if (!comment.body.startsWith("## review-gate:")) continue;
+  for (const comment of trustedComments(comments)) {
 
     if (!latestMarked || comment.createdAt >= latestMarked.createdAt) {
       latestMarked = comment;
@@ -67,8 +82,7 @@ function parseGateComment(comments: Comment[]): ParseGateCommentResult {
 function latestConformingGateComment(comments: Comment[]): GateComment | null {
   let latest: GateComment | null = null;
 
-  for (const comment of comments) {
-    if (!comment.body.startsWith("## review-gate:")) continue;
+  for (const comment of trustedComments(comments)) {
 
     const parsed = parseGateBody(comment.body);
     if (!parsed) continue;
@@ -81,5 +95,5 @@ function latestConformingGateComment(comments: Comment[]): GateComment | null {
   return latest;
 }
 
-export type { Verdict, GateComment };
-export { latestConformingGateComment, parseGateBody, parseGateComment };
+export type { Verdict, GateComment, Comment };
+export { latestConformingGateComment, parseGateBody, parseGateComment, reviewerLogins };

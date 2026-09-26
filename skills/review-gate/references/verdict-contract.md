@@ -13,7 +13,10 @@ A gate verdict is a PR comment whose body starts with:
 ```
 
 `<state>` ∈ `merge-candidate | needs-fix | needs-human | blocked`. Any PR comment
-without this exact prefix is not a verdict and is ignored.
+without this exact prefix is not a verdict and is ignored. A verdict is valid only
+when its GitHub comment author is in the configured `TRACER_REVIEWER_LOGINS`
+comma-separated reviewer allowlist. Readers fail closed if it is unset and report
+header-matching comments from other authors as ignored.
 
 Required fields immediately below the marker:
 

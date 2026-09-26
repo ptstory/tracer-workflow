@@ -18,7 +18,7 @@ Requires `bun`, authenticated `gh`, and `opencode` on PATH.
 ```
 # smoke-test by hand first
 cd tooling/review-gate-poller
-RG_REPO=<owner/repo> RG_WORKDIR=<repo working dir> bun poller.ts
+TRACER_REVIEWER_LOGINS=<comma-separated-logins> RG_REPO=<owner/repo> RG_WORKDIR=<repo working dir> bun poller.ts
 
 # then install the launchd job (edit paths + env in the plist first)
 mkdir -p ~/.local/state/review-gate
@@ -33,7 +33,7 @@ launchctl load ~/Library/LaunchAgents/com.tracer.review-gate-poller.plist
 | `RG_REPO` | yes | `owner/repo` to poll |
 | `RG_WORKDIR` | yes | repo working directory where the fix pass runs |
 | `RG_STATE_PATH` | no | idempotency state; defaults under `~/.local/state` |
-| `RG_REVIEWER_LOGIN` | no | restrict accepted verdicts to one comment author |
+| `TRACER_REVIEWER_LOGINS` | yes | comma-separated GitHub reviewer logins; unset or empty rejects verdicts |
 
 ## Notes
 

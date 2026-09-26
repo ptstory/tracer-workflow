@@ -2,11 +2,11 @@
 
 import { execFileSync } from "node:child_process";
 import { collectGateStates, type GateState } from "../gate-state/gate-state";
-import { parseGateComment } from "../lib/verdict";
+import { parseGateBody, parseGateComment, reviewerLogins, type Comment } from "../lib/verdict";
 
 type PRDetails = {
   body: string;
-  comments: Array<{ body: string; createdAt: string }>;
+  comments: Comment[];
 };
 
 type Packet = {
@@ -77,17 +77,12 @@ function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }
 
-function latestGateComment(comments: Array<{ body: string; createdAt: string }>): { body: string; createdAt: string } | null {
-  let latest: { body: string; createdAt: string } | null = null;
-
-  for (const comment of comments) {
-    if (!comment.body.startsWith("## review-gate:")) continue;
-    if (!latest || comment.createdAt >= latest.createdAt) latest = comment;
-  }
-
-  if (!latest) return null;
-  const parsed = parseGateComment([latest]);
-  return parsed.kind === "parsed" ? latest : null;
+function latestGateComment(comments: Comment[]): Comment | null {
+  const logins = reviewerLogins();
+  const ordered = [...comments].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const parsed = parseGateComment(ordered);
+  if (parsed.kind !== "parsed") return null;
+  return ordered.find((comment) => comment.createdAt === parsed.verdict.commentedAt && !!comment.author?.login && logins.has(comment.author.login.toLowerCase()) && parseGateBody(comment.body)?.headSha === parsed.verdict.headSha) ?? null;
 }
 
 function warn(message: string): void {

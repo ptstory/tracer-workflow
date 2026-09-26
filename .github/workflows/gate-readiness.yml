@@ -28,6 +28,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           INPUT_PR_NUMBER: ${{ inputs.pr-number }}
           REPOSITORY: ${{ github.repository }}
+          TRACER_REVIEWER_LOGINS: ${{ vars.TRACER_REVIEWER_LOGINS }}
         run: |
           set -euo pipefail
 
@@ -37,6 +38,10 @@ jobs:
             pr_number="${INPUT_PR_NUMBER:?}"
           fi
           repo="${REPOSITORY:?}"
+          if [ -z "$(printf '%s' "${TRACER_REVIEWER_LOGINS:-}" | tr -d '[:space:],')" ]; then
+            printf 'gate-readiness: TRACER_REVIEWER_LOGINS must contain at least one reviewer login\n' >&2
+            exit 1
+          fi
           marker='<!-- gate-readiness:bot -->'
           comment_marker='## gate-readiness'
 
@@ -123,11 +128,18 @@ jobs:
           fi
           comments_json="$(printf '%s' "$comments_json_raw" | jq -s 'add // []')"
 
-          latest_review_gate_json="$(printf '%s' "$comments_json" | jq -c '
-            map(select(.body | startswith("## review-gate:")))
+          trusted_reviewers_json="$(printf '%s' "$TRACER_REVIEWER_LOGINS" | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$"; "") | ascii_downcase | select(length > 0))')"
+          ignored_reviewers="$(printf '%s' "$comments_json" | jq -r --argjson reviewers "$trusted_reviewers_json" '
+            [.[] | select(.body | startswith("## review-gate:")) | select((.user.login // "" | ascii_downcase) as $login | $reviewers | index($login) == null) | (.user.login // "unknown")] | unique | join(", ")
+          ')"
+          latest_review_gate_json="$(printf '%s' "$comments_json" | jq -c --argjson reviewers "$trusted_reviewers_json" '
+            map(select(.body | startswith("## review-gate:")) | select((.user.login // "" | ascii_downcase) as $login | $reviewers | index($login) != null))
             | sort_by(.created_at)
             | last // null
           ')"
+          if [ -n "$ignored_reviewers" ]; then
+            printf 'gate-readiness: ignored review-gate comments from non-allowlisted authors: %s\n' "$ignored_reviewers" >&2
+          fi
           review_gate_details="null"
 
           if [ "$latest_review_gate_json" = "null" ]; then
@@ -252,6 +264,7 @@ jobs:
             "- review gate state: $review_gate_state"
             "- review gate verdict: $review_gate_verdict"
             "- latest marker parse: $marker_parse_status"
+            "- ignored review-gate authors: ${ignored_reviewers:-none}"
           )
           if [ "$review_gate_details" != "null" ]; then
             comment_lines+=("- latest valid verdict: $review_gate_verdict (head-sha: $review_gate_head_sha, review-round: $review_gate_round, reviewed-files: $review_gate_files)")
