@@ -92,6 +92,31 @@ jobs:
             fi
           }
 
+          classify_check_run_evidence() {
+            local check_runs_json="$1"
+            local check_run_total check_run_pending check_run_failed
+
+            check_run_total="$(printf '%s' "$check_runs_json" | jq 'length')"
+            if [ "$check_run_total" -eq 0 ]; then
+              printf '%s' "absent"
+              return 0
+            fi
+
+            check_run_pending="$(printf '%s' "$check_runs_json" | jq '[.[] | select(.status != "completed")] | length')"
+            if [ "$check_run_pending" -gt 0 ]; then
+              printf '%s' "pending"
+              return 0
+            fi
+
+            check_run_failed="$(printf '%s' "$check_runs_json" | jq '[.[] | select(.status == "completed" and ((.conclusion // "") != "success"))] | length')"
+            if [ "$check_run_failed" -gt 0 ]; then
+              printf '%s' "failed/cancelled"
+              return 0
+            fi
+
+            printf '%s' "passed"
+          }
+
           pr_metadata_source="workflow_call gh api"
           gh_token_source="secrets.GITHUB_TOKEN"
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
@@ -178,6 +203,7 @@ jobs:
             exit 1
           fi
           statuses_json="$(printf '%s' "$statuses_json_raw" | jq -s 'add // []')"
+          check_run_evidence_state="$(classify_check_run_evidence "$signal_check_runs_json")"
           current_check_runs_json="$(printf '%s' "$signal_check_runs_json" | jq -c '
             sort_by((.app.slug // ""), (.name // ""), (.run_number // 0), (.run_attempt // 0), (.run_started_at // .started_at // .created_at // ""), (.id // 0))
             | group_by([(.app.slug // ""), (.name // "")])
@@ -247,6 +273,7 @@ jobs:
             ""
             "- PR: #$pr_number"
             "- head-sha: $head_sha"
+            "- check-run evidence state: $check_run_evidence_state"
             "- PR metadata source: $pr_metadata_source"
             "- auth path: GH_TOKEN -> $gh_token_source"
             "- review gate state: $review_gate_state"

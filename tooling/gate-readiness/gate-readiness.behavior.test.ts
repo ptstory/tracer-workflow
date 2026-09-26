@@ -180,6 +180,13 @@ const currentReviewGateComment = {
   created_at: "2026-01-01T00:00:00Z",
 };
 
+function reviewGateComment(headSha: string, createdAt = "2026-01-01T00:00:00Z") {
+  return {
+    body: `## review-gate: merge-candidate\nhead-sha: ${headSha}\nreview-round: 1\nreviewed-files: 2\n`,
+    created_at: createdAt,
+  };
+}
+
 describe(".github/workflows/gate-readiness.yml behavior", () => {
   test("pull_request uses event payload data and never touches the pulls endpoint", () => {
     const { result, ghLog, commentLog } = runWorkflow({
@@ -311,66 +318,98 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(commentLog).not.toContain("ready: false");
   });
 
-  test("same-name check runs from distinct apps stay separate", () => {
-    const { result, commentLog } = runWorkflow({
-      eventName: "pull_request",
-      eventPayload: {
-        pull_request: {
-          number: 98,
-          head: { sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
-          body: "Fixes #97",
-          labels: [],
-        },
-      },
-      prNumber: 98,
-      commentsJson: [
-        {
-          body: "## review-gate: merge-candidate\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 1\nreviewed-files: 2\n",
-          created_at: "2026-01-01T00:00:00Z",
-        },
-      ],
-      checkRunsJson: [
-        {
-          id: 11,
-          name: "build",
-          app: { slug: "actions/first" },
-          status: "completed",
-          conclusion: "failure",
-          run_started_at: "2026-01-04T00:00:00Z",
-          started_at: "2026-01-04T00:00:00Z",
-          completed_at: "2026-01-04T00:02:00Z",
-        },
-        {
-          id: 12,
-          name: "build",
-          app: { slug: "actions/second" },
-          status: "completed",
-          conclusion: "success",
-          run_started_at: "2026-01-05T00:00:00Z",
-          started_at: "2026-01-05T00:00:00Z",
-          completed_at: "2026-01-05T00:01:00Z",
-        },
-        {
-          id: 13,
-          name: "gate-readiness",
-          app: { slug: "github-actions" },
-          status: "completed",
-          conclusion: "failure",
-          run_started_at: "2026-01-06T01:00:00Z",
-          started_at: "2026-01-06T01:00:00Z",
-          completed_at: "2026-01-06T01:01:00Z",
-        },
-      ],
-      statusesJson: [
-        {
-          context: "ci",
-          state: "success",
-          created_at: "2026-01-05T00:03:00Z",
-        },
-      ],
-    });
+  test("classifies check-run evidence and reports it in the comment body", () => {
+    const reviewedHeadSha = "cccccccccccccccccccccccccccccccccccccccc";
 
-    expect(result.status, result.stderr).toBe(0);
-    expect(commentLog).toContain("- readiness: false");
+    const cases = [
+      { label: "absent", checkRunsJson: [], expected: "absent" },
+      {
+        label: "pending",
+        checkRunsJson: [
+          {
+            id: 21,
+            name: "build",
+            app: { slug: "github-actions" },
+            status: "in_progress",
+            run_started_at: "2026-01-07T00:00:00Z",
+            started_at: "2026-01-07T00:00:00Z",
+            check_suite: { pull_requests: [] },
+          },
+        ],
+        expected: "pending",
+      },
+      {
+        label: "failed",
+        checkRunsJson: [
+          {
+            id: 22,
+            name: "build",
+            app: { slug: "github-actions" },
+            status: "completed",
+            conclusion: "failure",
+            run_started_at: "2026-01-07T00:00:00Z",
+            started_at: "2026-01-07T00:00:00Z",
+            completed_at: "2026-01-07T00:03:00Z",
+            check_suite: { pull_requests: [] },
+          },
+        ],
+        expected: "failed/cancelled",
+      },
+      {
+        label: "cancelled",
+        checkRunsJson: [
+          {
+            id: 23,
+            name: "build",
+            app: { slug: "github-actions" },
+            status: "completed",
+            conclusion: "cancelled",
+            run_started_at: "2026-01-07T00:00:00Z",
+            started_at: "2026-01-07T00:00:00Z",
+            completed_at: "2026-01-07T00:03:00Z",
+            check_suite: { pull_requests: [] },
+          },
+        ],
+        expected: "failed/cancelled",
+      },
+      {
+        label: "passed",
+        checkRunsJson: [
+          {
+            id: 24,
+            name: "build",
+            app: { slug: "github-actions" },
+            status: "completed",
+            conclusion: "success",
+            run_started_at: "2026-01-07T00:00:00Z",
+            started_at: "2026-01-07T00:00:00Z",
+            completed_at: "2026-01-07T00:03:00Z",
+            check_suite: { pull_requests: [] },
+          },
+        ],
+        expected: "passed",
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const { result, commentLog } = runWorkflow({
+        eventName: "pull_request",
+        eventPayload: {
+          pull_request: {
+            number: 98,
+            head: { sha: reviewedHeadSha },
+            body: "Fixes #97",
+            labels: [],
+          },
+        },
+        prNumber: 98,
+        commentsJson: [reviewGateComment(reviewedHeadSha)],
+        checkRunsJson: testCase.checkRunsJson as unknown as unknown[],
+        statusesJson: [],
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(commentLog).toContain(`- check-run evidence state: ${testCase.expected}`);
+    }
   });
 });
