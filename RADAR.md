@@ -44,3 +44,10 @@ Candidates enter here before they enter the stack.
 - Verdict: undecided
 - Reason: not yet researched — recovered from memory, details to be filled from chat archaeology.
 - Taken: nothing
+
+## Necmttn/ax — 2026-08-23 seen, 2026-09-26 decided
+- Source: webfuse-com/awesome-autoresearch list; github.com/Necmttn/ax (AGPL-3.0-only with a separate commercial license; TypeScript + Bun, embedded DuckDB graph plus SQLite sidecar, Effect pipeline; 104 stars on 2026-09-26).
+- Claims: local-first ingest of Claude Code, Codex, Pi, Omp, OpenCode and Cursor sessions plus local git history and GitHub PRs; ships as skills plus an MCP server; `ax project context --json` before work and `ax project verify --json` before reporting done; typed hook authoring for Claude Code and Codex; accepted proposals get verdicts (adopted, ignored, regressed, partial) at +3, +10 and +30 sessions per project.
+- Verdict: adopt, as the ingest, storage and measurement layer under the retro-learnings instincts work.
+- Reason: the per-proposal verdicts are the measurement retro-learnings never had. No Crush support upstream, and the execution seat is Crush; a local Crush reader matched a real project database exactly. ax's own session-context step runs only when the agent calls it, the pull shape that went unused under OpenCode, so push injection (a Crush PreToolUse hook returning `context` once per session) stays in retro-learnings. No ax code is copied into retro-learnings because of the AGPL. Full record: ptstory/retro-learnings DECISIONS.md, 2026-09-26.
+- Taken: local spike branch `spike/crush-ingest` (commit 49484f1, not pushed): 89/89 sessions, 3,587/3,587 tool calls, 97/97 errors and 33/33 subagent links against one project's `crush.db` on 2026-09-24. No Crush issues or PRs on Necmttn/ax as of that date. Frozen-copy parity and the injection hook are still to do.
