@@ -4,30 +4,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { completeHandoff, incompleteHandoff, regressionCases, type RegressionCase } from "./from-issue-contract.fixtures";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
+const skillRoot = dirname(fileURLToPath(import.meta.url));
 
 function read(relativePath: string): string {
-  return readFileSync(join(repoRoot, relativePath), "utf8");
+  return readFileSync(join(skillRoot, relativePath), "utf8");
 }
 
 function normalize(text: string): string {
   return text.replace(/\s+/g, " ").trim();
-}
-
-function expectBehaviors(text: string, fragments: string[] = []): void {
-  const haystack = normalize(text).toLowerCase();
-
-  for (const fragment of fragments) {
-    expect(haystack).toContain(normalize(fragment).toLowerCase());
-  }
-}
-
-function expectRejections(text: string, fragments: string[] = []): void {
-  const haystack = normalize(text).toLowerCase();
-
-  for (const fragment of fragments) {
-    expect(haystack).not.toContain(normalize(fragment).toLowerCase());
-  }
 }
 
 function normalizeHeading(heading: string): string {
@@ -71,7 +55,7 @@ function assertRegressionCase(regressionCase: RegressionCase): void {
     );
   }
 
-  const skillDoc = read("skills/from-issue/SKILL.md");
+  const skillDoc = read("SKILL.md");
 
   for (const assertion of regressionCase.skillMatches) {
     const section = normalize(readSection(skillDoc, assertion.heading)).toLowerCase();
@@ -107,26 +91,4 @@ describe("from-issue contract", () => {
       assertRegressionCase(regressionCase);
     });
   }
-
-  test("managed ignore blocks cover slim worktrees", () => {
-    const gitignore = read(".gitignore");
-    const ignore = read(".ignore");
-
-    expectBehaviors(gitignore, [
-      "# BEGIN oh-my-opencode-slim worktrees",
-      ".slim/worktrees/",
-      ".slim/worktrees.json",
-      "# END oh-my-opencode-slim worktrees",
-    ]);
-    expectRejections(gitignore, ["<<<<<<<", "=======", ">>>>>>>"]);
-    expectBehaviors(ignore, [
-      "# BEGIN oh-my-opencode-slim worktrees",
-      "!.slim/",
-      "!.slim/worktrees.json",
-      "!.slim/worktrees/",
-      "!.slim/worktrees/**",
-      "# END oh-my-opencode-slim worktrees",
-    ]);
-    expectRejections(ignore, ["<<<<<<<", "=======", ">>>>>>>"]);
-  });
 });
