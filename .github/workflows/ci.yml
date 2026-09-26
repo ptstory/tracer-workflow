@@ -42,6 +42,16 @@ jobs:
       - name: Check review-gate contract
         run: bun scripts/check-review-gate-contract.ts
 
+  gpt-openapi-importer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Check Custom GPT OpenAPI importer compatibility
+        run: bun scripts/check-gpt-openapi-importer.ts
+
   radar:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
