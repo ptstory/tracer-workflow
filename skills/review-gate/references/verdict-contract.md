@@ -26,6 +26,9 @@ Required fields immediately below the marker:
 - `blocking-set:` — comma-separated repo-relative file paths naming the files
   that the round's blocking findings are against; empty when the verdict state
   is not `needs-fix`
+- `next-action:` — one concrete copy-pasteable command or invocation for the
+  verdict state; never empty. Readers that do not yet parse this field remain
+  compatible until the follow-up enforcement change lands.
 
 Conditional marker immediately below the required fields:
 
@@ -40,6 +43,20 @@ The reviewer posts comments. It never pushes, merges, edits refs, or changes
 labels. GitHub blocks a formal REQUEST_CHANGES review on a self-authored PR anyway,
 so the state lives in comment text, not in `reviewDecision`. Do not read
 `gh pr view --json reviewDecision` for the verdict — read the comment body.
+
+## Next action by verdict state
+
+Use one state-specific `next-action:` template per verdict, with real PR
+references and the reviewed SHA substituted:
+
+- `needs-fix`: `next-action: from-pr-review <PR_URL>` in a new fixer session
+  for this round, never the implementing session.
+- `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
+  for a human to run only after confirming current-head checks and authority.
+- `blocked`: `next-action: gh pr checks N` if current-head checks are pending;
+  otherwise one exact command to inspect or resolve the named blocker.
+- `needs-human`: `next-action: gh pr view N --web` so a human can make the
+  named decision. Never send an automated fixer to this state.
 
 ## Verdict comments are append-only
 

@@ -121,6 +121,10 @@ from any stage in any tool by pointing that stage at the relevant GitHub
 artifact. The same property keeps it tool-agnostic across ChatGPT, Claude, and
 OpenCode.
 
+Reviewer: fresh session every round. Fixer: a new session for every needs-fix
+round, never the session that implemented the PR. Round state lives on GitHub
+(verdict comments, blocking set), not in session context.
+
 Resume entry points:
 
 | State on GitHub | Resume with |
