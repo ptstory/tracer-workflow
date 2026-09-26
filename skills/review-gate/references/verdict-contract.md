@@ -52,9 +52,13 @@ references and the reviewed SHA substituted:
 - `needs-fix`: `next-action: from-pr-review <PR_URL>` in a new fixer session
   for this round, never the implementing session.
 - `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
-  for a human to run only after confirming current-head checks and authority.
-- `blocked`: `next-action: gh pr checks N` if current-head checks are pending;
-  otherwise one exact command to inspect or resolve the named blocker.
+  only for a non-draft PR, for a human to run after confirming current-head
+  checks and authority.
+- `blocked`: `next-action: gh pr ready N` for a draft PR that otherwise meets
+  merge-candidate criteria. A human runs it, then requests a fresh review-gate
+  verdict on the current head before merging. Use `next-action: gh pr checks N`
+  if current-head checks are pending; otherwise use one exact command to
+  inspect or resolve the named blocker.
 - `needs-human`: `next-action: gh pr view N --web` so a human can make the
   named decision. Never send an automated fixer to this state.
 
@@ -200,6 +204,9 @@ configuration.
   exercises the changed paths.
 - If neither path is satisfied, or there is no current-head evidence, the verdict
   is `blocked`.
+- A draft PR is `blocked` even if its checks satisfy a readiness path. Name
+  draft status as the blocker; a human marks it ready and requests a fresh
+  verdict on the current head before merging.
 - Older-head results never count.
 - Branch protection is not required.
 - Merge remains HITL.
@@ -210,8 +217,8 @@ added coverage is an evidence inconsistency and must be reported as `blocked`.
 
 ## What the reader does per state
 
-- `merge-candidate` + SHA current → eligible to merge; human still owns the
-  button for HITL.
+- `merge-candidate` + SHA current + non-draft PR → eligible to merge; human
+  still owns the button for HITL.
 - `needs-fix` + SHA current → run the fix pass on `fix-now` findings via
   `skills/from-pr-review/references/disposition-rules.md`; any push invalidates this verdict and requires a
   fresh review.

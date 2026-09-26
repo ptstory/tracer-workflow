@@ -1,6 +1,6 @@
 # review-gate verdict examples
 
-## merge-candidate (configured required checks)
+## merge-candidate (configured required checks, non-draft PR)
 
 ```verdict
 ## review-gate: merge-candidate
@@ -27,7 +27,7 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 - next eligible ready-for-agent issue
 ```
 
-## merge-candidate (no required checks configured)
+## merge-candidate (no required checks configured, non-draft PR)
 
 ```verdict
 ## review-gate: merge-candidate
@@ -48,6 +48,33 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 - head is still 0123456789abcdef0123456789abcdef01234567
 - no required checks are configured on the target branch
 - at least one green CI/check run on the current head exercises the changed paths
+
+### Post-merge
+- confirm Closes #123 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## blocked (draft PR with green checks)
+
+```verdict
+## review-gate: blocked
+
+head-sha: 0123456789abcdef0123456789abcdef01234567
+review-round: 0
+reviewed-files: 4
+blocking-set:
+next-action: gh pr ready 123
+
+### Standards
+- No blocking findings.
+
+### Spec
+- No blocking findings.
+
+### Merge preconditions
+- head is still 0123456789abcdef0123456789abcdef01234567
+- checks satisfy the current-head readiness path, but the PR is draft
+- a human marks the PR ready and requests a fresh verdict before merging
 
 ### Post-merge
 - confirm Closes #123 closed the issue
