@@ -134,5 +134,8 @@ Rules:
 - Older-head results never count.
 - A PR with `Door: one-way` cannot receive a ready (`merge-candidate`) verdict and routes to `needs-human`; the Evidence section is only a pointer to verify, never evidence itself.
 - Use `skills/from-issue/references/pr-body-contract.md` for the PR body contract.
+  Judge whether the Docs line adequately lists updated documentation or explains
+  why none was needed. If a PR changes behavior and the Docs line is missing or
+  unjustified, emit a `fix-now` finding.
 - Branch protection is not required.
 - Merge remains HITL.
