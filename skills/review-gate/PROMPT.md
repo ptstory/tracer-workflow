@@ -125,6 +125,7 @@ Rules:
     blocking set, and everything else becomes `follow-up-issue`
 - `merge-candidate` only if zero `fix-now` findings remain and the target branch's
   required status-check configuration satisfies one of these paths:
+  Determine the configuration from getBranch (protection.required_status_checks) and getRulesForBranch. If both show no required checks, apply the no-required-check path. If either call fails, emit `blocked` and name the failed call.
   - configured path: all applicable required checks are green at the current
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head
