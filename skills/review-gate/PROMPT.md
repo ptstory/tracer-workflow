@@ -58,6 +58,7 @@ head-sha: <full 40-char SHA you reviewed>
 review-round: <0-based integer>
 reviewed-files: <n>
 blocking-set: <comma-separated repo-relative file paths; empty unless needs-fix>
+next-action: <one command or invocation matching the verdict state>
 rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 
 ### Standards
@@ -76,13 +77,25 @@ rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 ```
 
 Rules:
-- The `head-sha`, `review-round`, `reviewed-files`, and `blocking-set` lines are
-  mandatory. Emit them exactly in that parser shape.
+- The `head-sha`, `review-round`, `reviewed-files`, `blocking-set`, and
+  `next-action` lines are mandatory. Emit them exactly in that parser shape.
 - Emit `blocking-set:` on every verdict. It is empty unless the verdict is
   `needs-fix`, in which case it lists the repo-relative file paths named by the
   round's blocking findings.
 - Emit `rebaseline: yes` only on the fresh round-0 verdict after a late-created
   or materially amended binding issue. Omit it otherwise.
+- Emit `next-action:` on every verdict using exactly one of these state templates,
+  substituting the resolved PR number, URL, reviewed SHA, or specific blocker:
+  - `needs-fix`: `next-action: from-pr-review <PR_URL>` (start a new fixer
+    session for this round, not the session that implemented the PR).
+  - `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
+    (a human runs this only after rechecking the current head and check-run gate).
+  - `blocked`: `next-action: gh pr checks N` when waiting for current-head
+    checks; for another blocker, use one exact command that obtains the missing
+    evidence or repairs the blocker, not a merge or fix invocation.
+  - `needs-human`: `next-action: gh pr view N --web` for a human to inspect
+    and decide the named policy, scope, or circuit-breaker question; never
+    launch an automated fix pass.
 - Derive `review-round` as the number of prior conforming verdict comments for
   the current spec baseline — comments carrying the marker and all required
   fields. A rebaseline resets the count, and the first review after that emits

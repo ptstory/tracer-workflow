@@ -9,6 +9,7 @@ head-sha: 0123456789abcdef0123456789abcdef01234567
 review-round: 0
 reviewed-files: 4
 blocking-set:
+next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef0123456789abcdef01234567
 
 ### Standards
 - [low] [defer] src/logger.ts — logging is noisy but not blocking.
@@ -35,6 +36,7 @@ head-sha: 0123456789abcdef0123456789abcdef01234567
 review-round: 1
 reviewed-files: 4
 blocking-set:
+next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef0123456789abcdef01234567
 
 ### Standards
 - [low] [defer] src/logger.ts — logging is noisy but not blocking.
@@ -61,6 +63,7 @@ head-sha: 89abcdef0123456789abcdef0123456789abcdef
 review-round: 0
 reviewed-files: 7
 blocking-set: src/auth.ts
+next-action: from-pr-review https://github.com/ptstory/tracer-workflow/pull/456
 rebaseline: yes
 
 ### Standards
@@ -87,6 +90,7 @@ head-sha: fedcba9876543210fedcba9876543210fedcba98
 review-round: 3
 reviewed-files: 9
 blocking-set:
+next-action: gh pr view 789 --web
 
 ### Standards
 - [high] [fix-now] src/api.ts — regression in the write path remains the human's blocking set.
@@ -112,6 +116,7 @@ head-sha: 00112233445566778899aabbccddeeff00112233
 review-round: 0
 reviewed-files: 2
 blocking-set:
+next-action: gh pr checks 101
 
 ### Standards
 - [high] [needs-human] src/integration.ts — the blocker is external and cannot be resolved here.
