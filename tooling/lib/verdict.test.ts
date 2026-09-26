@@ -117,8 +117,25 @@ describe("verdict examples", () => {
   const blocks = extractVerdictBlocks(verdictExamples);
   const mergeCandidateBlocks = blocks.filter((block) => /^## review-gate:\s*merge-candidate\s*$/m.test(block));
 
-  test("contains five conforming verdict blocks", () => {
-    expect(blocks).toHaveLength(5);
+  test("contains six conforming verdict blocks", () => {
+    expect(blocks).toHaveLength(6);
+  });
+
+  test("includes a draft-safe blocked verdict", () => {
+    const draftBlock = blocks.find((block) => block.includes("next-action: gh pr ready 123"));
+    expect(draftBlock).toBeDefined();
+    expect(parseGateBody(draftBlock ?? "")?.verdict).toBe("blocked");
+  });
+
+  test("documents round continuity from a legacy verdict to the current writer schema", () => {
+    const legacyHeader = verdictExamples.match(/```text\n(## review-gate: needs-fix\n[\s\S]*?)\n```/)?.[1];
+    expect(legacyHeader).toBeDefined();
+    expect(legacyHeader).toContain("review-round: 0");
+    expect(legacyHeader).toContain("blocking-set: src/auth.ts");
+    expect(legacyHeader).not.toContain("next-action:");
+    expect(verdictExamples).toContain("The missing `next-action:` does not erase that valid prior round.");
+    expect(parseGateBody(mergeCandidateBlocks[1])?.reviewRound).toBe(1);
+    expect(mergeCandidateBlocks[1]).toContain("next-action: gh pr merge 123");
   });
 
   test("includes both merge-candidate examples and they parse", () => {

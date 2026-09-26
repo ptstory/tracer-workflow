@@ -58,6 +58,7 @@ head-sha: <full 40-char SHA you reviewed>
 review-round: <0-based integer>
 reviewed-files: <n>
 blocking-set: <comma-separated repo-relative file paths; empty unless needs-fix>
+next-action: <one command or invocation matching the verdict state>
 rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 
 ### Standards
@@ -76,20 +77,41 @@ rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 ```
 
 Rules:
-- The `head-sha`, `review-round`, `reviewed-files`, and `blocking-set` lines are
-  mandatory. Emit them exactly in that parser shape.
+- The `head-sha`, `review-round`, `reviewed-files`, `blocking-set`, and
+  `next-action` lines are mandatory. Emit them exactly in that parser shape.
 - Emit `blocking-set:` on every verdict. It is empty unless the verdict is
   `needs-fix`, in which case it lists the repo-relative file paths named by the
   round's blocking findings.
 - Emit `rebaseline: yes` only on the fresh round-0 verdict after a late-created
   or materially amended binding issue. Omit it otherwise.
+- Emit `next-action:` on every verdict using exactly one of these state templates,
+  substituting the resolved PR number, URL, reviewed SHA, or specific blocker:
+  - `needs-fix`: `next-action: from-pr-review <PR_URL>` (start a new fixer
+    session for this round, not the session that implemented the PR).
+  - `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
+    (only for a non-draft PR; a human runs this after rechecking the current
+    head and check-run gate).
+  - `blocked`: `next-action: gh pr ready N` for a draft PR that otherwise meets
+    merge-candidate criteria (human-run; request a fresh review-gate verdict
+    after marking ready, before merging). Use `next-action: gh pr checks N` when
+    waiting for current-head checks; for another blocker, use one exact command
+    that obtains the missing evidence or repairs the blocker, not a merge or fix
+    invocation.
+  - `needs-human`: `next-action: gh pr view N --web` for a human to inspect
+    and decide the named policy, scope, or circuit-breaker question; never
+    launch an automated fix pass.
 - Derive `review-round` as the number of prior conforming verdict comments for
-  the current spec baseline — comments carrying the marker and all required
-  fields. A rebaseline resets the count, and the first review after that emits
-  `review-round: 0` and `rebaseline: yes`.
-- Non-conforming comments are not verdicts and do not increment the round.
-  Review responses, disposition comments, and any other PR comment do not
-  increment the round.
+  the current spec baseline. For historical comments emitted before this
+  `next-action:` requirement, count a trusted comment with the marker and the
+  previously required `head-sha:`, `review-round:`, `reviewed-files:`, and
+  `blocking-set:` fields even without `next-action:`. For newer comments,
+  require all five fields, including `next-action:`. Never reset a round merely
+  because an earlier valid verdict predates this field. A rebaseline resets
+  the count, and the first review after that emits `review-round: 0` and
+  `rebaseline: yes`.
+- Comments not conforming to the schema in effect when emitted are not verdicts
+  and do not increment the round. Review responses, disposition comments, and
+  any other PR comment do not increment the round.
 - If the count cannot be determined, emit `blocked` rather than guessing.
 - If you can't post the comment (connector read-only), output the block and stop —
   do not claim it posted.
@@ -132,6 +154,9 @@ Rules:
     exercises the changed paths
 - If neither path is satisfied, or there is no current-head evidence, emit
   `blocked` rather than green.
+- If the PR is draft, emit `blocked` even when checks satisfy a readiness path.
+  Name draft status as the blocker and direct a human to mark it ready; after
+  that transition, require a fresh verdict on the current head before merging.
 - Older-head results never count.
 - A PR with `Door: one-way` cannot receive a ready (`merge-candidate`) verdict and routes to `needs-human`; the Evidence section is only a pointer to verify, never evidence itself.
 - Use `skills/from-issue/references/pr-body-contract.md` for the PR body contract.

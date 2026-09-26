@@ -19,7 +19,14 @@ against actual check-run state, and hand back.
 
 ## Inputs
 
-- A PR reference (URL or number). If absent, refuse — do not guess which PR.
+- Resolve the PR in order: (a) use an explicit PR URL or number; (b) if absent,
+  run `gh pr view --json number,url,headRefName,headRefOid` for the current branch;
+  (c) if neither resolves, list open PRs labeled `gate:needs-fix` and stop,
+  printing the exact rerun command `from-pr-review <PR_URL>` for the selected PR.
+  Do not choose a PR from the list automatically. The first output line must
+  state `owner/repo#N`, the head SHA, and the resolution path used (`explicit`
+  or `current branch`). If unresolved, the first output line must state that
+  PR resolution failed and the path attempted; never invent an identity or SHA.
 
 ## Boundaries
 
@@ -35,6 +42,13 @@ against actual check-run state, and hand back.
 - Do not open follow-up issues silently — only when `references/disposition-rules.md`
   yields a `follow-up-issue` verdict, and record the created issue number in the
   handoff.
+- Start a new fixer session for each `needs-fix` round, never the session that
+  implemented the PR. Read round state from GitHub verdict comments and blocking
+  sets rather than session context.
+- Uncommitted or unpushed changes are never a valid terminal state. If a blocker
+  is within this skill's own steps, perform that step instead of reporting it as
+  blocked. If an external prerequisite cannot be satisfied, report the exact
+  blocker without claiming the pass is complete.
 
 ## Steps
 
@@ -114,7 +128,11 @@ against actual check-run state, and hand back.
     any follow-up issues created, and the single readiness line — **ready** only
     if the gate is green, otherwise **blocked-on:** with the specific red/pending
     checks or open deferrals. Never "looks good" prose in place of the gate
-    result.
+    result. Every report, including blocked and unresolved-PR reports, ends
+    with `Next action:` followed by one copy-pasteable command or invocation,
+    or `nothing — done` when no action remains. For a pushed fix, name the
+    fresh-session `review-gate <PR_URL>` invocation; never instruct a merge
+    from this skill.
 
 ## Do not
 

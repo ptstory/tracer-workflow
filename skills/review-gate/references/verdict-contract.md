@@ -26,13 +26,20 @@ Required fields immediately below the marker:
 - `blocking-set:` — comma-separated repo-relative file paths naming the files
   that the round's blocking findings are against; empty when the verdict state
   is not `needs-fix`
+- `next-action:` — one concrete copy-pasteable command or invocation for the
+  verdict state; never empty on newly emitted verdicts. Historical verdicts
+  emitted before this field was required remain valid without it for round
+  history and circuit-breaker derivation. Readers that do not yet parse this
+  field remain compatible until the follow-up enforcement change lands.
 
 Conditional marker immediately below the required fields:
 
 - `rebaseline:` — literal `yes` only on the fresh round-0 verdict after a
   late-created or materially amended binding issue; omitted otherwise
 
-A comment missing any required field is not a verdict and readers ignore it.
+A newly emitted comment missing any required field is not a verdict and readers
+ignore it. Historical comments are judged by the schema in effect when they
+were emitted; the new writer requirement does not invalidate prior verdicts.
 
 ## Comment-only, no ref mutation
 
@@ -40,6 +47,24 @@ The reviewer posts comments. It never pushes, merges, edits refs, or changes
 labels. GitHub blocks a formal REQUEST_CHANGES review on a self-authored PR anyway,
 so the state lives in comment text, not in `reviewDecision`. Do not read
 `gh pr view --json reviewDecision` for the verdict — read the comment body.
+
+## Next action by verdict state
+
+Use one state-specific `next-action:` template per verdict, with real PR
+references and the reviewed SHA substituted:
+
+- `needs-fix`: `next-action: from-pr-review <PR_URL>` in a new fixer session
+  for this round, never the implementing session.
+- `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
+  only for a non-draft PR, for a human to run after confirming current-head
+  checks and authority.
+- `blocked`: `next-action: gh pr ready N` for a draft PR that otherwise meets
+  merge-candidate criteria. A human runs it, then requests a fresh review-gate
+  verdict on the current head before merging. Use `next-action: gh pr checks N`
+  if current-head checks are pending; otherwise use one exact command to
+  inspect or resolve the named blocker.
+- `needs-human`: `next-action: gh pr view N --web` so a human can make the
+  named decision. Never send an automated fixer to this state.
 
 ## Verdict comments are append-only
 
@@ -97,11 +122,16 @@ Round `N > 0` reviews:
 Derive `review-round` as follows:
 
 - `review-round` equals the number of prior conforming verdict comments on the
-  PR for the current spec baseline — comments carrying the marker and all
-  required fields.
+  PR for the current spec baseline. Count trusted historical comments emitted
+  before `next-action:` became required when they carry the marker and the
+  previously required `head-sha:`, `review-round:`, `reviewed-files:`, and
+  `blocking-set:` fields, even if `next-action:` is absent. Count later comments
+  only when all five fields are present. Preserve these earlier rounds when
+  applying the stale-finding rule and counting corrective rounds for the
+  circuit breaker; the schema change alone is not a rebaseline.
 - The first review of a PR therefore emits `review-round: 0`.
-- Non-conforming comments (missing marker or any required field) are not
-  verdicts and do not increment the round.
+- Comments missing the marker or a field required at the time of emission are
+  not verdicts and do not increment the round.
 - Review responses, disposition comments, and any other PR comment do not
   increment the round.
 - A rebaseline caused by a late-created or materially amended binding issue
@@ -183,6 +213,9 @@ configuration.
   exercises the changed paths.
 - If neither path is satisfied, or there is no current-head evidence, the verdict
   is `blocked`.
+- A draft PR is `blocked` even if its checks satisfy a readiness path. Name
+  draft status as the blocker; a human marks it ready and requests a fresh
+  verdict on the current head before merging.
 - Older-head results never count.
 - Branch protection is not required.
 - Merge remains HITL.
@@ -193,8 +226,8 @@ added coverage is an evidence inconsistency and must be reported as `blocked`.
 
 ## What the reader does per state
 
-- `merge-candidate` + SHA current → eligible to merge; human still owns the
-  button for HITL.
+- `merge-candidate` + SHA current + non-draft PR → eligible to merge; human
+  still owns the button for HITL.
 - `needs-fix` + SHA current → run the fix pass on `fix-now` findings via
   `skills/from-pr-review/references/disposition-rules.md`; any push invalidates this verdict and requires a
   fresh review.
