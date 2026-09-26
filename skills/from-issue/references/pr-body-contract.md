@@ -14,6 +14,7 @@ Closes #<n>
 ## Evidence
 
 - Head SHA: <full 40-character PR head SHA>
+- Brief written against: <SHA from the brief, or 'none recorded'>
 - Test node IDs exercising changed paths: <only relevant node IDs; if none, one line stating no test exercises the change, not a suite listing>
 - Verification: <link to CI run for this head, or literal command and exit status; include relevant output>
 - Before / after: <failing and passing output, screenshots, or "not applicable" with reason>
