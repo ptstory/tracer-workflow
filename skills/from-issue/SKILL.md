@@ -57,7 +57,7 @@ artifact is the execution input.
   - Existing PR/worktree resumed and advanced.
   - Explicit durable blocker naming the exact missing prerequisite or decision.
   - Verified failure with the exact recovery state persisted.
-- Treat `review-gate`, `from-pr-review`, and `receiving-code-review` as
+- Treat `review-gate` and `from-pr-review` as
   subordinate judgment/review lanes; do not flatten them into `from-issue`.
 
 ## Steps

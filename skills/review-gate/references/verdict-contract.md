@@ -196,7 +196,7 @@ added coverage is an evidence inconsistency and must be reported as `blocked`.
 - `merge-candidate` + SHA current → eligible to merge; human still owns the
   button for HITL.
 - `needs-fix` + SHA current → run the fix pass on `fix-now` findings via
-  `receiving-code-review`; any push invalidates this verdict and requires a
+  `skills/from-pr-review/references/disposition-rules.md`; any push invalidates this verdict and requires a
   fresh review.
 - `needs-human` → stop. No automatic fix pass may be launched, at any SHA.
 - `blocked` → stop, surface the blocker (for example parse failure,
@@ -215,7 +215,7 @@ The following consumers must change to conform to this contract:
 - `skills/review-gate/PROMPT.md` — emit `review-round:` and apply the round,
   stale-finding, and circuit-breaker rules.
 - `skills/from-pr-review/SKILL.md` — require per-item disposition via
-  `receiving-code-review` before any fixer batch, and align its disposition
+  `skills/from-pr-review/references/disposition-rules.md` before any fixer batch, and align its disposition
   vocabulary.
 - `tooling/review-gate-poller/` — parse `review-round:` and refuse to act on
   `needs-human`.

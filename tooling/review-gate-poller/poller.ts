@@ -251,7 +251,7 @@ function triggerFixPass(pr: PR): void {
     `A review-gate verdict on PR #${pr.number} in ${REPO} is needs-fix ` +
     `for head ${pr.headRefOid}. Read the latest \`## review-gate:\` comment, ` +
     `verify its head-sha matches ${pr.headRefOid}, then run the fix pass: apply ` +
-    `receiving-code-review to the fix-now findings, push, and reply per thread. ` +
+    `from-pr-review to the fix-now findings, push, and reply per thread. ` +
     `Do not merge. Follow the review-gate verdict-contract.`;
 
   // opencode run <prompt> — one-shot session in the repo working dir.

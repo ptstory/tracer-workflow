@@ -352,6 +352,9 @@ esac
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
+    const workerPrompt = readFileSync(harness.opencodeLog, "utf8");
+    expect(workerPrompt).toContain("apply from-pr-review to the fix-now findings");
+    expect(workerPrompt).not.toContain("receiving-code-review");
     expect(readState(harness.statePath)).toEqual({
       17: expect.objectContaining({
         headSha: "1111111111111111111111111111111111111111",
