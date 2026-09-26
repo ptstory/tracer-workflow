@@ -18,7 +18,7 @@ export const contractPaths = {
 } as const;
 
 function normalize(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
+  return text.replace(/`/g, "").replace(/\s+/g, " ").trim();
 }
 
 export function readAgentBriefContractFiles(root = repoRoot): AgentBriefContractFiles {

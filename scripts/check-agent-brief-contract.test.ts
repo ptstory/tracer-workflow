@@ -7,21 +7,19 @@ import {
 } from "./check-agent-brief-contract";
 
 const revised: AgentBriefContractFiles = {
-  agentBrief: `
-Resolve the live default branch and its full 40-character commit SHA at brief time;
-do not mark the issue ready-for-agent when that cannot be resolved.
-
-written-against: <default-branch>@<full 40-char SHA>
-
-written-against: unresolved (reason)
-`,
-  fromIssue: `
-Copy the brief's written-against SHA into Brief written against, or use none recorded.
-Compare the files named in the brief against the live default branch since that SHA.
-`,
-  prBody: `
-- Brief written against: <SHA from the brief, or 'none recorded'>
-`,
+  agentBrief: [
+    "Resolve the live default branch and its full 40-character commit SHA at brief time;",
+    "do not mark the issue `ready-for-agent` when that cannot be resolved.",
+    "",
+    "written-against: <default-branch>@<full 40-char SHA>",
+    "",
+    "written-against: unresolved (reason)",
+  ].join("\n"),
+  fromIssue: [
+    "Copy the brief's `written-against` SHA into `Brief written against`, or use `none recorded`.",
+    "Compare the files named in the brief against the live default branch since that SHA.",
+  ].join("\n"),
+  prBody: "- Brief written against: <SHA from the brief, or 'none recorded'>",
 };
 
 describe("agent brief revision contract", () => {
@@ -39,7 +37,7 @@ describe("agent brief revision contract", () => {
     ).toEqual([]);
   });
 
-  test("accepts a coherent written-against contract", () => {
+  test("accepts a coherent written-against contract with Markdown code spans", () => {
     expect(validateAgentBriefContract(revised)).toEqual([]);
   });
 
@@ -56,8 +54,8 @@ describe("agent brief revision contract", () => {
       validateAgentBriefContract({
         ...revised,
         agentBrief: revised.agentBrief.replace(
-          "do not mark the issue ready-for-agent",
-          "continue as ready-for-agent",
+          "do not mark the issue `ready-for-agent`",
+          "continue as `ready-for-agent`",
         ),
       }),
     ).toContain(
