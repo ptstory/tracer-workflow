@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/review-gate/review-record.schema.json",
+  "title": "Review Gate Review Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "head_sha",
+    "target",
+    "reviewed_at",
+    "static_audit",
+    "runtime_verification",
+    "provenance",
+    "findings",
+    "gaps"
+  ],
+  "properties": {
+    "verdict": {
+      "enum": [
+        "merge-candidate",
+        "needs-fix",
+        "needs-human",
+        "blocked"
+      ]
+    },
+    "head_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{40}$"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "repo",
+        "pull_number"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pull_number": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "governing_specs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "static_audit": {
+      "enum": [
+        "pass",
+        "fail",
+        "partial"
+      ]
+    },
+    "runtime_verification": {
+      "enum": [
+        "pass",
+        "fail",
+        "partial",
+        "not-performed"
+      ]
+    },
+    "runtime_evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "live_pr_inspected",
+        "changed_files_reviewed",
+        "pagination_complete"
+      ],
+      "properties": {
+        "live_pr_inspected": {
+          "type": "boolean"
+        },
+        "changed_files_reviewed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pagination_complete": {
+          "type": "boolean"
+        },
+        "linked_specs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "surrounding_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "checks_inspected": {
+          "type": "boolean"
+        },
+        "reviews_inspected": {
+          "type": "boolean"
+        },
+        "visual_artifacts_actually_inspected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "severity",
+          "disposition",
+          "location",
+          "evidence",
+          "impact",
+          "required_action"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^F[1-9][0-9]*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "blocker",
+              "major",
+              "minor",
+              "nit"
+            ]
+          },
+          "disposition": {
+            "enum": [
+              "fix-now",
+              "defer",
+              "follow-up-issue",
+              "reject",
+              "needs-human"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required_action": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sha_bound_not_merge_authority": {
+      "type": "boolean",
+      "const": true
+    }
+  }
+}
