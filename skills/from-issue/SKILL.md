@@ -70,10 +70,16 @@ artifact is the execution input.
    the dedicated issue branch/worktree and continue execution there.
 5. Implement the smallest safe slice.
 6. Verify locally.
-7. Commit, push, open or update the PR, and include the evidence bundle. Stop
+7. In the PR body's Evidence section, copy the SHA from the brief's
+   `written-against` line into `Brief written against`, or use `none recorded`
+   if the brief has no recorded SHA. If a SHA is recorded, compare the files
+   named in the brief against the live default branch since that SHA and list
+   any that changed there under Evidence; do not treat this as a parser or
+   automatic blocker. If none changed, state that explicitly.
+8. Commit, push, open or update the PR, and include the evidence bundle. Stop
    there; review, check-run, and merge remain downstream.
    Use `references/pr-body-contract.md` when creating or updating the PR body.
-8. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the failure, and the next required recovery contract.
+9. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the failure, and the next required recovery contract.
 
 ## Do not
 

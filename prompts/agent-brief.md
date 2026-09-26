@@ -42,7 +42,9 @@ the exact recovery state persisted.
 Do this:
 
 1. Read the full issue or PR. For a PR, also read the diff and relevant review
-   discussion.
+   discussion. Resolve the repository's live default branch and its full
+   40-character commit SHA at brief time, not from memory. If either cannot be
+   resolved, say so in the brief and do not mark the issue `ready-for-agent`.
 2. Determine whether this is a `bug` or `enhancement`.
 3. Recommend the target state: `ready-for-agent`, `ready-for-human`,
    `needs-info`, or `wontfix`.
@@ -86,6 +88,8 @@ For `ready-for-agent` or `ready-for-human`, use this format:
 
 ## Agent Brief
 
+written-against: <default-branch>@<full 40-char SHA>
+
 **Category:** bug / enhancement
 
 **Summary:** one-line description of what needs to happen
@@ -115,6 +119,11 @@ error conditions.
 **Delegation note:**
 State `AFK-safe` or `needs human`, with the reason.
 ```
+
+If the revision cannot be resolved, replace the `written-against` line with
+`written-against: unresolved (reason)` and recommend `needs-info` or
+`ready-for-human`, not `ready-for-agent`. Include the unresolved revision and
+reason in the durable comment even when using the `needs-info` format.
 
 For `needs-info`, use this format:
 
