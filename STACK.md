@@ -2,6 +2,26 @@
 
 Durable append-only record of agent-stack configuration changes and breakage findings, because diagnoses that live only in chat transcripts get re-derived from scratch weeks later.
 
+## 2026-09-29
+
+This entry records the runtime after the move off OpenCode. The plan and reasoning are in `docs/plans/2026-09-29-stack-and-model-plan.md`.
+
+Current state:
+- The execution harness is Crush v0.96.1, run interactively. OpenCode and oh-my-opencode-slim no longer execute work. (reported)
+- The large model that actually runs is `openai/gpt-6-luna` at reasoning Max, set through the Crush TUI picker. (reported, screenshot) The picker overrides crushrc's `model large openai/gpt-6-sol --reasoning-effort high`, so the config file is not evidence of what runs. The session header or the session record is.
+- The small model is `openai/gpt-6-luna` at `medium` according to crushrc. (reported) It has not been verified at runtime.
+- MCPs: none. octocode was disabled on 2026-09-25 because its 3 tool schemas cost about 8.5k tokens per request and it was called about once. (reported, crushrc comment) The re-enable command is kept in crushrc.
+- `option auto-lsp false` is set, and `mex-relay` is disabled with `mex-inbox` kept. (reported)
+- The review gate runs as a Custom GPT in ChatGPT web, invoked by hand. The review-gate poller is not in use. (reported)
+- Billing is ChatGPT Plus. Codex credits equal the API price at $0.04 per credit. The rolling 5-hour limit has been back since 2026-08-25. (reported, secondary sources)
+- Prices on 2026-09-29, per 1M tokens (input / cached input / output): `gpt-6-luna` $0.10 / $0.01 / $0.50; `gpt-6-sol` $2.00 / $0.20 / $10.00; `gpt-6.1-sol` $2.00 / $0.10 / $10.00. (reported) `gpt-6.1-sol` was released on 2026-09-29.
+
+Findings:
+- Crush's per-session `cost` is computed from a static price table whatever the auth path, and a 2026-09-26 session showed `prompt_tokens: 0`. (session) Crush `cost` is therefore not a quota measure. The Codex usage readout is.
+
+Corrections to prior records:
+- The 2026-08-30 entry ruled out `gpt-5.6-luna-fast` because its "parent-seat advantage vanishes when children are counted." That compared token volume, not price-weighted cost or task outcomes. At list prices, the parent seat's cache reads cost several times less on luna-fast than on `gpt-5.4`, and no outcome was measured. Treat the ruling as unestablished, not settled. (session)
+
 ## 2026-09-11
 
 Findings:

@@ -44,3 +44,24 @@ Candidates enter here before they enter the stack.
 - Verdict: undecided
 - Reason: not yet researched — recovered from memory, details to be filled from chat archaeology.
 - Taken: nothing
+
+## herdr — 2026-09-29 adopted
+- Source: friend running Ghostty + herdr; supersedes the 2026-08-27 trialing entry.
+- Claims: agent-aware terminal runtime; persistent background server, per-pane working/blocked/idle state, ssh reattach, agent-drivable CLI.
+- Verdict: adopted
+- Reason: in daily use and no longer considered a trial. The earlier open question about the goal plugin auto-continuing on idle is moot, because that plugin was OpenCode-only and OpenCode no longer executes work.
+- Taken: herdr as the terminal runtime. The earlier entry's follow-up still applies: ocs PR #1 and branch feat/initial-cli are candidates to close.
+
+## mex — 2026-09-26
+- Source: https://github.com/mex-memory/mex, v0.8.2
+- Claims: repo-resident Markdown project memory shared through Git; local rebuildable SQLite indexes; tree-sitter code graph with CLI queries; wiki claims grounded to code symbols with drift flags; FTS only, no vector search; MCP server unpublished; telemetry on by default.
+- Verdict: undecided, in trial
+- Reason: trialing graph, wiki and grounding in thread-atlas (PR #166). The blocking questions are whether Crush invokes `mex` unprompted across about 10 sessions, and whether drift flags are mostly real. `mex-relay` is disabled in Crush because typed "handoff" was routed to Relays.
+- Taken: trial setup only; `mex-inbox` loaded.
+
+## Ponytail — 2026-09-29
+- Source: https://github.com/DietrichGebert/ponytail, v4.10.0, via a last30days summary (not independently verified)
+- Claims: a decision ladder (don't build → reuse → stdlib → existing dependency → minimal new code) that reduces generated code. Project benchmark: about 54% less code on 12 tasks. A JetBrains test on 80 paired tasks reported about 15% less code and 10% lower cost, with no detectable quality difference.
+- Verdict: undecided
+- Reason: it changes code volume and iteration count, which the model spot check measures, so adding it before that would confound the model comparison. No Crush adapter is listed; it may load as a plain skill (unverified).
+- Taken: nothing yet. Queued after the model spot check, to be tested with and without it on the same tasks.
