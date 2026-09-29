@@ -11,9 +11,9 @@ a session, (reported) stated but not independently checked.
 |---|---|---|
 | Planning / deep triage | ChatGPT web and Claude, as appropriate | Unchanged |
 | Execution | Crush v0.96.1, interactive only (reported) | Replaced OpenCode + oh-my-opencode-slim |
-| Large model (actually running) | `openai/gpt-6-luna`, reasoning Max, set via the TUI picker (reported, screenshot) | The picker overrides `model large` in crushrc, which still says `gpt-6-sol --reasoning-effort high` |
-| Small model | `openai/gpt-6-luna`, medium (reported, config only) | Not verified at runtime |
-| Billing | ChatGPT Plus, $20, Codex allowance (reported) | Rolling 5-hour limit plus a possible weekly cap |
+| Large model (actually running) | `openai/gpt-6-luna`, `reasoning_effort: "max"`, as stored in `~/.local/share/crush/crush.json` (reported) | The picker overrides `model large` in crushrc, which still says `gpt-6-sol --reasoning-effort high`. A 2026-09-28 session still ran on `gpt-6-sol`, so the switch to Luna happened between 2026-09-28 and 2026-09-29. |
+| Small model | `openai/gpt-6-luna`, medium, from crushrc (reported) | The data file stores no `small` entry, so crushrc decides. Not verified at runtime. |
+| Billing | ChatGPT Plus, $20, Codex allowance; Claude Pro, $20 (reported) | Rolling 5-hour limits plus possible weekly caps on both |
 | Review gate | Custom GPT in ChatGPT web, run manually (reported) | The review-gate poller is not in use |
 | Coordination | GitHub issues, PRs, comments, check runs | Unchanged |
 | MCPs | None | octocode disabled 2026-09-25 |
@@ -35,7 +35,7 @@ Nothing else has been cut.
 ## 3. Model decision
 
 - **Default:** `gpt-6-luna` at Max, which is what is set now.
-- **Escalation:** `gpt-6.1-sol` at high, released 2026-09-29, once it appears in Crush's picker. Until then, use `gpt-6-sol` at high.
+- **Escalation:** `gpt-6.1-sol` at high, released 2026-09-29. It is in Crush's picker (reported). Crush offers it low, medium, high, xhigh, max and ultra; Luna's highest level is max.
 - **Escalation rule:** if the default model fails the review gate twice on an issue, discard its worktree and redo the issue on the escalation model from a clean checkout. Never hand the stronger model the weaker model's partial edits.
 
 Why, with prices as of 2026-09-29 (reported; OpenAI pages not reachable from the session):
@@ -89,7 +89,7 @@ Dropped for leakage (issue written after the implementation started):
 
 **Arms:**
 - A: `gpt-6-luna`, Max.
-- B: `gpt-6.1-sol` at high (or `gpt-6-sol` at high if 6.1 isn't in the picker; record which).
+- B: `gpt-6.1-sol` at high.
 - For each arm, set `small` to the same model as `large`, so subagents can't run on the other arm's model.
 
 **Each run:**
@@ -97,18 +97,20 @@ Dropped for leakage (issue written after the implementation started):
 2. Put the issue body in `ISSUE.md`.
 3. Use one fixed prompt for both arms: implement `ISSUE.md`, run the repo's own checks, stop when done.
 4. Deny `fetch`, `agentic_fetch`, `download` and `sourcegraph`. Run with no `gh` authentication.
-5. Scan the session's tool log afterward for `gh`, `curl`, `git fetch` or hidden-test paths. Any hit invalidates the run, and it is redone.
+5. Scan the session's tool calls afterward (`crush session show <id> --json`) for any of the following. Any hit invalidates the run, and it is redone.
+   - `gh`, `curl` or `git fetch`
+   - hidden-test paths
+   - any path inside the original repos. `~/Code/vibecoding/messages/.worktrees/issue-149`, `issue-155` and `issue-64` hold the historical implementations of three decision tasks, and Crush's view tool can read absolute paths.
 
 **Grading:** copy in the in-scope hidden tests only after the run finishes, then run them. Grade the first attempt only; there is no repair loop.
 
 **Record per run:**
-- model string, confirmed from the header
+- model string, from each assistant message's `model` field in the session JSON
 - hidden-test pass/fail
 - the repo's own checks
 - wall time
 - Codex usage readout before and after, with nothing else using the account in between
-- completion tokens, if they're non-zero and plausible
-- tool-call count, if Crush's session record exposes it
+- tool-call count: the number of `tool_call` parts in the session JSON
 - whether the agent ran `mex`
 
 Run in random order (write down the seed), alternating arms. One trial per task per arm.
@@ -129,12 +131,17 @@ When anything in the stack changes, add a dated line to STACK.md. Review after a
 
 ## 5. Telemetry
 
-- What Crush gives: per-session `prompt_tokens`, `completion_tokens`, `total_tokens` and `cost` via `crush session show <id> --json` (reported).
-  - A 2026-09-26 session showed `prompt_tokens: 0`, and `cost` comes from a static price table regardless of auth path (session). So `cost` does not measure quota. The Codex usage readout does.
-- To verify: whether `crush session show --json` includes messages and tool calls. If it does, tool calls can be counted with no new code.
-- Only if it doesn't: add one `PreToolUse` hook that appends `session_id`, tool name and timestamp to a JSONL file. Crush hooks don't fire inside subagents, so this is a floor, not a complete trace. Add it as its own change, not bundled with anything else.
-- Not now: an OpenTelemetry trace pipeline. That is worth building only if the log or spot check raises questions that counts can't answer.
-- OpenCode corpus (`opencode.db`, recovered): keep it, and back it up. Treat it as a read-only historical archive. Don't use it for model decisions: model, preset, plugin and workload changed together, so model comparisons from it are confounded.
+- `crush session show <id> --json` (reported, sample session from 2026-09-28) contains:
+  - `meta` with `prompt_tokens`, `completion_tokens`, `total_tokens` and `cost`
+  - every message, with a per-message `model` and `provider`, timestamps, and `tool_call` parts including their inputs
+  - the skills loaded, with load times
+- **Model, tool-call counts and wall time can be read from this record. No new hook is needed.**
+- **`meta` token counts are not session totals.** The sample session ran about 6 minutes with more than 25 tool calls and several file edits. Its meta reports `prompt_tokens: 73866` and `completion_tokens: 253`, and its final reply alone is about 250 tokens. They look like the last request's values (inference). An earlier session reportedly showed `prompt_tokens: 0`.
+  - Use them at most as "context size at the end," and don't use `cost` for quota.
+  - Crush's provider catalog lists every model at $0 per 1M tokens, yet `cost` was 1.56, so its source is unknown.
+- **Quota:** the Codex usage readout before and after each run.
+- **Not now:** an OpenTelemetry trace pipeline. Build it only if counts can't answer a question that comes up.
+- **OpenCode corpus** (`opencode.db`, recovered): keep it and back it up, as a read-only historical archive. Don't use it for model decisions: model, preset, plugin and workload changed together, so model comparisons from it are confounded.
 
 ## 6. Repository changes (one issue and one PR each, in this order)
 
@@ -148,7 +155,7 @@ When anything in the stack changes, add a dated line to STACK.md. Review after a
 3. **Code: remove the hard OpenCode dependency.**
    - `tooling/doctor/doctor.ts` requires the `opencode` executable.
    - `tooling/review-gate-poller/poller.ts` calls `opencode run`.
-   - The `oh-my-opencode-slim` managed block in `.gitignore`/`.ignore` and its test need Crush's worktree directory. Needed: the output of `git worktree list` from a repo where Crush made a worktree.
+   - The `oh-my-opencode-slim` managed block in `.gitignore`/`.ignore` and its test cover `.slim/`, OpenCode's worktree directory. `messages` keeps its worktrees in `.worktrees/` at the repo root, which is a repo convention, not a Crush one. Confirm where tracer-workflow's four worktrees live before replacing the block.
 4. **Workflow friction:** #35 (`tracer resume`, AFK), then #29 (native `blockedBy`), #30 (priority plus `next`) and #37 (cross-repo picker). Move the local `whatsnext` script into tracer-workflow as the starting point for #35.
 
 ## 7. Parked, with the condition to pick each up
@@ -165,10 +172,10 @@ When anything in the stack changes, add a dated line to STACK.md. Review after a
 
 One change at a time. Each change must name a problem it solves now. If a second change is proposed before the first has proven itself, ask "what breaks if I don't do this?" If the answer is "nothing yet," don't.
 
-## 9. Open questions
+## 9. Answered on 2026-09-29 (reported)
 
-1. Is `gpt-6.1-sol` in Crush's picker yet?
-2. What exact string does `~/.local/share/crush/crush.json` store for Luna's effort?
-3. Does `crush session show --json` include tool calls, and is `prompt_tokens` still 0?
-4. Which Claude plan are you on? This affects when moving the review gate to Opus is worth trying.
-5. What is Crush's worktree directory? Needed for item 3 in section 6.
+1. `gpt-6.1-sol` is in Crush's picker.
+2. The Luna arm is stored as `{"model":"gpt-6-luna","provider":"openai","reasoning_effort":"max"}`.
+3. The session JSON includes the model and every tool call; `meta` token counts look like last-request values (section 5).
+4. Claude plan: Pro, $20/month.
+5. `messages` uses in-repo `.worktrees/`. tracer-workflow's worktree paths are still to be confirmed.

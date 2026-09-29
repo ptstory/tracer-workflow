@@ -8,7 +8,9 @@ This entry records the runtime after the move off OpenCode. The plan and reasoni
 
 Current state:
 - The execution harness is Crush v0.96.1, run interactively. OpenCode and oh-my-opencode-slim no longer execute work. (reported)
-- The large model that actually runs is `openai/gpt-6-luna` at reasoning Max, set through the Crush TUI picker. (reported, screenshot) The picker overrides crushrc's `model large openai/gpt-6-sol --reasoning-effort high`, so the config file is not evidence of what runs. The session header or the session record is.
+- The large model that actually runs is `openai/gpt-6-luna` with `reasoning_effort: "max"`, stored in `~/.local/share/crush/crush.json` by the TUI picker. (reported) The picker overrides crushrc's `model large openai/gpt-6-sol --reasoning-effort high`, so the config file is not evidence of what runs. Each assistant message in `crush session show --json` records the model that answered. A 2026-09-28 04:17 session still ran on `gpt-6-sol`, so the switch happened between 2026-09-28 and 2026-09-29. (reported, session JSON)
+- `gpt-6.1-sol` is available in the Crush picker. (reported)
+- Subscriptions: ChatGPT Plus and Claude Pro, $20 each. (reported)
 - The small model is `openai/gpt-6-luna` at `medium` according to crushrc. (reported) It has not been verified at runtime.
 - MCPs: none. octocode was disabled on 2026-09-25 because its 3 tool schemas cost about 8.5k tokens per request and it was called about once. (reported, crushrc comment) The re-enable command is kept in crushrc.
 - `option auto-lsp false` is set, and `mex-relay` is disabled with `mex-inbox` kept. (reported)
@@ -17,7 +19,9 @@ Current state:
 - Prices on 2026-09-29, per 1M tokens (input / cached input / output): `gpt-6-luna` $0.10 / $0.01 / $0.50; `gpt-6-sol` $2.00 / $0.20 / $10.00; `gpt-6.1-sol` $2.00 / $0.10 / $10.00. (reported) `gpt-6.1-sol` was released on 2026-09-29.
 
 Findings:
-- Crush's per-session `cost` is computed from a static price table whatever the auth path, and a 2026-09-26 session showed `prompt_tokens: 0`. (session) Crush `cost` is therefore not a quota measure. The Codex usage readout is.
+- Crush session `meta` token counts are not session totals. A 2026-09-28 session with more than 25 tool calls and several file edits reported `prompt_tokens: 73866` and `completion_tokens: 253`; its final reply alone is about 250 tokens, so these look like last-request values. (reported, session JSON; the reading is an inference) A 2026-09-26 session reportedly showed `prompt_tokens: 0`. (session)
+- Crush's `cost` is not a quota measure: the provider catalog lists $0 per 1M tokens for every model, yet `cost` was 1.56. The Codex usage readout is the quota measure. (reported)
+- The session JSON does record the model per message, every `tool_call` with its input, timestamps, and loaded skills, so model, tool-call counts and wall time are measurable without new hooks. (reported)
 
 Corrections to prior records:
 - The 2026-08-30 entry ruled out `gpt-5.6-luna-fast` because its "parent-seat advantage vanishes when children are counted." That compared token volume, not price-weighted cost or task outcomes. At list prices, the parent seat's cache reads cost several times less on luna-fast than on `gpt-5.4`, and no outcome was measured. Treat the ruling as unestablished, not settled. (session)
