@@ -138,6 +138,7 @@ When anything in the stack changes, add a dated line to STACK.md. Review after a
 - **Model, tool-call counts and wall time can be read from this record. No new hook is needed.**
 - **`meta` token counts are not session totals.** The sample session ran about 6 minutes with more than 25 tool calls and several file edits. Its meta reports `prompt_tokens: 73866` and `completion_tokens: 253`, and its final reply alone is about 250 tokens. They look like the last request's values (inference). An earlier session reportedly showed `prompt_tokens: 0`.
   - Use them at most as "context size at the end," and don't use `cost` for quota.
+  - To confirm: `rg -n 'PromptTokens\s*=|Cost\s*\+=' ~/Code/oss/crush/internal`. From memory of the upstream opencode code Crush forked from (unverified here), usage tracking overwrites the token fields per request and adds to cost.
   - Crush's provider catalog lists every model at $0 per 1M tokens, yet `cost` was 1.56, so its source is unknown.
 - **Quota:** the Codex usage readout before and after each run.
 - **Not now:** an OpenTelemetry trace pipeline. Build it only if counts can't answer a question that comes up.
@@ -155,7 +156,7 @@ When anything in the stack changes, add a dated line to STACK.md. Review after a
 3. **Code: remove the hard OpenCode dependency.**
    - `tooling/doctor/doctor.ts` requires the `opencode` executable.
    - `tooling/review-gate-poller/poller.ts` calls `opencode run`.
-   - The `oh-my-opencode-slim` managed block in `.gitignore`/`.ignore` and its test cover `.slim/`, OpenCode's worktree directory. `messages` keeps its worktrees in `.worktrees/` at the repo root, which is a repo convention, not a Crush one. Confirm where tracer-workflow's four worktrees live before replacing the block.
+   - The `oh-my-opencode-slim` managed block in `.gitignore`/`.ignore` and its test cover `.slim/`, OpenCode's worktree directory. tracer-workflow's current worktrees are sibling directories (`~/Code/tracer-workflow-<name>`), which need no ignore entry. So the block is a removal candidate, not a replacement, once `.slim/` is confirmed absent from the checkout. `messages` uses in-repo `.worktrees/` instead; tooling must not assume either layout.
 4. **Workflow friction:** #35 (`tracer resume`, AFK), then #29 (native `blockedBy`), #30 (priority plus `next`) and #37 (cross-repo picker). Move the local `whatsnext` script into tracer-workflow as the starting point for #35.
 
 ## 7. Parked, with the condition to pick each up
@@ -178,4 +179,4 @@ One change at a time. Each change must name a problem it solves now. If a second
 2. The Luna arm is stored as `{"model":"gpt-6-luna","provider":"openai","reasoning_effort":"max"}`.
 3. The session JSON includes the model and every tool call; `meta` token counts look like last-request values (section 5).
 4. Claude plan: Pro, $20/month.
-5. `messages` uses in-repo `.worktrees/`. tracer-workflow's worktree paths are still to be confirmed.
+5. Worktrees: tracer-workflow uses sibling directories (`~/Code/tracer-workflow-<name>`); `messages` uses in-repo `.worktrees/`.
