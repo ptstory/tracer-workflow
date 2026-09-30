@@ -93,7 +93,7 @@ export const regressionCases: RegressionCase[] = [
         heading: "Contract",
         mustContain: [
           "do not emit another implementation handoff for the same issue",
-          "update or resume the existing lane instead",
+          "update or resume the existing stage instead",
           "a handoff-only result is allowed only for genuine blockers or verified failures",
         ],
       },
