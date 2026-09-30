@@ -1,0 +1,5 @@
+- Add `scripts/asset-revision.mjs` exporting:
+  - `computeAssetRevision(appRoot, relativeAssetPath)`, which returns a content-derived revision string of the form `v-<12 lowercase hex>`
+  - `async buildSite({ sourceRoot, outputRoot })`, which writes the deployable site from `app/` into `outputRoot`
+- Built HTML references each revisioned asset as `<asset>?v=<revision>`, for example `styles.css?v=v-0123456789ab`. Every local `href`/`src` in the built `index.html`, `hall/index.html`, `how/index.html` and `privacy/index.html` must resolve to a file in the output.
+- `npm run build` writes to `dist/`, and `npm test` runs `node --test tests/*.test.js`.

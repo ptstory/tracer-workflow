@@ -1,0 +1,1 @@
+- `bun run ./src/cli.ts --help` exits 0. Its output contains the line pair `Usage:` / `  worklog --help` and the sentence `Minimal TypeScript scaffold for the worklog repository.`

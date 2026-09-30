@@ -1,0 +1,1 @@
+- The function is `latestGateComment` in `tooling/gate-packet/gate-packet.ts`. A non-conforming latest marked comment yields `null`.

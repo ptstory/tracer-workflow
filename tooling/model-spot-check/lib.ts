@@ -1,0 +1,278 @@
+// Pure helpers for the model spot check. Everything that touches git, gh,
+// crush or the filesystem lives in spot-check.ts.
+
+export type Arm = "A" | "B";
+
+export type TaskRole = "decision" | "pilot";
+
+export type TestCommand = { files?: string[]; command: string[] };
+
+export type Task = {
+  id: string;
+  role: TaskRole;
+  tier: "easy" | "hard";
+  repo: string;
+  issue: number;
+  pr: number;
+  base: string;
+  prHead: string;
+  setup: string[];
+  gradeSetup?: string[];
+  graded: TestCommand & { files: string[] };
+  reviewDerived?: TestCommand & { reason: string };
+  regression?: TestCommand & { restoreFromBase: string[] };
+  suite: string[] | null;
+  excluded: { test: string; reason: string }[];
+  notes?: string;
+};
+
+export type Manifest = {
+  version: number;
+  arms: Record<Arm, { model: string; reasoningEffort: string }>;
+  tasks: Task[];
+};
+
+export type RunSlot = { taskId: string; arm: Arm; trial: number };
+
+// mulberry32: small, deterministic, and good enough for ordering runs.
+export function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle<T>(items: T[], random: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// Each (task, trial) becomes a block holding both arms in random order, so the
+// two arms of a task run close together in time. Blocks are then shuffled.
+export function runOrder(
+  tasks: Pick<Task, "id" | "tier">[],
+  seed: number,
+  trialsByTier: Record<Task["tier"], number>,
+): RunSlot[] {
+  const random = seededRandom(seed);
+  const blocks: RunSlot[][] = [];
+  for (const task of tasks) {
+    for (let trial = 1; trial <= trialsByTier[task.tier]; trial++) {
+      const arms = shuffle<Arm>(["A", "B"], random);
+      blocks.push(arms.map((arm) => ({ taskId: task.id, arm, trial })));
+    }
+  }
+  return shuffle(blocks, random).flat();
+}
+
+export const WORKER_PROMPT = [
+  "Implement the change described in ISSUE.md in this repository.",
+  "Work only inside this directory. Do not use the network, gh, git fetch, or any other checkout on this machine.",
+  "Run the repository's own tests and checks. When the change is complete and the checks pass, commit your work and stop.",
+].join(" ");
+
+export function issueDocument(title: string, body: string, interfaceNotes: string | null): string {
+  const sections = [`# ${title}`, "", body.trim(), ""];
+  if (interfaceNotes && interfaceNotes.trim()) {
+    sections.push("## Interface requirements", "", interfaceNotes.trim(), "");
+  }
+  return sections.join("\n");
+}
+
+// ---- crush session parsing ----
+
+type SessionPart = { type?: string; name?: string; input?: unknown };
+type SessionMessage = { role?: string; created?: string; model?: string; parts?: SessionPart[] };
+export type CrushSession = {
+  meta?: { cost?: number; prompt_tokens?: number; completion_tokens?: number; skills?: { name?: string }[] };
+  messages?: SessionMessage[];
+};
+
+export type SessionMetrics = {
+  models: string[];
+  assistantMessages: number;
+  toolCalls: number;
+  toolCallsByName: Record<string, number>;
+  subagentCalls: number;
+  firstAt: string | null;
+  lastAt: string | null;
+  wallSeconds: number | null;
+  cost: number | null;
+  skills: string[];
+};
+
+export type ToolCall = { name: string; input: string };
+
+export function toolCalls(session: CrushSession): ToolCall[] {
+  const calls: ToolCall[] = [];
+  for (const message of session.messages ?? []) {
+    for (const part of message.parts ?? []) {
+      if (part.type !== "tool_call") continue;
+      const input = typeof part.input === "string" ? part.input : JSON.stringify(part.input ?? "");
+      calls.push({ name: part.name ?? "", input });
+    }
+  }
+  return calls;
+}
+
+export function summarizeSession(session: CrushSession): SessionMetrics {
+  const messages = session.messages ?? [];
+  const models = new Set<string>();
+  let assistantMessages = 0;
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    assistantMessages++;
+    if (message.model) models.add(message.model);
+  }
+  const calls = toolCalls(session);
+  const toolCallsByName: Record<string, number> = {};
+  for (const call of calls) toolCallsByName[call.name] = (toolCallsByName[call.name] ?? 0) + 1;
+  const times = messages
+    .map((m) => m.created)
+    .filter((t): t is string => typeof t === "string")
+    .map((t) => Date.parse(t))
+    .filter((t) => !Number.isNaN(t))
+    .sort((a, b) => a - b);
+  const firstAt = times.length ? new Date(times[0]).toISOString() : null;
+  const lastAt = times.length ? new Date(times[times.length - 1]).toISOString() : null;
+  return {
+    models: [...models].sort(),
+    assistantMessages,
+    toolCalls: calls.length,
+    toolCallsByName,
+    subagentCalls: toolCallsByName["agent"] ?? 0,
+    firstAt,
+    lastAt,
+    wallSeconds: times.length > 1 ? Math.round((times[times.length - 1] - times[0]) / 1000) : null,
+    cost: typeof session.meta?.cost === "number" ? session.meta.cost : null,
+    skills: (session.meta?.skills ?? []).map((s) => s.name ?? "").filter(Boolean),
+  };
+}
+
+// ---- leakage scan ----
+
+export type Finding = { severity: "violation" | "note"; rule: string; tool: string; excerpt: string };
+
+export type ScanOptions = {
+  workDir: string;
+  home: string;
+  // Paths outside workDir that are fine to read, e.g. the user's skill directories.
+  allowedPrefixes: string[];
+  // Paths whose mere mention invalidates the run, e.g. the original repo checkouts.
+  forbiddenPrefixes: string[];
+};
+
+const FORBIDDEN_TOOLS = new Set(["fetch", "agentic_fetch", "download", "sourcegraph", "web_search", "web_fetch"]);
+const FORBIDDEN_COMMANDS: [string, RegExp][] = [
+  ["gh-cli", /(^|[\s;&|("'`])gh\s/],
+  ["curl", /\bcurl\b/],
+  ["wget", /\bwget\b/],
+  ["git-network", /\bgit\s+(fetch|clone|pull|ls-remote|remote\s+add)\b/],
+  ["github-url", /github\.com/],
+  ["pull-ref", /refs\/pull\//],
+];
+const PATH_PATTERN = /(?:~|\/Users\/[^/\s"'`]+|\/home\/[^/\s"'`]+)(?:\/[^\s"'`\\,)]*)?/g;
+
+function expandHome(path: string, home: string): string {
+  return path.startsWith("~") ? home + path.slice(1) : path;
+}
+
+function under(path: string, prefix: string): boolean {
+  const p = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  return path === prefix || path.startsWith(p);
+}
+
+export function scanToolCalls(calls: ToolCall[], options: ScanOptions): Finding[] {
+  const findings: Finding[] = [];
+  const allowed = options.allowedPrefixes.map((p) => expandHome(p, options.home));
+  const forbidden = options.forbiddenPrefixes.map((p) => expandHome(p, options.home));
+  for (const call of calls) {
+    const excerpt = call.input.length > 200 ? `${call.input.slice(0, 200)}…` : call.input;
+    if (FORBIDDEN_TOOLS.has(call.name)) {
+      findings.push({ severity: "violation", rule: `tool:${call.name}`, tool: call.name, excerpt });
+    }
+    for (const [rule, pattern] of FORBIDDEN_COMMANDS) {
+      if (pattern.test(call.input)) findings.push({ severity: "violation", rule, tool: call.name, excerpt });
+    }
+    for (const match of call.input.matchAll(PATH_PATTERN)) {
+      const path = expandHome(match[0], options.home);
+      if (under(path, options.workDir)) continue;
+      if (forbidden.some((prefix) => under(path, prefix))) {
+        findings.push({ severity: "violation", rule: "forbidden-path", tool: call.name, excerpt: path });
+      } else if (!allowed.some((prefix) => under(path, prefix))) {
+        findings.push({ severity: "note", rule: "outside-path", tool: call.name, excerpt: path });
+      }
+    }
+  }
+  return findings;
+}
+
+// ---- results ----
+
+export type CommandResult = { command: string[]; exitCode: number; tail: string };
+
+export type RunResult = {
+  runId: string;
+  taskId: string;
+  role: TaskRole;
+  tier: Task["tier"];
+  arm: Arm;
+  trial: number;
+  expectedModel: string;
+  gradedAt: string;
+  graded: CommandResult;
+  passed: boolean;
+  reviewDerived: CommandResult | null;
+  regression: CommandResult | null;
+  suite: CommandResult | null;
+  session: SessionMetrics | null;
+  modelMatches: boolean | null;
+  findings: Finding[];
+  invalid: boolean;
+  usage: { before: string | null; after: string | null };
+};
+
+export function isInvalid(findings: Finding[], modelMatches: boolean | null): boolean {
+  return findings.some((f) => f.severity === "violation") || modelMatches === false;
+}
+
+export function modelMatches(expected: string, models: string[]): boolean | null {
+  if (!models.length) return null;
+  const short = expected.includes("/") ? expected.split("/").pop()! : expected;
+  return models.every((m) => m === expected || m === short);
+}
+
+export type ReportRow = { taskId: string; tier: string; arm: Arm; runs: number; passed: number; invalid: number };
+
+export function summarizeResults(results: RunResult[], roles: TaskRole[] = ["decision"]): ReportRow[] {
+  const rows = new Map<string, ReportRow>();
+  for (const r of results) {
+    if (!roles.includes(r.role)) continue;
+    const key = `${r.taskId}|${r.arm}`;
+    const row = rows.get(key) ?? { taskId: r.taskId, tier: r.tier, arm: r.arm, runs: 0, passed: 0, invalid: 0 };
+    if (r.invalid) row.invalid++;
+    else {
+      row.runs++;
+      if (r.passed) row.passed++;
+    }
+    rows.set(key, row);
+  }
+  return [...rows.values()].sort((a, b) => a.taskId.localeCompare(b.taskId) || a.arm.localeCompare(b.arm));
+}
+
+// The rule fixed in docs/plans/2026-09-29-stack-and-model-plan.md section 4a:
+// on the easy/medium tier Luna (arm A) must pass at least as many valid runs as Sol (arm B).
+export function easyTierDecision(rows: ReportRow[]): { lunaPassed: number; solPassed: number; lunaDefault: boolean } {
+  const easy = rows.filter((r) => r.tier === "easy");
+  const lunaPassed = easy.filter((r) => r.arm === "A").reduce((n, r) => n + r.passed, 0);
+  const solPassed = easy.filter((r) => r.arm === "B").reduce((n, r) => n + r.passed, 0);
+  return { lunaPassed, solPassed, lunaDefault: lunaPassed >= solPassed };
+}

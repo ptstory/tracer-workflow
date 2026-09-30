@@ -1,0 +1,2 @@
+- Keep the existing field name: the headline count is `visibleTrackedProjects`, produced by `derivePortfolioProof` in `scripts/lib/portfolio-proof.mjs` and by the fallback in `normalizePortfolioProof` in `src/lib/portfolio-proof-data.mjs`. Change what that field counts; do not add a separate replacement field for display.
+- A linked worktree is a project whose `gitHistory.coverage` is `"worktree"`.

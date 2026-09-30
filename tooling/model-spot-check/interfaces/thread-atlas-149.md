@@ -1,0 +1,2 @@
+- Populate `raw_sources` rather than dropping it: each successful chat.db ingest (full and `chat_rowid`-targeted) writes one row with `source_type = 'chatdb'` and `source_path` set to the resolved snapshot path.
+- Keep the snapshot SHA-256 where the run row stores source diagnostics: `ingestion_runs.notes`, JSON path `$.source.sha256`.

@@ -1,0 +1,13 @@
+- Module `src/validate/fidelity.py` exposes `build_fidelity_report(conn, *, chatdb_path, chat_rowid=None, start_time=None, end_time=None) -> dict` and `render_fidelity_markdown(report) -> str`. `conn` is a read-only DuckDB connection.
+- CLI: `python scripts/cli.py fidelity-report --db <duckdb> --chatdb-path <chat.db> --json-out <path> --markdown-out <path>`, with optional `--chat-rowid`, `--start-time`, `--end-time`.
+- Top-level report keys: `version`, `generated_at`, `scope`, `provenance`, `source`, `normalized`, `export`, `semantics`, `relations`, `repairs`, `warnings`.
+  - `source`: counters including `total`, `text_present`, `text_absent_body_present`, `body_text_recovered`, `body_without_raw_text`, `attachment_only`.
+  - `normalized`: `total`.
+  - `export.raw_reasons`: overlapping counts including `textless`, `attachment_only`, `deleted`, `service`, `date_bounds`, `duplicate_candidate`, `duplicate_filtered`.
+  - `export.exclusive`: the mutually exclusive classification with keys, in this precedence order, `missing_normalized`, `textless`, `deleted`, `service`, `date_bounds`, `no_chat`, `duplicate_filtered`, `included`. The first matching reason wins; a source row with no normalized row is `missing_normalized`.
+  - `semantics.columns`: each optional Apple column mapped to `"available"` or `"unavailable"`.
+  - `semantics.counts`: including `summary_without_raw_text` and `summary_unparsed`.
+  - `semantics.associated_message_types`: a type distribution, or `null` when the column is unavailable.
+  - `relations.candidate_classification`: including `text_heuristic_candidates`, `source_type_add`, `source_type_removal`.
+  - `relations.target_resolution`: including `raw_target_present`, `target_normalized`, `target_exactly_one_source_and_canonical`, `target_unresolved`, `target_ambiguous`.
+  - `repairs`: `candidates`, and `successful`, `skipped`, `failed`, which are `null` when repair history is unavailable.

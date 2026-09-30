@@ -122,6 +122,18 @@ Run in random order (write down the seed), alternating arms. One trial per task 
 
 **What this gives up, deliberately:** review-loop dynamics (needs-fix rounds, review escapes) aren't measured here. That would cost 35–50 manual review-gate rounds. Section 4b measures review-loop cost on real work instead.
 
+**Status 2026-09-30: ready to run.** The harness is `tooling/model-spot-check/` (see its README). Preparing it changed the protocol in five ways:
+
+- **Interface disclosure.** The merged tests for five decision tasks assert module paths, function names, JSON keys or DOM hooks that the issue never names: thread-atlas #64, worklog #3, doordash-delivered #4 and #5, whatimeant #20. Both arms now get identical interface notes appended to `ISSUE.md` (`interfaces/<task>.md`). The notes give names and shapes, never expected results. Without them, a correct solution with different names would fail.
+- **Shape-only tests excluded.**
+  - doordash #5's third test regex-matches the reference implementation's exact source.
+  - doordash #4's dialog test requires `setAttribute('role','dialog')` literally.
+  - Neither is run.
+- **Review-derived test reported separately.** doordash #4's map-geometry privacy test encodes the leak historical review caught. The issue text doesn't name geometry, so this test doesn't count toward pass/fail.
+- **Out-of-scope PR edits.** whatimeant PR #27 also changed privacy-page copy. That test runs at its base version, and `ui-invariants.mjs`, which the PR rewrote, is not a grader.
+- **Validation.** Every graded command passes on its PR head and fails on base plus hidden tests. The one exception is three thread-atlas tests that need DuckDB's `sqlite_scanner` extension, which DuckDB downloads on first use; `prepare` now pre-installs it.
+- Also found: thread-atlas #149's first acceptance criterion (a hash on the run row) was already met at base, so the graded change is `raw_sources` population.
+
 ### 4b. Running log (ongoing, starts now)
 
 For every issue finished, append one line to `docs/plans/model-log.md`:

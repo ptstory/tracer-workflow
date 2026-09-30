@@ -1,0 +1,2 @@
+- The targeted path is `ingest_chatdb(conn, db_path=..., chat_rowid=<int>)` in `src/ingest/chatdb.py`.
+- Attachment rows keep the existing `raw_attachments` columns and key format (`chatdb:attachment:<source attachment ROWID>`).

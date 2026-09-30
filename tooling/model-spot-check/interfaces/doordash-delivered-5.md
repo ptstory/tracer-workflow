@@ -1,0 +1,8 @@
+- Put the selection kernel in its own `<script id="selection-store">` element in `index.html`. That script must be self-contained: it runs without the page's data or DOM.
+- It defines, on `globalThis`:
+  - `createSelectionStore(initial?)`, which returns `{ getState, set, reset, subscribe }`.
+    - State shape: `{ date, store, hour, order, flags, inspectedClaim }`. Every field defaults to `null`, except `flags`, which defaults to `{}`.
+    - `set(partial)` merges and notifies subscribers.
+    - `reset()` restores the defaults and notifies.
+    - `subscribe(fn)` returns an unsubscribe function.
+  - `resolveMapStore(mapId)`, which maps a map storefront id (`data-store` value) to its canonical store name.

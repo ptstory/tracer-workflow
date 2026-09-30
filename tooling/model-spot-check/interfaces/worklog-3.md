@@ -1,0 +1,20 @@
+- Module `src/ledger.ts` exports the following.
+  - `class LedgerStore`:
+    - static `open(dbPath)` and `createInMemory()`
+    - `close()`
+    - `ingestEvent(e)` and `ingestEvents(e[])`
+    - `queryEvents(filters?)`
+    - `countEvents()`
+    - `getSchemaVersion()`: 1 for this first schema
+  - `createLedgerDatabase(dbPath)`
+- Event input fields:
+  - `eventKey`, `occurredAt` (ISO string, any offset), `actorLogin`
+  - `repository: { host, owner, name, visibility: 'public' | 'private' }`
+  - `eventType`: one of `'commit' | 'pr_opened' | 'pr_merged' | 'pr_review_submitted' | 'issue_opened'`
+  - `source: { type, id, url? }`, `canonicalUrl?`
+  - `technicalDetails` (object), `labels` (string[])
+  - `privacySafety: { publicSafe, containsSensitiveData }`
+  - `provenance: { sourceSystem, ingestionMode, batchId?, importedAt? }`
+- `queryEvents` filters: `{ repository?: { host, owner, name }, eventTypes?, from?, to? }`.
+- Returned events carry the input fields plus `humanLabel`. `occurredAt` is returned as a UTC ISO string.
+- CLI: `runCli(['ledger', 'init', path])` in `src/cli.ts` creates the database and returns 0. `--help` behavior is unchanged.

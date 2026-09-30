@@ -1,0 +1,51 @@
+{
+  "$comment": "Merge into providers.openai in your Crush config. Prices are USD per 1M tokens, OpenAI list prices as of 2026-09-29, short context (the catalog's 272K window never reaches long-context rates). Crush applies cost_per_1m_in_cached to cache WRITES and cost_per_1m_out_cached to cache READS (internal/agent/agent.go, updateSessionUsage). Other fields copy your stored catalog entries.",
+  "providers": {
+    "openai": {
+      "models": [
+        {
+          "id": "gpt-6-luna",
+          "name": "GPT-6-Luna",
+          "cost_per_1m_in": 0.10,
+          "cost_per_1m_out": 0.50,
+          "cost_per_1m_in_cached": 0.125,
+          "cost_per_1m_out_cached": 0.01,
+          "context_window": 272000,
+          "default_max_tokens": 0,
+          "can_reason": true,
+          "reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+          "default_reasoning_effort": "medium",
+          "supports_attachments": true
+        },
+        {
+          "id": "gpt-6.1-sol",
+          "name": "GPT-6.1-Sol",
+          "cost_per_1m_in": 2.00,
+          "cost_per_1m_out": 10.00,
+          "cost_per_1m_in_cached": 2.50,
+          "cost_per_1m_out_cached": 0.10,
+          "context_window": 272000,
+          "default_max_tokens": 0,
+          "can_reason": true,
+          "reasoning_levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
+          "default_reasoning_effort": "low",
+          "supports_attachments": true
+        },
+        {
+          "id": "gpt-6-sol",
+          "name": "GPT-6-Sol",
+          "cost_per_1m_in": 2.00,
+          "cost_per_1m_out": 10.00,
+          "cost_per_1m_in_cached": 2.50,
+          "cost_per_1m_out_cached": 0.20,
+          "context_window": 272000,
+          "default_max_tokens": 0,
+          "can_reason": true,
+          "reasoning_levels": ["low", "medium", "high", "xhigh", "max", "ultra"],
+          "default_reasoning_effort": "medium",
+          "supports_attachments": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,397 @@
+{
+  "version": 1,
+  "note": "Hidden tests are fetched from each PR head at grade time only. 'graded' decides pass/fail; 'reviewDerived' is reported separately; 'excluded' lists shape-only assertions that are never run. Interface notes are disclosed to both arms.",
+  "arms": {
+    "A": {
+      "model": "openai/gpt-6-luna",
+      "reasoningEffort": "max"
+    },
+    "B": {
+      "model": "openai/gpt-6.1-sol",
+      "reasoningEffort": "high"
+    }
+  },
+  "tasks": [
+    {
+      "id": "vibecoding-status-web-12",
+      "role": "decision",
+      "tier": "easy",
+      "repo": "ptstory/vibecoding-status-web",
+      "issue": 12,
+      "pr": 17,
+      "base": "73a02a02acb3928cadfc778f315e57971d396a44",
+      "prHead": "4dff11e",
+      "setup": [
+        "npm ci"
+      ],
+      "graded": {
+        "files": [
+          "scripts/lib/git-history-contract.test.mjs",
+          "src/lib/portfolio-proof-data.test.mjs"
+        ],
+        "command": [
+          "node",
+          "--test",
+          "scripts/lib/git-history-contract.test.mjs",
+          "src/lib/portfolio-proof-data.test.mjs"
+        ]
+      },
+      "suite": [
+        "npm",
+        "test"
+      ],
+      "excluded": [],
+      "notes": "Issue allowed a separate deduplicated count instead; the interface note pins the in-place fix the tests assert.",
+      "validated": "2026-09-30: graded command passes on the PR head and fails on base plus hidden tests."
+    },
+    {
+      "id": "thread-atlas-149",
+      "role": "decision",
+      "tier": "easy",
+      "repo": "ptstory/thread-atlas",
+      "issue": 149,
+      "pr": 168,
+      "base": "5c74b5f346d8e32b1851191fced3de7a348b2f9b",
+      "prHead": "124749c",
+      "setup": [
+        "python3 -m venv .venv",
+        ".venv/bin/python -m pip install -q -r requirements.txt",
+        ".venv/bin/python -c \"import duckdb; duckdb.connect().install_extension('sqlite_scanner')\""
+      ],
+      "graded": {
+        "files": [
+          "tests/test_ingest_chatdb_snapshot_safety.py"
+        ],
+        "command": [
+          "env",
+          "PYTHONPATH=.",
+          ".venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_ingest_chatdb_snapshot_safety.py"
+        ]
+      },
+      "suite": [
+        "env",
+        "PYTHONPATH=.",
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "excluded": [],
+      "notes": "The first acceptance criterion (hash on the run row) was already met at base; the graded behavior is raw_sources population. Three snapshot-safety tests need DuckDB's sqlite_scanner extension, which DuckDB downloads on first use; setup pre-installs it so runs need no network. Validated 2026-09-30 on Linux: graded tests pass on the PR head except those three, which failed only because the extension download was blocked there.",
+      "validated": "2026-09-30: see notes; the discriminating test fails on base and passes on the PR head."
+    },
+    {
+      "id": "thread-atlas-155",
+      "role": "decision",
+      "tier": "easy",
+      "repo": "ptstory/thread-atlas",
+      "issue": 155,
+      "pr": 158,
+      "base": "5c31b142556aef01bb7fb1b922f110692f9be7df",
+      "prHead": "0b29904",
+      "setup": [
+        "python3 -m venv .venv",
+        ".venv/bin/python -m pip install -q -r requirements.txt",
+        ".venv/bin/python -c \"import duckdb; duckdb.connect().install_extension('sqlite_scanner')\""
+      ],
+      "graded": {
+        "files": [
+          "tests/test_ingest_chatdb_snapshot_safety.py",
+          "tests/test_ingest_chatdb_attributed_text.py"
+        ],
+        "command": [
+          "env",
+          "PYTHONPATH=.",
+          ".venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_ingest_chatdb_snapshot_safety.py",
+          "tests/test_ingest_chatdb_attributed_text.py"
+        ]
+      },
+      "suite": [
+        "env",
+        "PYTHONPATH=.",
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "excluded": [],
+      "notes": "Well specified by the issue; hidden tests use only interfaces that exist at base. Three snapshot-safety tests need DuckDB's sqlite_scanner extension, which DuckDB downloads on first use; setup pre-installs it so runs need no network. Validated 2026-09-30 on Linux: graded tests pass on the PR head except those three, which failed only because the extension download was blocked there.",
+      "validated": "2026-09-30: see notes; the discriminating test fails on base and passes on the PR head."
+    },
+    {
+      "id": "doordash-delivered-5",
+      "role": "decision",
+      "tier": "easy",
+      "repo": "ptstory/doordash-delivered",
+      "issue": 5,
+      "pr": 10,
+      "base": "386634a7120c9e2f0f0d4a43cfdef09da443d240",
+      "prHead": "f399aea",
+      "setup": [],
+      "graded": {
+        "files": [
+          "tests/selection-store.test.js"
+        ],
+        "command": [
+          "node",
+          "--test",
+          "--test-name-pattern",
+          "^(selection store fans out deterministic transitions and resets every selection field|map IDs resolve to canonical store names before shared selection fan-out)$",
+          "tests/selection-store.test.js"
+        ]
+      },
+      "suite": null,
+      "excluded": [
+        {
+          "test": "selection subscribers, not local event handlers, render linked map, timeline, and tribunal state",
+          "reason": "Regex-matches exact source text of the reference implementation."
+        }
+      ],
+      "notes": "No automated check covers the issue's no-regression/keyboard/reduced-motion criteria; those are unmeasured here.",
+      "validated": "2026-09-30: graded command passes on the PR head and fails on base plus hidden tests."
+    },
+    {
+      "id": "worklog-3",
+      "role": "decision",
+      "tier": "hard",
+      "repo": "ptstory/worklog",
+      "issue": 3,
+      "pr": 11,
+      "base": "45f643c41457b0572f7ba5f3dab6fc9d7c238419",
+      "prHead": "90de387",
+      "setup": [
+        "bun install --frozen-lockfile"
+      ],
+      "graded": {
+        "files": [
+          "test/ledger.test.ts"
+        ],
+        "command": [
+          "bun",
+          "test",
+          "test/ledger.test.ts"
+        ]
+      },
+      "suite": [
+        "sh",
+        "-c",
+        "bun run build && bun test"
+      ],
+      "excluded": [],
+      "notes": "Historical review caught timezone normalization and weak boundary tests; the hidden tests cover offset-equivalent timestamps and inclusive bounds.",
+      "validated": "2026-09-30: graded command passes on the PR head and fails on base plus hidden tests."
+    },
+    {
+      "id": "thread-atlas-64",
+      "role": "decision",
+      "tier": "hard",
+      "repo": "ptstory/thread-atlas",
+      "issue": 64,
+      "pr": 167,
+      "base": "28d12cb39e2909892faf7ee58800c940c5c858e8",
+      "prHead": "b8fd2f4",
+      "setup": [
+        "python3 -m venv .venv",
+        ".venv/bin/python -m pip install -q -r requirements.txt",
+        ".venv/bin/python -c \"import duckdb; duckdb.connect().install_extension('sqlite_scanner')\""
+      ],
+      "graded": {
+        "files": [
+          "tests/test_fidelity_report.py"
+        ],
+        "command": [
+          "env",
+          "PYTHONPATH=.",
+          ".venv/bin/python",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_fidelity_report.py"
+        ]
+      },
+      "suite": [
+        "env",
+        "PYTHONPATH=.",
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "excluded": [],
+      "notes": "Heaviest interface disclosure: report keys and exclusive-classification order are given. Exact counts still depend on classification semantics the issue leaves open; adjudicate failures before counting them. Three snapshot-safety tests need DuckDB's sqlite_scanner extension, which DuckDB downloads on first use; setup pre-installs it so runs need no network. Validated 2026-09-30 on Linux: graded tests pass on the PR head except those three, which failed only because the extension download was blocked there.",
+      "validated": "2026-09-30: passes on the PR head (3 tests); base plus hidden tests errors at import."
+    },
+    {
+      "id": "doordash-delivered-4",
+      "role": "decision",
+      "tier": "hard",
+      "repo": "ptstory/doordash-delivered",
+      "issue": 4,
+      "pr": 11,
+      "base": "83a375df786de4bce309537221b8e4b44a492712",
+      "prHead": "8427040",
+      "setup": [],
+      "graded": {
+        "files": [
+          "test/claim-inspection.test.mjs"
+        ],
+        "command": [
+          "node",
+          "--test",
+          "--test-name-pattern",
+          "^(claim registry provides eight semantic, inspectable claims|findings and evidence remain meaningful in static no-JS markup|published page contains aggregate methodology, not source schemas or private address data)$",
+          "test/claim-inspection.test.mjs"
+        ]
+      },
+      "reviewDerived": {
+        "command": [
+          "node",
+          "--test",
+          "--test-name-pattern",
+          "^privacy map keeps storefront relationships without publishing private reference geometry$",
+          "test/claim-inspection.test.mjs"
+        ],
+        "reason": "Historical review caught that the map geometry still revealed the reference location; the issue text does not name geometry, so this is reported separately, not pass/fail."
+      },
+      "suite": null,
+      "excluded": [
+        {
+          "test": "claim inspection has a shareable hash hook and accessible dialog controls",
+          "reason": "Regex-matches exact call syntax such as setAttribute('role','dialog'); a correct <dialog> implementation fails it."
+        }
+      ],
+      "notes": "Keyboard/pointer parity and reduced motion are unmeasured here.",
+      "validated": "2026-09-30: graded command passes on the PR head and fails on base plus hidden tests."
+    },
+    {
+      "id": "whatimeant-20",
+      "role": "decision",
+      "tier": "hard",
+      "repo": "ptstory/whatimeant",
+      "issue": 20,
+      "pr": 27,
+      "base": "cb9f968aee9a86536a765a6c4121e120ed8e9405",
+      "prHead": "dad54e8",
+      "setup": [],
+      "graded": {
+        "files": [
+          "tests/asset-revision.test.js"
+        ],
+        "command": [
+          "node",
+          "--test",
+          "tests/asset-revision.test.js"
+        ]
+      },
+      "regression": {
+        "restoreFromBase": [
+          "tests/privacy-page.test.js",
+          "tests/how-page.test.js",
+          "tests/make-link-publish.test.js"
+        ],
+        "command": [
+          "node",
+          "--test",
+          "tests/privacy-page.test.js",
+          "tests/how-page.test.js",
+          "tests/make-link-publish.test.js"
+        ]
+      },
+      "suite": null,
+      "excluded": [
+        {
+          "test": "tests/privacy-page.test.js (PR head version)",
+          "reason": "The PR also changed privacy copy; the head version asserts wording outside the issue. The base version runs as regression instead."
+        },
+        {
+          "test": "scripts/ui-invariants.mjs (PR head version)",
+          "reason": "Rewritten by the PR to match its own structure."
+        }
+      ],
+      "notes": "The issue prefers content-hashed filenames; the interface note pins the query-string revision the tests assert.",
+      "validated": "2026-09-30: graded command passes on the PR head and fails on base plus hidden tests."
+    },
+    {
+      "id": "tracer-workflow-71",
+      "role": "pilot",
+      "tier": "easy",
+      "repo": "ptstory/tracer-workflow",
+      "issue": 71,
+      "pr": 73,
+      "base": "39a8cc1a93d13c7d92da15c32b6165321f5a1fe7",
+      "prHead": "cac9ccb",
+      "setup": [
+        "bun install --frozen-lockfile"
+      ],
+      "graded": {
+        "files": [
+          "tooling/gate-packet/gate-packet.test.ts"
+        ],
+        "command": [
+          "bun",
+          "test",
+          "tooling/gate-packet/gate-packet.test.ts"
+        ]
+      },
+      "suite": [
+        "bun",
+        "test"
+      ],
+      "excluded": [],
+      "notes": "Pilot: validates the harness; results are discarded.",
+      "validated": "2026-09-30: graded command passes on the PR head and fails on base plus hidden tests."
+    },
+    {
+      "id": "worklog-2",
+      "role": "pilot",
+      "tier": "easy",
+      "repo": "ptstory/worklog",
+      "issue": 2,
+      "pr": 10,
+      "base": "a198b0cf58b0ea4e7df492e10f5455234e44b06b",
+      "prHead": "bbc285b",
+      "setup": [],
+      "gradeSetup": [
+        "bun install"
+      ],
+      "graded": {
+        "files": [
+          "test/cli.test.js"
+        ],
+        "command": [
+          "bun",
+          "test",
+          "test/cli.test.js"
+        ]
+      },
+      "suite": null,
+      "excluded": [],
+      "notes": "Pilot: base is an almost empty repo, so the worker creates package.json; dependencies install at grade time.",
+      "validated": "2026-09-30: graded command passes on the PR head and fails on base plus hidden tests."
+    }
+  ],
+  "stress": [
+    {
+      "repo": "ptstory/tracer-workflow",
+      "issue": 152,
+      "pr": 155,
+      "base": "305e0a8302dc886030da883a401e892733ee3b9d",
+      "status": "grading not yet defined"
+    },
+    {
+      "repo": "ptstory/worklog",
+      "issue": 4,
+      "pr": 12,
+      "base": "283746554ddceebb70fdda0d574228a6aefb4ca3",
+      "status": "grading not yet defined; PR base.sha from the API, confirm against baseRefOid"
+    }
+  ]
+}

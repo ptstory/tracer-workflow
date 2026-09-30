@@ -1,0 +1,5 @@
+- Declare the claim registry in `index.html` as a literal array: `const CLAIMS = [` … `\n];`.
+- Each claim is an object with:
+  - `id`: lowercase, hyphenated
+  - `definition`, `derivation`, `cohort`, `caveat`, `target`: non-empty strings
+  - `status`: one of `FACT`, `ESTIMATE`, `JUDGMENT`

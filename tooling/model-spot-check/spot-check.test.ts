@@ -1,0 +1,175 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  easyTierDecision,
+  isInvalid,
+  issueDocument,
+  modelMatches,
+  runOrder,
+  scanToolCalls,
+  summarizeResults,
+  summarizeSession,
+  toolCalls,
+  type CrushSession,
+  type Manifest,
+  type RunResult,
+} from "./lib";
+
+const tasks = [
+  { id: "easy-1", tier: "easy" as const },
+  { id: "easy-2", tier: "easy" as const },
+  { id: "hard-1", tier: "hard" as const },
+];
+
+describe("runOrder", () => {
+  test("is deterministic for a seed and differs across seeds", () => {
+    const a = runOrder(tasks, 42, { easy: 2, hard: 1 });
+    expect(runOrder(tasks, 42, { easy: 2, hard: 1 })).toEqual(a);
+    expect(runOrder(tasks, 43, { easy: 2, hard: 1 })).not.toEqual(a);
+  });
+
+  test("gives every task and trial both arms, adjacent to each other", () => {
+    const slots = runOrder(tasks, 7, { easy: 2, hard: 1 });
+    expect(slots).toHaveLength((2 * 2 + 1) * 2);
+    for (let i = 0; i < slots.length; i += 2) {
+      expect(slots[i].taskId).toBe(slots[i + 1].taskId);
+      expect(slots[i].trial).toBe(slots[i + 1].trial);
+      expect(new Set([slots[i].arm, slots[i + 1].arm])).toEqual(new Set(["A", "B"]));
+    }
+  });
+});
+
+describe("issueDocument", () => {
+  test("appends interface requirements only when present", () => {
+    expect(issueDocument("T", "body\n", null)).toBe("# T\n\nbody\n");
+    expect(issueDocument("T", "body", "- name `x`")).toContain("## Interface requirements\n\n- name `x`");
+  });
+});
+
+const session: CrushSession = {
+  meta: { cost: 1.5, skills: [{ name: "from-issue" }] },
+  messages: [
+    { role: "user", created: "2026-09-30T10:00:00-04:00", parts: [{ type: "text" }] },
+    {
+      role: "assistant",
+      created: "2026-09-30T10:00:05-04:00",
+      model: "gpt-6-luna",
+      parts: [
+        { type: "tool_call", name: "view", input: '{"file_path":"/Users/p/spot-runs/r1/work/src/a.ts"}' },
+        { type: "tool_call", name: "view", input: '{"file_path":"/Users/p/.config/crush/skills/tdd/SKILL.md"}' },
+      ],
+    },
+    {
+      role: "assistant",
+      created: "2026-09-30T10:06:05-04:00",
+      model: "gpt-6-luna",
+      parts: [{ type: "tool_call", name: "bash", input: '{"command":"bun test"}' }, { type: "tool_call", name: "agent", input: "{}" }],
+    },
+  ],
+};
+
+describe("summarizeSession", () => {
+  test("reads models, tool calls, wall time and cost from the session JSON", () => {
+    const m = summarizeSession(session);
+    expect(m.models).toEqual(["gpt-6-luna"]);
+    expect(m.assistantMessages).toBe(2);
+    expect(m.toolCalls).toBe(4);
+    expect(m.toolCallsByName).toEqual({ view: 2, bash: 1, agent: 1 });
+    expect(m.subagentCalls).toBe(1);
+    expect(m.wallSeconds).toBe(365);
+    expect(m.cost).toBe(1.5);
+    expect(m.skills).toEqual(["from-issue"]);
+  });
+});
+
+describe("scanToolCalls", () => {
+  const options = {
+    workDir: "/Users/p/spot-runs/r1/work",
+    home: "/Users/p",
+    allowedPrefixes: ["~/.config/crush"],
+    forbiddenPrefixes: ["~/Code"],
+  };
+
+  test("allows the work dir and skill reads", () => {
+    expect(scanToolCalls(toolCalls(session), options)).toEqual([]);
+  });
+
+  test("flags network commands, forbidden tools and the original checkouts", () => {
+    const findings = scanToolCalls(
+      [
+        { name: "bash", input: '{"command":"gh pr view 17"}' },
+        { name: "bash", input: '{"command":"git fetch origin"}' },
+        { name: "fetch", input: '{"url":"https://example.com"}' },
+        { name: "view", input: '{"file_path":"/Users/p/Code/vibecoding/messages/.worktrees/issue-155/src/x.py"}' },
+        { name: "bash", input: '{"command":"cat ~/Code/tracer-workflow/README.md"}' },
+        { name: "view", input: '{"file_path":"/Users/p/Documents/notes.md"}' },
+      ],
+      options,
+    );
+    expect(findings.filter((f) => f.severity === "violation").map((f) => f.rule)).toEqual([
+      "gh-cli",
+      "git-network",
+      "tool:fetch",
+      "forbidden-path",
+      "forbidden-path",
+    ]);
+    expect(findings.filter((f) => f.severity === "note").map((f) => f.excerpt)).toEqual(["/Users/p/Documents/notes.md"]);
+  });
+
+  test("does not mistake words containing gh for the gh CLI", () => {
+    expect(scanToolCalls([{ name: "bash", input: '{"command":"echo high; rg -n thought"}' }], options)).toEqual([]);
+  });
+});
+
+describe("validity and decisions", () => {
+  test("model mismatch or any violation invalidates a run", () => {
+    expect(modelMatches("openai/gpt-6-luna", ["gpt-6-luna"])).toBe(true);
+    expect(modelMatches("openai/gpt-6-luna", ["gpt-6-luna", "gpt-6-sol"])).toBe(false);
+    expect(modelMatches("openai/gpt-6-luna", [])).toBeNull();
+    expect(isInvalid([], true)).toBe(false);
+    expect(isInvalid([], false)).toBe(true);
+    expect(isInvalid([{ severity: "note", rule: "outside-path", tool: "view", excerpt: "" }], null)).toBe(false);
+    expect(isInvalid([{ severity: "violation", rule: "curl", tool: "bash", excerpt: "" }], true)).toBe(true);
+  });
+
+  test("the easy-tier rule counts valid passes only and lets Luna tie", () => {
+    const base = { role: "decision", trial: 1, invalid: false } as const;
+    const results = [
+      { ...base, taskId: "e1", tier: "easy", arm: "A", passed: true },
+      { ...base, taskId: "e1", tier: "easy", arm: "B", passed: true },
+      { ...base, taskId: "e2", tier: "easy", arm: "A", passed: false },
+      { ...base, taskId: "e2", tier: "easy", arm: "B", passed: true, invalid: true },
+      { ...base, taskId: "h1", tier: "hard", arm: "B", passed: true },
+      { ...base, taskId: "p1", tier: "easy", arm: "B", passed: true, role: "pilot" },
+    ] as unknown as RunResult[];
+    const rows = summarizeResults(results);
+    expect(rows.find((r) => r.taskId === "e2" && r.arm === "B")).toEqual({ taskId: "e2", tier: "easy", arm: "B", runs: 0, passed: 0, invalid: 1 });
+    expect(rows.some((r) => r.taskId === "p1")).toBe(false);
+    expect(easyTierDecision(rows)).toEqual({ lunaPassed: 1, solPassed: 1, lunaDefault: true });
+  });
+});
+
+describe("tasks.json", () => {
+  const m = JSON.parse(readFileSync(join(import.meta.dir, "tasks.json"), "utf8")) as Manifest;
+
+  test("has 8 decision tasks split 4 easy / 4 hard and two pilots", () => {
+    const decision = m.tasks.filter((t) => t.role === "decision");
+    expect(decision).toHaveLength(8);
+    expect(decision.filter((t) => t.tier === "easy")).toHaveLength(4);
+    expect(m.tasks.filter((t) => t.role === "pilot")).toHaveLength(2);
+  });
+
+  test("every task has a full base SHA, graded files and a graded command", () => {
+    for (const t of m.tasks) {
+      expect(t.base).toMatch(/^[0-9a-f]{40}$/);
+      expect(t.graded.files.length).toBeGreaterThan(0);
+      expect(t.graded.command.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("arms name the pinned models", () => {
+    expect(m.arms.A).toEqual({ model: "openai/gpt-6-luna", reasoningEffort: "max" });
+    expect(m.arms.B).toEqual({ model: "openai/gpt-6.1-sol", reasoningEffort: "high" });
+  });
+});
