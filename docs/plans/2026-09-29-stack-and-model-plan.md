@@ -114,7 +114,7 @@ Dropped for leakage (issue written after the implementation started):
 - tool-call count: the number of `tool_call` parts in the session JSON
 - whether the agent ran `mex`
 
-Run in random order (write down the seed), alternating arms. One trial per task per arm.
+Run in the seeded order from `spot-check.ts order` (write the seed down): each task's two arms run back to back, in random order. Easy/medium tasks get two trials per arm and hard tasks one, so 24 runs.
 
 **Decision rule, fixed now:**
 - On the easy/medium tier, Luna must pass at least as many tasks as Sol. If it does, Luna stays the default. If not, Sol becomes the default and Luna goes back to the small slot only.
