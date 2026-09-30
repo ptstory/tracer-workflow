@@ -111,8 +111,9 @@ The full stage table, including every skill, owner, and role, is in
 ## Tooling
 
 **`tooling/review-gate-poller/`**: Bun poller that watches open PRs for a fresh
-`needs-fix` verdict at the current head and shells `opencode run` to start the
-fix pass. The poller only triggers current-head `needs-fix` repair; it does not
+`needs-fix` verdict at the current head and contains the legacy fix-pass
+launcher. The poller is currently **not in use**; `RUNTIME.md` records the
+current runtime status and #184 owns decoupling the launcher. The poller does not
 infer or override the issue's AFK/HITL landing authority. See its
 [README](./tooling/review-gate-poller/README.md) for environment variables and
 launchd install.
