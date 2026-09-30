@@ -14,7 +14,7 @@
   "lanes": [
     {"id": "planning", "label": "Planning / Fresh Review Sessions"},
     {"id": "github", "label": "GitHub Durable Record"},
-    {"id": "execution", "label": "OpenCode / Execution"},
+    {"id": "execution", "label": "Execution"},
     {"id": "verification", "label": "Observed Verification"},
     {"id": "human", "label": "Landing Authority"}
   ],
