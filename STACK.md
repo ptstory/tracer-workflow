@@ -19,8 +19,16 @@ Current state:
 - Prices on 2026-09-29, per 1M tokens (input / cached input / output): `gpt-6-luna` $0.10 / $0.01 / $0.50; `gpt-6-sol` $2.00 / $0.20 / $10.00; `gpt-6.1-sol` $2.00 / $0.10 / $10.00. (reported) `gpt-6.1-sol` was released on 2026-09-29.
 
 Findings:
-- Crush session `meta` token counts are not session totals. A 2026-09-28 session with more than 25 tool calls and several file edits reported `prompt_tokens: 73866` and `completion_tokens: 253`; its final reply alone is about 250 tokens, so these look like last-request values. (reported, session JSON; the reading is an inference) A 2026-09-26 session reportedly showed `prompt_tokens: 0`. (session)
-- Crush's `cost` is not a quota measure: the provider catalog lists $0 per 1M tokens for every model, yet `cost` was 1.56. The Codex usage readout is the quota measure. (reported)
+- Crush session usage fields, from `internal/agent/agent.go` (`updateSessionUsage`, `updateSessionTokenCounters`, `Summarize`). (reported, from the local clone; matches upstream main)
+  - `prompt_tokens` is overwritten on every step with that step's `InputTokens + CacheReadTokens`, which is the last request's context size, not a session total.
+  - `completion_tokens` is overwritten with the last step's output tokens.
+  - Summarization sets `prompt_tokens` to 0. That explains the 2026-09-26 session.
+  - `cost` accumulates per step, and `coordinator.go` adds child-session cost to the parent, so it is a session total that includes subagents.
+- How each step's cost is computed: `cost_per_1m_in` × uncached input, plus `cost_per_1m_out` × output, plus `cost_per_1m_in_cached` × cache-write tokens, plus `cost_per_1m_out_cached` × cache-read tokens, using the model's catalog entry. Note the counterintuitive naming: `out_cached` prices cache reads.
+  - Cost is forced to 0 when the provider has `flat_rate` set, or when usage is estimated.
+  - The catalog stored in `~/.local/share/crush/crush.json` lists 0 for all four price fields on every OpenAI model. (reported) So runs priced from it record $0.
+  - The 1.56 on a 2026-09-28 session implies non-zero prices applied then; the source is unexplained.
+  - `cost` is a valid quota proxy only if correct per-model prices are configured and `flat_rate` is off. The Codex usage readout stays the reference.
 - The session JSON does record the model per message, every `tool_call` with its input, timestamps, and loaded skills, so model, tool-call counts and wall time are measurable without new hooks. (reported)
 
 Corrections to prior records:

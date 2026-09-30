@@ -110,6 +110,7 @@ Dropped for leakage (issue written after the implementation started):
 - the repo's own checks
 - wall time
 - Codex usage readout before and after, with nothing else using the account in between
+- Crush session `cost`, if prices are configured and the pilot showed it tracks the readout
 - tool-call count: the number of `tool_call` parts in the session JSON
 - whether the agent ran `mex`
 
@@ -136,10 +137,21 @@ When anything in the stack changes, add a dated line to STACK.md. Review after a
   - every message, with a per-message `model` and `provider`, timestamps, and `tool_call` parts including their inputs
   - the skills loaded, with load times
 - **Model, tool-call counts and wall time can be read from this record. No new hook is needed.**
-- **`meta` token counts are not session totals.** The sample session ran about 6 minutes with more than 25 tool calls and several file edits. Its meta reports `prompt_tokens: 73866` and `completion_tokens: 253`, and its final reply alone is about 250 tokens. They look like the last request's values (inference). An earlier session reportedly showed `prompt_tokens: 0`.
-  - Use them at most as "context size at the end," and don't use `cost` for quota.
-  - To confirm: `rg -n 'PromptTokens\s*=|Cost\s*\+=' ~/Code/oss/crush/internal`. From memory of the upstream opencode code Crush forked from (unverified here), usage tracking overwrites the token fields per request and adds to cost.
-  - Crush's provider catalog lists every model at $0 per 1M tokens, yet `cost` was 1.56, so its source is unknown.
+- **What the `meta` fields mean**, from Crush source (`internal/agent/agent.go`):
+  - `prompt_tokens` is the last request's context size (uncached input plus cache reads). It is overwritten every step and set to 0 by summarization.
+  - `completion_tokens` is the last step's output.
+  - `cost` accumulates across steps and includes subagent sessions.
+- **How `cost` is priced:** the model's catalog prices. `cost_per_1m_in` and `cost_per_1m_out` price uncached input and output, `cost_per_1m_in_cached` prices cache writes, and `cost_per_1m_out_cached` prices cache reads. It is 0 if the provider has `flat_rate` set or the usage is estimated.
+- **Your stored catalog lists $0 for every OpenAI model**, so current runs likely record $0. Check the newest Luna session's `cost`.
+- **Optional, measurement-only change before the pilot:** set the prices for the three models under test in the OpenAI provider's `models` in crush.json. Short-context prices; the catalog's 272K context window means long-context rates never apply.
+
+  | Model | `cost_per_1m_in` | `cost_per_1m_out` | `cost_per_1m_in_cached` (cache write) | `cost_per_1m_out_cached` (cache read) |
+  |---|---|---|---|---|
+  | `gpt-6-luna` | 0.10 | 0.50 | 0.125 | 0.01 |
+  | `gpt-6.1-sol` | 2.00 | 10.00 | 2.50 | 0.10 |
+  | `gpt-6-sol` | 2.00 | 10.00 | 2.50 | 0.20 |
+
+  Crush issue #2649 reports custom model entries being overridden by the embedded catalog, so confirm with one short session that `cost` comes out non-zero. Then `cost` equals list-price-equivalent usage, and at $0.04 per credit it tracks Codex credits. In the pilot, compare it once against the Codex readout; if they disagree, the readout wins. Record the change in STACK.md.
 - **Quota:** the Codex usage readout before and after each run.
 - **Not now:** an OpenTelemetry trace pipeline. Build it only if counts can't answer a question that comes up.
 - **OpenCode corpus** (`opencode.db`, recovered): keep it and back it up, as a read-only historical archive. Don't use it for model decisions: model, preset, plugin and workload changed together, so model comparisons from it are confounded.
