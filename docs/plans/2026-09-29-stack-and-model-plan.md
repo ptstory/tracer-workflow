@@ -57,7 +57,7 @@ Claude / Opus 5.5 (reported, from a last30days summary, unverified): the researc
 
 Two parts. Neither needs scratch repos, CI or manual review-gate rounds.
 
-### 4a. Hidden-test spot check (one-off, about 16 runs)
+### 4a. Hidden-test spot check (one-off; tracked in #182)
 
 This answers the question the running log can't: on the same task, from the same base, does Luna's first attempt behave correctly as often as Sol's?
 
@@ -171,13 +171,13 @@ When anything in the stack changes, add a dated line to STACK.md. Review after a
 ## 6. Repository changes (one issue and one PR each, in this order)
 
 1. **This commit:** this plan, a STACK.md entry for 2026-09-29, and RADAR entries (herdr adopted, mex in trial, Ponytail queued).
-2. **Docs: separate the workflow protocol from the runtime.**
+2. **Docs: separate the workflow protocol from the runtime** (#183).
    - Add RUNTIME.md.
    - Make WORKFLOW.md, CONTEXT.md, AGENTS.md and `.agents/repo-context.md` tool-independent.
    - Move ORCHESTRATOR.md to `docs/history/`.
    - Add a non-normative banner to STACK.md.
    - Replace "lane" with "stage" where it means a workflow stage, in WORKFLOW.md and `skills/from-issue/SKILL.md`.
-3. **Code: remove the hard OpenCode dependency.**
+3. **Code: remove the hard OpenCode dependency** (#184).
    - `tooling/doctor/doctor.ts` requires the `opencode` executable.
    - `tooling/review-gate-poller/poller.ts` calls `opencode run`.
    - The `oh-my-opencode-slim` managed block in `.gitignore`/`.ignore` and its test cover `.slim/`, OpenCode's worktree directory. tracer-workflow's current worktrees are sibling directories (`~/Code/tracer-workflow-<name>`), which need no ignore entry. So the block is a removal candidate, not a replacement, once `.slim/` is confirmed absent from the checkout. `messages` uses in-repo `.worktrees/` instead; tooling must not assume either layout.
