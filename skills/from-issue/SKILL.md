@@ -4,7 +4,7 @@ description: >
   Execution stage for a ready-for-agent issue: consume the validated execution
   input plus the current worktree state, implement the smallest safe slice, and
   stop at PR + evidence bundle or one of the explicitly allowed blocker/failure
-  outcomes. Downstream review, check-run, and merge stay in subordinate lanes.
+  outcomes. Downstream review, check-run, and merge stay in subordinate stages.
   Never mint a second implementation handoff for the same issue.
 ---
 
@@ -51,14 +51,14 @@ artifact is the execution input.
   default approval checkpoint are not blockers by themselves.
 - A handoff-only result is allowed only for genuine blockers or verified failures that cannot be recovered in the current worktree.
 - Do not emit another implementation handoff for the same issue; update or
-  resume the existing lane instead.
+  resume the existing stage instead.
 - The terminal completion result is one of four outcomes:
   - PR opened with a closing issue reference plus an evidence bundle.
   - Existing PR/worktree resumed and advanced.
   - Explicit durable blocker naming the exact missing prerequisite or decision.
   - Verified failure with the exact recovery state persisted.
 - Treat `review-gate` and `from-pr-review` as
-  subordinate judgment/review lanes; do not flatten them into `from-issue`.
+  subordinate judgment/review stages; do not flatten them into `from-issue`.
 
 ## Steps
 
