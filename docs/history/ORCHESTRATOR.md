@@ -1,4 +1,4 @@
-> **Historical runtime document.** This file describes an earlier execution runtime and is retained for provenance only. It is non-normative; see `WORKFLOW.md` for protocol and `RUNTIME.md` for current tool bindings.
+> **Historical runtime document.** This file describes an earlier OpenCode execution runtime and is retained for provenance only. It is non-normative; see `WORKFLOW.md` for protocol and `RUNTIME.md` for current tool bindings.
 
 ## The fence
 
