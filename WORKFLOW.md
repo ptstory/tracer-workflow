@@ -5,9 +5,10 @@ Issue-backed, PR-mediated, evidence-first AI coding workflow.
 [CONTEXT.md](./CONTEXT.md) defines the terms used here: evidence bundle, verdict
 value, slice contract, HITL/AFK, and plane.
 
-**Planes.** ChatGPT-web / Claude plan and review. OpenCode executes. GitHub
+**Planes.** Planning/review and execution are worker responsibilities; GitHub
 issues, PRs, commits, comments, and check runs form the durable coordination
-layer and source of truth. Chat transcripts are disposable.
+layer and source of truth. Current tool bindings live in `RUNTIME.md`. Session
+transcripts are disposable.
 
 If you're reading this because you forgot what the workflow was: the chain is
 below, the skills are in `skills/`, the plain reusable prompts are in `prompts/`,
@@ -23,7 +24,7 @@ ordinary `Approve this direction` / design-approval checkpoint only ends the run
 if it names a concrete unresolved blocker absent from the issue or brief.
 Multi-file scope, UI impact, a desire for planning, or a nested skill's default
 approval checkpoint are not blockers by themselves. Review, check-run, and merge
-stay downstream in subordinate lanes. Handoff-only only for genuine blockers or
+stay downstream in subordinate stages. Handoff-only only for genuine blockers or
 verified failures that cannot be recovered locally.
 
 ## The chain
@@ -80,7 +81,7 @@ This preserves the workflow invariant that `from-issue` consumes one durable
 GitHub artifact whose contract is specific enough to execute without relying on
 chat memory. The durable issue brief, a validated pasted implementation handoff,
 or a validated pasted durable agent brief are all execution inputs once
-validated; the later review lanes are separate contracts, not nested inside
+validated; the later review stages are separate contracts, not nested inside
 `from-issue`.
 
 ## The three repo-owned rules
@@ -118,8 +119,8 @@ Every stage reads its input from a GitHub artifact such as an issue, PR, verdict
 comment, or check-run state, then writes its output as another GitHub artifact.
 No stage requires session memory from a previous stage. The workflow can resume
 from any stage in any tool by pointing that stage at the relevant GitHub
-artifact. The same property keeps it tool-agnostic across ChatGPT, Claude, and
-OpenCode.
+artifact. The same property keeps it tool-agnostic across runtime
+implementations; current bindings are recorded in `RUNTIME.md`.
 
 Reviewer: fresh session every round. Fixer: a new session for every needs-fix
 round, never the session that implemented the PR. Round state lives on GitHub
