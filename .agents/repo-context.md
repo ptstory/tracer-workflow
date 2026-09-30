@@ -13,6 +13,7 @@ unbacked-work monitoring.
 
 - `WORKFLOW.md` — canonical workflow, evidence-bundle contract, slice-contract
   rule, check-run gate, HITL/AFK rules, and stage responsibilities.
+- `RUNTIME.md` — non-normative current tool/runtime bindings.
 - `README.md` — repository overview, workflow diagram, skills, and tooling map.
 - `skills/` — canonical source for Tracer custom runtime skills.
 - `prompts/` — canonical plain reusable prompts.
@@ -47,7 +48,7 @@ bun test
 # Run the repository's TypeScript check.
 bun run typecheck
 
-# Review-gate poller smoke run (requires authenticated gh and opencode).
+# Review-gate poller smoke run (currently disabled; see RUNTIME.md).
 cd tooling/review-gate-poller
 TRACER_REVIEWER_LOGINS=<comma-separated-logins> RG_REPO=<owner/repo> RG_WORKDIR=<repo-working-dir> bun poller.ts
 
@@ -66,8 +67,9 @@ lint or build commands here if the repository introduces them.
 
 - Bun is inferred from `#!/usr/bin/env bun`, `bun:test` imports, and tooling
   READMEs; TODO: confirm the supported Bun version.
-- Required CLIs documented by the tooling are `bun`, authenticated `gh`, and
-  `opencode`.
+- Baseline repository CLIs are `bun`, authenticated `gh`, and `git`.
+  Runtime-specific worker CLIs are recorded in `RUNTIME.md`; tooling that has
+  not yet been decoupled is tracked separately.
 - The repository targets macOS launchd for documented background jobs; TODO:
   confirm supported operating systems beyond macOS.
 - `package.json` and `bun.lock` are present; CI installs dependencies with
@@ -81,7 +83,7 @@ lint or build commands here if the repository introduces them.
 - GitHub is the coordination layer and source of truth; chat is not.
 - Keep canonical custom skills under `skills/` and plain reusable prompts under
   `prompts/`; adopted upstream skills are consumed rather than edited in place.
-- Preserve the separation between planning/review, OpenCode execution, and
+- Preserve the separation between planning/review, execution, and
   GitHub durable artifacts.
 - Review verdicts are comment-only and stale whenever the PR head SHA changes.
 - `from-pr-review` must not merge or claim readiness from local output alone.

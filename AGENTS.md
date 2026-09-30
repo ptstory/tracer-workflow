@@ -1,8 +1,10 @@
 # Agent Contract — ptstory/tracer-workflow
 
 This repo uses an issue-backed, PR-mediated, evidence-first workflow.
-ChatGPT-web plans and reviews. OpenCode executes. GitHub issues, PRs, commits,
-comments, and check runs are the durable coordination layer.
+Planning/review and execution are separate worker responsibilities. GitHub issues,
+PRs, commits, comments, and check runs are the durable coordination layer.
+Current product/runtime bindings live in `RUNTIME.md`; they do not redefine the
+workflow contract.
 
 ## Issue tracker
 

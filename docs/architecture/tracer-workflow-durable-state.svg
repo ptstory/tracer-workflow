@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
   <title id="title">Tracer durable-state system overview</title>
-  <desc id="desc">Disposable ChatGPT, Claude, OpenCode, and local work cross into durable GitHub issues, pull requests, verdict comments, current head identity, check runs, and trusted remote refs. Pollers compare the durable record with observed state to detect stale review and local-only work.</desc>
+  <desc id="desc">Disposable planning/review sessions, implementation agents, and local work cross into durable GitHub issues, pull requests, verdict comments, current head identity, check runs, and trusted remote refs. Pollers compare the durable record with observed state to detect stale review and local-only work.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#57606a"/></marker>
     <style>

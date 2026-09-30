@@ -11,7 +11,7 @@
   <text class="t" x="490" y="42" text-anchor="middle">A verdict is valid only for the reviewed PR head.</text>
   <text class="s" x="490" y="68" text-anchor="middle">Every push changes the identity under review and invalidates the previous SHA-bound verdict.</text>
 
-  <rect class="box ep" x="355" y="105" width="270" height="68"/><text class="h" x="490" y="134" text-anchor="middle">Implementation / fix pass</text><text class="s" x="490" y="154" text-anchor="middle">OpenCode or equivalent execution lane</text>
+  <rect class="box ep" x="355" y="105" width="270" height="68"/><text class="h" x="490" y="134" text-anchor="middle">Implementation / fix pass</text><text class="s" x="490" y="154" text-anchor="middle">Execution stage / implementation agent</text>
   <rect class="box gh" x="355" y="215" width="270" height="68"/><text class="h" x="490" y="244" text-anchor="middle">PR open · current head = SHA A</text><text class="s" x="490" y="264" text-anchor="middle">diff + evidence bundle are durable</text>
   <rect class="box ep" x="330" y="325" width="320" height="76"/><text class="h" x="490" y="354" text-anchor="middle">Fresh review-gate session</text><text class="s" x="490" y="376" text-anchor="middle">reads issue + actual changed files + SHA A</text>
   <rect class="box gh" x="355" y="445" width="270" height="68"/><text class="h" x="490" y="474" text-anchor="middle">Verdict comment · head-sha: SHA A</text><text class="s" x="490" y="494" text-anchor="middle">append-only review record</text>

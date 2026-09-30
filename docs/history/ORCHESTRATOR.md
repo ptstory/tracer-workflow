@@ -1,3 +1,5 @@
+> **Historical runtime document.** This file describes an earlier OpenCode execution runtime and is retained for provenance only. It is non-normative; see `WORKFLOW.md` for protocol and `RUNTIME.md` for current tool bindings.
+
 ## The fence
 
 The orchestrator seat was originally fenced because it kept doing implementation work instead of delegating. Edit and bash were set to deny, along with chisel and serena. Removing the orchestrator's direct ability to act left spawning an executor or fixer as the path for implementation and kept the seat focused on orchestration.

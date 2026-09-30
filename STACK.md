@@ -1,5 +1,7 @@
 # STACK.md
 
+> **Non-normative runtime log.** This append-only file records observed tool/runtime history. It does not define the Tracer workflow protocol; current bindings live in `RUNTIME.md`.
+
 Durable append-only record of agent-stack configuration changes and breakage findings, because diagnoses that live only in chat transcripts get re-derived from scratch weeks later.
 
 ## 2026-09-11

@@ -8,9 +8,10 @@ means; the repository determines which labels exist.
 
 ## Plane
 
-Where a stage runs. There are three planes: the **planning plane** (ChatGPT/Claude
-web), **execution plane** (OpenCode), and **coordination plane** (GitHub). Only
-the coordination plane is durable. A stage may move between the other two
+Where a stage runs. There are three planes: the **planning plane**, **execution
+plane**, and **coordination plane**. Their responsibilities are stable even when
+the tools implementing them change; current tool bindings live in `RUNTIME.md`.
+Only the coordination plane is durable. A stage may move between the other two
 without changing the workflow because every stage reads and writes GitHub
 artifacts instead of session state.
 
