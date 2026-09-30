@@ -26,7 +26,7 @@ The two checked-in SVGs are reader-facing static projections for GitHub README r
 
 ## Interpretation rules
 
-1. ChatGPT, Claude, OpenCode, and local worktrees can do work but are not durable workflow authorities.
+1. Planning/review sessions, implementation agents, and local worktrees can do work but are not durable workflow authorities.
 2. Authored GitHub records and observed verification are separate trust classes. Issues/briefs, PR evidence bundles, and review verdict comments are authored records; current head SHA, actual checks, and trusted-remote reachability are observed state.
 3. A green gate means the configured current-head evidence contract is satisfied. It does not guarantee overall correctness.
 4. Review is commit-specific. A verdict remains current only while its recorded `head-sha` equals the PR current head.
