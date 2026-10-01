@@ -213,6 +213,37 @@ describe("buildTaskLifecycle", () => {
     expect(lifecycle.finalContextTokens).toBe(2000);
   });
 
+
+  test("treats multiple Luna sessions before the first gate as one first-pass cycle", () => {
+    const attempts = [
+      attempt({
+        sessionId: "luna-a",
+        firstAt: "2026-10-01T10:00:00Z",
+        lastAt: "2026-10-01T10:02:00Z",
+      }),
+      attempt({
+        sessionId: "luna-b",
+        firstSeenAt: "2026-10-01T10:03:00Z",
+        firstAt: "2026-10-01T10:03:00Z",
+        lastAt: "2026-10-01T10:04:00Z",
+      }),
+    ];
+    const reviews = [
+      review({
+        commentedAt: "2026-10-01T10:05:00Z",
+        verdict: "merge-candidate",
+        blockingSet: [],
+        fixNowCount: 0,
+      }),
+    ];
+
+    const [lifecycle] = buildTaskLifecycle(attempts, reviews);
+    expect(lifecycle.attempts.map((item) => item.phase)).toEqual(["initial", "continuation"]);
+    expect(lifecycle.firstPassLunaAccepted).toBe(true);
+    expect(lifecycle.lunaRepairSucceeded).toBe(false);
+    expect(lifecycle.escalatedToSol).toBe(false);
+  });
+
   test("counts a one-repair Luna success without escalation", () => {
     const attempts = [
       attempt({ sessionId: "luna-1" }),
