@@ -31,6 +31,7 @@ import {
   onlyNewSession,
   runOrder,
   scanToolCalls,
+  summarizeEfficiency,
   summarizeResults,
   summarizeSession,
   toolCalls,
@@ -428,20 +429,71 @@ function grade(args: string[]): void {
   replaced.push(result);
   writeFileSync(resultsPath, replaced.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   console.log(`${t.id} arm ${meta.arm}: ${result.passed ? "PASS" : "FAIL"}${result.invalid ? " (INVALID)" : ""}`);
+  if (metrics) {
+    console.log(`  tokens: prompt=${metrics.promptTokens ?? "-"} completion=${metrics.completionTokens ?? "-"} total=${metrics.totalTokens ?? "-"}; wall=${metrics.wallSeconds ?? "-"}s; cost=${metrics.cost ?? "-"}`);
+  }
   if (matches === false) console.log(`  model mismatch: expected ${meta.model}, session used ${metrics?.models.join(", ")}`);
   for (const f of findings) console.log(`  ${f.severity}: ${f.rule} via ${f.tool}: ${f.excerpt}`);
   if (!session) console.log("  no --session given: model, tool calls and leakage were not checked");
 }
 
+function refreshSessionMetrics(results: RunResult[]): RunResult[] {
+  let refreshed = 0;
+  const updated = results.map((result) => {
+    const sessionPath = join(RUNS_ROOT, result.runId, "session.json");
+    if (!existsSync(sessionPath)) return result;
+    const session = JSON.parse(readFileSync(sessionPath, "utf8")) as CrushSession;
+    const metrics = summarizeSession(session);
+    refreshed++;
+    const next = { ...result, session: metrics };
+    writeFileSync(join(RUNS_ROOT, result.runId, "result.json"), `${JSON.stringify(next, null, 2)}\n`);
+    return next;
+  });
+  const path = join(RUNS_ROOT, "results.jsonl");
+  writeFileSync(path, updated.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  console.log(`Refreshed session metrics for ${refreshed} result(s) from existing session.json artifacts.\n`);
+  return updated;
+}
+
 function report(): void {
   const path = join(RUNS_ROOT, "results.jsonl");
   if (!existsSync(path)) throw new Error(`no results yet at ${path}`);
-  const results = readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as RunResult);
+  const stored = readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as RunResult);
+  const results = refreshSessionMetrics(stored);
   const rows = summarizeResults(results);
+  console.log("Correctness");
   console.log("task                         tier  arm  valid runs  passed  invalid");
   for (const r of rows) console.log(`${r.taskId.padEnd(28)} ${r.tier.padEnd(5)} ${r.arm.padEnd(4)} ${String(r.runs).padEnd(11)} ${String(r.passed).padEnd(7)} ${r.invalid}`);
+
+  const decision = results
+    .filter((r) => r.role === "decision" && !r.invalid)
+    .sort((a, b) => a.taskId.localeCompare(b.taskId) || a.arm.localeCompare(b.arm));
+  console.log("\nPer-run efficiency (valid decision runs)");
+  console.log("task                         arm result  wall_s  prompt_tok  completion_tok  total_tok  cost");
+  for (const r of decision) {
+    const s = r.session;
+    console.log(
+      `${r.taskId.padEnd(28)} ${r.arm.padEnd(3)} ${(r.passed ? "PASS" : "FAIL").padEnd(7)} ` +
+      `${String(s?.wallSeconds ?? "-").padEnd(7)} ${String(s?.promptTokens ?? "-").padEnd(11)} ` +
+      `${String(s?.completionTokens ?? "-").padEnd(15)} ${String(s?.totalTokens ?? "-").padEnd(10)} ` +
+      `${typeof s?.cost === "number" ? s.cost.toFixed(6) : "-"}`,
+    );
+  }
+
+  const efficiency = summarizeEfficiency(results);
+  console.log("\nAggregate efficiency (valid decision runs)");
+  console.log("arm  runs passed wall_s token_runs prompt_tok completion_tok total_tok cost");
+  for (const e of efficiency) {
+    console.log(
+      `${e.arm.padEnd(4)} ${String(e.runs).padEnd(4)} ${String(e.passed).padEnd(6)} ${String(e.wallSeconds).padEnd(6)} ` +
+      `${String(e.tokenRuns).padEnd(10)} ${String(e.promptTokens).padEnd(10)} ${String(e.completionTokens).padEnd(14)} ` +
+      `${String(e.totalTokens).padEnd(9)} ${e.cost.toFixed(6)}`,
+    );
+  }
+
   const d = easyTierDecision(rows);
-  console.log(`\nEasy/medium tier: Luna ${d.lunaPassed} passed, Sol ${d.solPassed} passed -> ${d.lunaDefault ? "Luna stays default" : "Sol becomes default"} (rule fixed in the plan, section 4a)`);
+  console.log(`\nOriginal preregistered easy/medium rule on completed runs: Luna ${d.lunaPassed} passed, Sol ${d.solPassed} passed -> ${d.lunaDefault ? "Luna stays default" : "Sol becomes default"} if applied only to these completed easy/medium runs.`);
+  console.log("Historical replay stopped pragmatically after four complete pairs; use the running production log for future routing evidence.");
 }
 
 const [command, ...rest] = process.argv.slice(2);
