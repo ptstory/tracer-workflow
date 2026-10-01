@@ -300,11 +300,11 @@ DoorDash divergence classification:
 - Sol resolved the IDs to the canonical data names and passed.
 - The distinction is qualitative secondary evidence; the formal score remains Sol PASS / Luna FAIL.
 
-Telemetry amendment after run #6:
-- The harness already received Crush session `prompt_tokens` and `completion_tokens` in session metadata but did not expose them in `result.json`.
-- Future grading now records `promptTokens`, `completionTokens`, and `totalTokens` in session metrics.
-- Token counts are treated as the primary per-run efficiency telemetry alongside wall time and recorded cost; quota percentages remain account-pressure telemetry only.
-- Existing session artifacts can be regraded to backfill token counts without rerunning model work.
+Telemetry amendment after run #6 (corrected after the closeout):
+- The harness already received Crush session `prompt_tokens`, `completion_tokens`, and `total_tokens` in session metadata and now exposes them in `result.json`.
+- Current Crush source shows these fields are replaced with each latest model step's counters; they are **not cumulative session token spend**. The harness therefore treats them as final context/output snapshots only.
+- Wall time and cumulative session `cost` remain valid aggregate efficiency telemetry; quota percentages remain account-pressure telemetry only.
+- Existing session artifacts can be regraded to refresh these context snapshots without rerunning model work.
 
 
 ### Decision run #7 — thread-atlas-155 B, trial 1 — 2026-10-01
@@ -382,29 +382,27 @@ Arm A — Luna max
 valid decision runs: 4
 passes: 2
 wall time: 646 s
-prompt tokens: 152,331
-completion tokens: 258
-total tokens: 152,589
-recorded cost: $0.285483
+recorded cumulative session cost: $0.285483
 
 Arm B — Sol high
 valid decision runs: 4
 passes: 3
 wall time: 1,665 s
-prompt tokens: 203,925
-completion tokens: 140
-total tokens: 204,065
-recorded cost: $6.327426
+recorded cumulative session cost: $6.327426
 ```
 
 Observed aggregate efficiency ratios, Sol relative to Luna:
 - wall time: 2.58x
-- total tokens: 1.34x
 - recorded cost: 22.16x
+
+Token-counter correction:
+- An earlier closeout incorrectly summed Crush's saved `prompt_tokens`, `completion_tokens`, and `total_tokens` fields and described the sums as token consumption.
+- Current Crush source shows `session.Cost` is accumulated, while the token counters are replaced with the latest model step's usage. They are final context/output snapshots, not cumulative session spend.
+- Therefore the prior “Sol used 1.34x total tokens” statement is withdrawn. The raw per-run snapshots remain useful for context-footprint diagnostics but are not aggregated as consumption.
 
 Interpretation:
 - Sol produced one additional hidden-test pass across the four paired tasks (3/4 vs 2/4).
 - The only unique correctness win was doordash-delivered #5, a narrow but real canonical-identity integration miss by Luna.
-- On thread-atlas #155, the most integration/repo-archaeology-heavy sampled task, both passed; Luna used 62,854 total tokens and 212 session seconds versus Sol's 70,999 tokens and 474 session seconds.
+- On thread-atlas #155, the most integration/repo-archaeology-heavy sampled task, both passed; Luna completed in 212 session seconds versus Sol's 474 seconds.
 - The original preregistered easy/medium decision rule was not completed as designed: the historical replay stopped after four pairs rather than all 24 runs. Applying that rule mechanically to the partial easy/medium sample gives Sol 3 passes vs Luna 2, but that is not a completed preregistered-protocol result.
 - For the personal production-routing decision, the closeout policy remains Luna first, normal Review Gate, one Luna repair for ordinary/local findings, then Sol escalation when a substantive correctness/integration failure persists or when Review Gate exposes a deep semantic/contract miss.
