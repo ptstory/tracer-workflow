@@ -201,9 +201,9 @@ export type SessionMetrics = {
   firstAt: string | null;
   lastAt: string | null;
   wallSeconds: number | null;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  totalTokens: number | null;
+  contextPromptTokens: number | null;
+  lastStepCompletionTokens: number | null;
+  contextTotalTokens: number | null;
   cost: number | null;
   skills: string[];
 };
@@ -251,9 +251,9 @@ export function summarizeSession(session: CrushSession): SessionMetrics {
     firstAt,
     lastAt,
     wallSeconds: times.length > 1 ? Math.round((times[times.length - 1] - times[0]) / 1000) : null,
-    promptTokens: typeof session.meta?.prompt_tokens === "number" ? session.meta.prompt_tokens : null,
-    completionTokens: typeof session.meta?.completion_tokens === "number" ? session.meta.completion_tokens : null,
-    totalTokens: typeof session.meta?.total_tokens === "number"
+    contextPromptTokens: typeof session.meta?.prompt_tokens === "number" ? session.meta.prompt_tokens : null,
+    lastStepCompletionTokens: typeof session.meta?.completion_tokens === "number" ? session.meta.completion_tokens : null,
+    contextTotalTokens: typeof session.meta?.total_tokens === "number"
       ? session.meta.total_tokens
       : typeof session.meta?.prompt_tokens === "number" && typeof session.meta?.completion_tokens === "number"
         ? session.meta.prompt_tokens + session.meta.completion_tokens
@@ -388,10 +388,6 @@ export type EfficiencyRow = {
   passed: number;
   wallRuns: number;
   wallSeconds: number;
-  tokenRuns: number;
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
   costRuns: number;
   cost: number;
 };
@@ -409,10 +405,6 @@ export function summarizeEfficiency(
       passed: 0,
       wallRuns: 0,
       wallSeconds: 0,
-      tokenRuns: 0,
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
       costRuns: 0,
       cost: 0,
     };
@@ -421,16 +413,6 @@ export function summarizeEfficiency(
     if (typeof r.session.wallSeconds === "number") {
       row.wallRuns++;
       row.wallSeconds += r.session.wallSeconds;
-    }
-    if (
-      typeof r.session.promptTokens === "number" &&
-      typeof r.session.completionTokens === "number" &&
-      typeof r.session.totalTokens === "number"
-    ) {
-      row.tokenRuns++;
-      row.promptTokens += r.session.promptTokens;
-      row.completionTokens += r.session.completionTokens;
-      row.totalTokens += r.session.totalTokens;
     }
     if (typeof r.session.cost === "number") {
       row.costRuns++;
