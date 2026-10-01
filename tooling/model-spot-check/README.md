@@ -42,7 +42,7 @@ Pilot B validates the automated path end to end:
 bun tooling/model-spot-check/spot-check.ts run worklog-2 --arm B
 ```
 
-`run` performs `prepare`, writes a project-local `.crushrc`, asks for the Codex usage readout, snapshots the current top-level Crush session IDs, launches headless Crush, asks for the usage readout again, requires exactly one new top-level session, and feeds that session directly to `grade`.
+`run` performs `prepare`, writes a project-local `.crushrc`, captures the current Codex quota from `codex app-server` (`account/read` + `account/rateLimits/read`), snapshots the current top-level Crush session IDs, launches headless Crush, captures quota again, requires exactly one new top-level session, and feeds that session directly to `grade`.
 
 For each arm the generated `.crushrc` pins both large and small model slots to the arm model and reasoning effort and disables provider auto-update. On Crush v0.97.1 the runner also passes `--model`, `--small-model`, and `--reasoning-effort` explicitly. The explicit model flags defend against historical headless model-selection bugs; the local config remains the project-scoped source of the arm settings.
 
@@ -60,15 +60,11 @@ If that fails because headless Crush is unreliable, use `prepare` and launch int
 bun tooling/model-spot-check/spot-check.ts run <task> --arm <A|B> --trial <n>
 ```
 
-The only normal human inputs are the two Codex usage readings:
+There are no normal human inputs during a run. The harness stores normalized `usage-before.json` and `usage-after.json` beside the other run artifacts and writes the familiar `5-hour …% left; weekly …% left` strings into `result.json`.
 
-```text
-usage before >
-...
-usage after >
-```
+The first automated capture pins a SHA-256 fingerprint of the verified Codex account under `~/spot-runs/codex-account.sha256`; later captures abort if the Codex login changes. No email or account ID is stored in that pin file.
 
-Do not run other work on the GivenPrompt OpenAI/Codex account between those readings. If the 5-hour limit hits mid-run, abandon that run and prepare it again in the next window. Never switch models mid-run.
+Do not run other work on the GivenPrompt OpenAI/Codex account while a benchmark run is active. If the 5-hour limit hits mid-run, abandon that run and prepare it again in the next window. Never switch models mid-run.
 
 **4. Interactive fallback.** `prepare` still creates the isolated worktree and run-local `.crushrc` without launching Crush:
 
@@ -76,7 +72,7 @@ Do not run other work on the GivenPrompt OpenAI/Codex account between those read
 bun tooling/model-spot-check/spot-check.ts prepare <task> --arm <A|B> --trial <n>
 ```
 
-Then run `CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1 crush` from the printed work directory, paste the printed worker prompt, identify the one new top-level session with `crush session list --json`, and invoke `grade` manually with the two usage readings.
+Then run `CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1 crush` from the printed work directory, paste the printed worker prompt, identify the one new top-level session with `crush session list --json`, and invoke `grade` manually. The manual fallback may still accept explicit `--usage-before` / `--usage-after` strings if needed.
 
 **5. Adjudicate failures.** For each FAIL, read `graded.tail` in the run's `result.json`. If the failure is an interface mismatch rather than wrong behavior, note it in the model log with the reason. Decide the classification before you look at which arm produced it; the arm is in the run directory name, so cover it.
 
@@ -107,6 +103,14 @@ Two limits:
 
 ## Measuring quota
 
-The primary measure is the Codex usage readout before and after each run, with nothing else using the account in between.
+The primary quota measurement is now the structured Codex account rate-limit snapshot returned by the local `codex app-server` RPC `account/rateLimits/read`, using the same authenticated Codex account as the CLI.
 
-Crush's session `cost` is cumulative and includes subagents. But it is priced from the provider catalog, which currently lists $0 for every OpenAI model. To make `cost` meaningful, merge `crush-prices.json` into your Crush config's OpenAI provider, then check that a short session shows a non-zero cost. Crush issue #2649 reports custom model entries being overridden by the embedded catalog. Listing models explicitly may also stop Crush auto-discovering the others, so afterwards check that the picker still shows every model you use. Note: `cost_per_1m_in_cached` prices cache writes, and `cost_per_1m_out_cached` prices cache reads. If `cost` and the readout disagree, trust the readout.
+The harness reads the `codex` bucket and records:
+- the 300-minute window as the 5-hour limit;
+- the 10,080-minute window as the weekly limit;
+- `remainingPercent = 100 - usedPercent`;
+- each reset timestamp.
+
+This source was validated on 2026-10-01 against the previously recorded Pilot A Usage-page reading: the automated snapshot reported 1% used / 46% used, which renders as `5-hour 99% left; weekly 54% left`, exactly matching Pilot A's recorded post-run UI values.
+
+Crush session `cost` remains supplementary only. If it disagrees with the Codex account rate-limit snapshot, trust the account rate-limit snapshot.
