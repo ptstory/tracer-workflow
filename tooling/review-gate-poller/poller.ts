@@ -21,7 +21,7 @@ import { parseGateComment, reviewerLogins, type GateComment } from "../lib/verdi
 
 // --- config -------------------------------------------------------------------
 
-const REPO = process.env.RG_REPO; // e.g. "ptstory/themarkergirl.com"
+const REPO = process.env.RG_REPO; // e.g. "OWNER/REPO"
 const STATE_PATH =
   process.env.RG_STATE_PATH ??
   `${process.env.HOME}/.local/state/review-gate/actioned.json`;
@@ -34,7 +34,7 @@ const MIN_STALE_IN_PROGRESS_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_STALE_IN_PROGRESS_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 if (!REPO) {
-  console.error("RG_REPO not set (e.g. ptstory/themarkergirl.com)");
+  console.error("RG_REPO not set (e.g. OWNER/REPO)");
   process.exit(1);
 }
 
