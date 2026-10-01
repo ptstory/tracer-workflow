@@ -249,3 +249,22 @@ Paired result for `vibecoding-status-web-12`, trial 1:
 - Sol: PASS
 - Under the preregistered correctness rule this pair is a tie.
 - Secondary efficiency signal: Luna moved the 5-hour meter by 1 point and completed in about 2m34s end-to-end; Sol moved it by 16 points and completed in about 5m40s. The quota meter is coarse, so these are retained as operational signals rather than exact consumption measurements.
+
+
+### Decision run #5 — doordash-delivered-5 B, trial 2 — 2026-10-01
+
+```yaml
+task: doordash-delivered-5
+arm: B
+trial: 2
+model: gpt-6.1-sol
+reasoning: high
+run dir: /Users/perrystory/spot-runs/doordash-delivered-5-B-t2-2026-10-01T13-26-26-796Z
+session: 14829fd79e7d0e54
+passed: true
+usage before: 5-hour 68% left; weekly 49% left
+usage after: 5-hour 44% left; weekly 45% left
+notes:
+  - worker reported coordinated exhibit state, browser interaction verification, unit/browser regression coverage, keyboard and reduced-motion coverage
+  - end-to-end runner wall time was about 9m15s
+```
