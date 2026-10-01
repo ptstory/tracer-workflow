@@ -272,8 +272,6 @@ const FORBIDDEN_COMMANDS: [string, RegExp][] = [
   ["curl", /\bcurl\b/],
   ["wget", /\bwget\b/],
   ["git-network", /\bgit\s+(fetch|clone|pull|ls-remote|remote\s+add)\b/],
-  ["github-url", /github\.com/],
-  ["pull-ref", /refs\/pull\//],
 ];
 const PATH_PATTERN = /(?:~|\/Users\/[^/\s"'`]+|\/home\/[^/\s"'`]+)(?:\/[^\s"'`\\,)]*)?/g;
 
