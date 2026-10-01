@@ -293,6 +293,13 @@ Paired result for `doordash-delivered-5`, trial 2:
 - Luna: FAIL
 - This is the first correctness divergence in the three completed decision pairs.
 
+DoorDash divergence classification:
+- This is a narrow but substantive integration miss, not a hidden-test-only spelling trap.
+- The frozen base already contains canonical data keys `Zaxbys`, `Jack's New Yorker Deli`, and `Five Guys Burgers & Fries`, while the rendered map uses presentation labels such as `Zaxby’s`, `Jack’s New Yorker Deli`, and `Five Guys`.
+- Luna wired map IDs to the presentation labels instead of the canonical dataset identities, which would break shared-state fan-out/filter matching for those stores.
+- Sol resolved the IDs to the canonical data names and passed.
+- The distinction is qualitative secondary evidence; the formal score remains Sol PASS / Luna FAIL.
+
 Telemetry amendment after run #6:
 - The harness already received Crush session `prompt_tokens` and `completion_tokens` in session metadata but did not expose them in `result.json`.
 - Future grading now records `promptTokens`, `completionTokens`, and `totalTokens` in session metrics.
