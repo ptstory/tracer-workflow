@@ -172,3 +172,34 @@ findings: []
 ```
 
 The initial invalidation was a scanner false positive and was corrected without rerunning the worker. Regrading the same session produced a valid hidden-grade FAIL. Hidden failure details were intentionally not inspected before the paired Luna run.
+
+
+### Decision run #2 — worklog-3 A, trial 1 — 2026-10-01
+
+```yaml
+task: worklog-3
+arm: A
+trial: 1
+model: gpt-6-luna
+reasoning: max
+run dir: /Users/perrystory/spot-runs/worklog-3-A-t1-2026-10-01T09-34-53-662Z
+session: 467db5ea74c6cb9d
+passed: false
+invalid: false
+modelMatches: true
+assistantMessages: 23
+toolCalls: 28
+subagentCalls: 0
+wallSeconds: 147
+cost: 0.04519460000000001
+usage before: 5-hour 85% left; weekly 52% left
+usage after: 5-hour 85% left; weekly 52% left
+findings:
+  - note: outside-path /Users/perrystory/Library/Application
+```
+
+Paired hidden-grade comparison for `worklog-3`:
+- Both arms are valid FAILs under the preregistered binary rule.
+- Sol preserved both `pr_opened` and `pr_merged` rows for the tested interval but produced different human labels (`Opened a pull request` / `Merged a pull request`) than the hidden contract (`PR opened` / `PR merged`).
+- Luna returned only `pr_opened` for the same interval, so it failed earlier on PR lifecycle/timestamp-query behavior before the hidden label assertion was reached.
+- This qualitative distinction is recorded only as secondary diagnostic evidence; it does not change either arm's FAIL score.
