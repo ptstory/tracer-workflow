@@ -83,3 +83,5 @@ Runner amendment:
 Pilot B remains `worklog-2`, Arm B, and is discarded. It is the acceptance test for this amended execution path. No decision run starts unless Pilot B has `modelMatches: true`, `invalid: false`, populated session/tool metrics, and a real hidden-test grade.
 
 Local cleanup before Pilot B: restore the manually edited global `~/.config/crush/crushrc` to the recorded `ptstory/crush-config@e32a32c4b5bd060733a3b12558abce8bf89cb03a` baseline and verify the config repo is clean. Arm-specific changes now belong only in each generated run directory.
+
+Runner implementation provenance: branch `chore/model-spot-check-runner-automation` was created directly from `63472bffb5d881c5d2e603146c04a3ac0d42ccaf`. The amendment changes only harness code, harness tests, runbook, and experiment log; `tooling/model-spot-check/tasks.json` is unchanged from `63472bf`.
