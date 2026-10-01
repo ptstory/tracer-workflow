@@ -138,7 +138,7 @@ Run in the seeded order from `spot-check.ts order` (write the seed down): each t
 
 **Operational routing rule after the spot check:** use Luna as the normal first executor. Run the normal review gate. Escalate the same task to Sol when Luna's result has a **substantive correctness/integration failure that survives the review/repair loop**, or when the task is known up front to be dominated by subtle cross-system contracts/identity semantics where the historical spot check showed Sol's extra deliberation can matter. Do not escalate merely for copy/style nits, mechanical cleanup, environment-only failures, or a review finding Luna can repair directly. Record escalation and review rounds in the production log below.
 
-Efficiency closeout uses saved Crush session prompt/completion/total tokens, wall time, and recorded cost. Five-hour/weekly quota percentages are retained only as account-pressure telemetry.
+Efficiency closeout uses wall time and cumulative Crush session cost. Saved prompt/completion/total token fields are retained only as final context/output snapshots because current Crush replaces them on each model step rather than accumulating them. Five-hour/weekly quota percentages are retained only as account-pressure telemetry.
 
 ### 4b. Running log (ongoing, starts now)
 
