@@ -59,7 +59,9 @@ type RunMeta = {
   preparedAt: string;
   workDir: string;
   crushrcSha256?: string;
+  crushCommand?: string[];
   crushExitCode?: number;
+  crushSessionId?: string;
 };
 
 function manifest(): Manifest {
@@ -235,7 +237,7 @@ function run(args: string[]): void {
   const before = sessionIds(meta.workDir);
 
   console.log("\nLaunching Crush. No picker or prompt paste is required.\n");
-  const exitCode = runCrush([
+  const crushCommand = [
     "env",
     "CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1",
     "crush",
@@ -247,13 +249,17 @@ function run(args: string[]): void {
     "--reasoning-effort",
     meta.reasoningEffort,
     WORKER_PROMPT,
-  ], meta.workDir);
+  ];
+  meta.crushCommand = crushCommand;
+  writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+  const exitCode = runCrush(crushCommand, meta.workDir);
 
   const usageAfter = usageValue(args, "--usage-after", "\nusage after");
   const after = sessionIds(meta.workDir);
   const sessionId = onlyNewSession(before, after);
 
   meta.crushExitCode = exitCode;
+  meta.crushSessionId = sessionId;
   writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
 
   if (exitCode !== 0) {
@@ -277,6 +283,17 @@ function grade(args: string[]): void {
   const t = task(meta.taskId);
   const workDir = meta.workDir;
   const sessionId = arg(args, "--session");
+  const runConfigPath = join(workDir, ".crushrc");
+  const runConfigFinding = (() => {
+    if (!meta.crushrcSha256) return [];
+    if (!existsSync(runConfigPath)) {
+      return [{ severity: "violation" as const, rule: "run-config-changed", tool: "harness", excerpt: ".crushrc is missing" }];
+    }
+    const actual = createHash("sha256").update(readFileSync(runConfigPath)).digest("hex");
+    return actual === meta.crushrcSha256
+      ? []
+      : [{ severity: "violation" as const, rule: "run-config-changed", tool: "harness", excerpt: `.crushrc SHA-256 ${actual}, expected ${meta.crushrcSha256}` }];
+  })();
 
   let session: CrushSession | null = null;
   if (sessionId) {
@@ -285,9 +302,12 @@ function grade(args: string[]): void {
     session = JSON.parse(raw) as CrushSession;
   }
   const metrics = session ? summarizeSession(session) : null;
-  const findings = session
-    ? scanToolCalls(toolCalls(session), { workDir, home: homedir(), allowedPrefixes: ALLOWED_PREFIXES, forbiddenPrefixes: FORBIDDEN_PREFIXES })
-    : [];
+  const findings = [
+    ...runConfigFinding,
+    ...(session
+      ? scanToolCalls(toolCalls(session), { workDir, home: homedir(), allowedPrefixes: ALLOWED_PREFIXES, forbiddenPrefixes: FORBIDDEN_PREFIXES })
+      : []),
+  ];
   const matches = metrics ? modelMatches(meta.model, metrics.models) : null;
 
   // Keep the worker's result as a commit, then overlay hidden tests on top of it.
