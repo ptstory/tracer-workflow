@@ -7,6 +7,10 @@ describe("public disclosure guard", () => {
     expect(scanText("doc.md", "ptstory/tracer-workflow")).toEqual([]);
   });
 
+  test("allows this repository SSH remote suffix", () => {
+    expect(scanText("doc.md", "git@github.com:ptstory/tracer-workflow.git")).toEqual([]);
+  });
+
   test("rejects another owner-qualified repository", () => {
     const value = "ptstory" + "/private-project";
     expect(scanText("doc.md", value)).toEqual([
