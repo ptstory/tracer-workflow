@@ -18,7 +18,7 @@ The decision rule and its rationale are in `docs/plans/2026-09-29-stack-and-mode
 
 1. Install `git`, `gh`, `bun`, `python3`, Node 20 or newer (the graders use `node --test --test-name-pattern`), and `crush`.
 2. Run `gh auth status` and `gh auth setup-git`. Grading fetches hidden tests from private repos over HTTPS.
-3. Commit everything in `~/.config/crush` and record the commit SHA in the model log. Change nothing in Crush until the last run is graded.
+3. Record the frozen `~/.config/crush` commit in the model log. Before Pilot B, restore the global config to that recorded baseline and leave it unchanged through the experiment; arm-specific model settings now live only in each generated run directory.
 
 ## Procedure
 
@@ -94,6 +94,7 @@ This applies the easy-tier rule.
 
 `grade` marks a run INVALID, and it is redone, when any of these happen:
 - The session used a model other than the arm's model.
+- The generated run-local `.crushrc` was changed or removed during the run.
 - A tool call used `fetch`, `agentic_fetch`, `download`, `sourcegraph` or a web tool.
 - A shell command used `gh`, `curl`, `wget`, or a networked git command.
 - A tool call touched a path under `~/Code`, where the original checkouts and their `.worktrees/issue-*` directories hold the historical answers.
