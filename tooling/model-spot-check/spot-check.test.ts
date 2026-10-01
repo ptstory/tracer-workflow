@@ -125,9 +125,9 @@ describe("summarizeSession", () => {
     expect(m.toolCallsByName).toEqual({ view: 2, bash: 1, agent: 1 });
     expect(m.subagentCalls).toBe(1);
     expect(m.wallSeconds).toBe(365);
-    expect(m.promptTokens).toBe(1200);
-    expect(m.completionTokens).toBe(300);
-    expect(m.totalTokens).toBe(1600);
+    expect(m.contextPromptTokens).toBe(1200);
+    expect(m.lastStepCompletionTokens).toBe(300);
+    expect(m.contextTotalTokens).toBe(1600);
     expect(m.cost).toBe(1.5);
     expect(m.skills).toEqual(["from-issue"]);
   });
@@ -256,21 +256,21 @@ describe("summarizeEfficiency", () => {
       firstAt: null,
       lastAt: null,
       wallSeconds: 10,
-      promptTokens: 100,
-      completionTokens: 20,
-      totalTokens: 130,
+      contextPromptTokens: 100,
+      lastStepCompletionTokens: 20,
+      contextTotalTokens: 130,
       cost: 0.1,
       skills: [],
     };
-    const sessionB = { ...sessionA, wallSeconds: 25, promptTokens: 300, completionTokens: 40, totalTokens: 360, cost: 0.5 };
+    const sessionB = { ...sessionA, wallSeconds: 25, contextPromptTokens: 300, lastStepCompletionTokens: 40, contextTotalTokens: 360, cost: 0.5 };
     const results = [
       { ...base, taskId: "x", arm: "A", passed: true, session: sessionA },
       { ...base, taskId: "x", arm: "B", passed: false, session: sessionB },
       { ...base, taskId: "bad", arm: "B", passed: true, session: sessionB, invalid: true },
     ] as unknown as RunResult[];
     expect(summarizeEfficiency(results)).toEqual([
-      { arm: "A", runs: 1, passed: 1, wallRuns: 1, wallSeconds: 10, tokenRuns: 1, promptTokens: 100, completionTokens: 20, totalTokens: 130, costRuns: 1, cost: 0.1 },
-      { arm: "B", runs: 1, passed: 0, wallRuns: 1, wallSeconds: 25, tokenRuns: 1, promptTokens: 300, completionTokens: 40, totalTokens: 360, costRuns: 1, cost: 0.5 },
+      { arm: "A", runs: 1, passed: 1, wallRuns: 1, wallSeconds: 10, costRuns: 1, cost: 0.1 },
+      { arm: "B", runs: 1, passed: 0, wallRuns: 1, wallSeconds: 25, costRuns: 1, cost: 0.5 },
     ]);
   });
 });
