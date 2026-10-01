@@ -12,6 +12,7 @@ import {
   onlyNewSession,
   runOrder,
   scanToolCalls,
+  summarizeEfficiency,
   summarizeResults,
   summarizeSession,
   toolCalls,
@@ -94,7 +95,7 @@ describe("issueDocument", () => {
 });
 
 const session: CrushSession = {
-  meta: { cost: 1.5, prompt_tokens: 1200, completion_tokens: 300, skills: [{ name: "from-issue" }] },
+  meta: { cost: 1.5, prompt_tokens: 1200, completion_tokens: 300, total_tokens: 1600, skills: [{ name: "from-issue" }] },
   messages: [
     { role: "user", created: "2026-09-30T10:00:00-04:00", parts: [{ type: "text" }] },
     {
@@ -126,7 +127,7 @@ describe("summarizeSession", () => {
     expect(m.wallSeconds).toBe(365);
     expect(m.promptTokens).toBe(1200);
     expect(m.completionTokens).toBe(300);
-    expect(m.totalTokens).toBe(1500);
+    expect(m.totalTokens).toBe(1600);
     expect(m.cost).toBe(1.5);
     expect(m.skills).toEqual(["from-issue"]);
   });
@@ -232,5 +233,44 @@ describe("tasks.json", () => {
   test("arms name the pinned models", () => {
     expect(m.arms.A).toEqual({ model: "openai/gpt-6-luna", reasoningEffort: "max" });
     expect(m.arms.B).toEqual({ model: "openai/gpt-6.1-sol", reasoningEffort: "high" });
+  });
+});
+
+
+describe("summarizeEfficiency", () => {
+  test("aggregates valid decision-run tokens, time, cost and correctness by arm", () => {
+    const base = {
+      role: "decision",
+      tier: "easy",
+      trial: 1,
+      invalid: false,
+      findings: [],
+      modelMatches: true,
+    } as const;
+    const sessionA = {
+      models: ["gpt-6-luna"],
+      assistantMessages: 1,
+      toolCalls: 1,
+      toolCallsByName: {},
+      subagentCalls: 0,
+      firstAt: null,
+      lastAt: null,
+      wallSeconds: 10,
+      promptTokens: 100,
+      completionTokens: 20,
+      totalTokens: 130,
+      cost: 0.1,
+      skills: [],
+    };
+    const sessionB = { ...sessionA, wallSeconds: 25, promptTokens: 300, completionTokens: 40, totalTokens: 360, cost: 0.5 };
+    const results = [
+      { ...base, taskId: "x", arm: "A", passed: true, session: sessionA },
+      { ...base, taskId: "x", arm: "B", passed: false, session: sessionB },
+      { ...base, taskId: "bad", arm: "B", passed: true, session: sessionB, invalid: true },
+    ] as unknown as RunResult[];
+    expect(summarizeEfficiency(results)).toEqual([
+      { arm: "A", runs: 1, passed: 1, wallRuns: 1, wallSeconds: 10, tokenRuns: 1, promptTokens: 100, completionTokens: 20, totalTokens: 130, costRuns: 1, cost: 0.1 },
+      { arm: "B", runs: 1, passed: 0, wallRuns: 1, wallSeconds: 25, tokenRuns: 1, promptTokens: 300, completionTokens: 40, totalTokens: 360, costRuns: 1, cost: 0.5 },
+    ]);
   });
 });
