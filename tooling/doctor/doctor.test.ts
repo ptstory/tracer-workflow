@@ -144,7 +144,7 @@ function writeTooling(repoRoot: string): void {
     join(repoRoot, "tooling/review-gate-poller/com.tracer.review-gate-poller.plist"),
     join(repoRoot, "tooling/review-gate-poller/poller.ts"),
     {
-      RG_REPO: "ptstory/themarkergirl.com",
+      RG_REPO: "acme/example-project",
       RG_WORKDIR: repoRoot,
       PATH: `${join(repoRoot, ".bun/bin")}:/usr/bin:/bin`,
       HOME: repoRoot,
@@ -252,7 +252,7 @@ function writeInstalledLaunchdTargets(home: string, repoRoot: string, scriptRoot
     join(home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
     join(scriptRoot, "tooling/review-gate-poller/poller.ts"),
     {
-      RG_REPO: "ptstory/themarkergirl.com",
+      RG_REPO: "acme/example-project",
       RG_WORKDIR: scriptRoot,
       PATH: `${opencodeBin}:/usr/bin:/bin`,
       HOME: home,
@@ -708,7 +708,7 @@ Pick the next ready-for-agent issue.
     join(worktreeRoot, "tooling/review-gate-poller/com.tracer.review-gate-poller.plist"),
     join(canonicalRoot, "tooling/review-gate-poller/poller.ts"),
     {
-      RG_REPO: "ptstory/themarkergirl.com",
+      RG_REPO: "acme/example-project",
       RG_WORKDIR: canonicalRoot,
       PATH: `${join(canonicalRoot, ".bun/bin")}:/usr/bin:/bin`,
       HOME: home,
@@ -901,7 +901,7 @@ test("stale launchd script paths still surface review-gate environment errors", 
     join(repo.home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
     stalePath,
     {
-      RG_REPO: "ptstory/themarkergirl.com",
+      RG_REPO: "acme/example-project",
       PATH: `${join(repo.repoRoot, ".bun/bin")}:/usr/bin:/bin`,
       HOME: repo.home,
     },
@@ -940,7 +940,7 @@ test("review-gate poller reports a missing RG_WORKDIR separately from its script
     join(home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
     join(repoRoot, "tooling/review-gate-poller/poller.ts"),
     {
-      RG_REPO: "ptstory/themarkergirl.com",
+      RG_REPO: "acme/example-project",
       RG_WORKDIR: join(repoRoot, "missing-workdir"),
       PATH: `${opencodeBin}:/usr/bin:/bin`,
       HOME: home,
@@ -969,7 +969,7 @@ test("review-gate poller reports missing gh on PATH separately from its script p
     join(home, "Library/LaunchAgents/com.tracer.review-gate-poller.plist"),
     join(repoRoot, "tooling/review-gate-poller/poller.ts"),
     {
-      RG_REPO: "ptstory/themarkergirl.com",
+      RG_REPO: "acme/example-project",
       RG_WORKDIR: repoRoot,
       PATH: `${toolBin}:${join(repoRoot, ".bun/bin")}`,
       HOME: home,
