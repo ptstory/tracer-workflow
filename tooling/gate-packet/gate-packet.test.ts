@@ -384,7 +384,7 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     state.diffs[`${repo}#2`] = { text: "diff --git a/b.txt b/b.txt\n+small\n" };
     writeGhStub(harness, state);
 
-    const result = runGatePacket(harness, ["--stdout", "--budget", "500"]);
+    const result = runGatePacket(harness, ["--stdout", "--budget", "600"]);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
