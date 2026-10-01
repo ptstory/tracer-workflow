@@ -6,8 +6,7 @@
  *
  *   bun tooling/model-spot-check/spot-check.ts order --seed <n> [--role decision|pilot]
  *   bun tooling/model-spot-check/spot-check.ts prepare <taskId> --arm A|B [--trial 1]
- *   bun tooling/model-spot-check/spot-check.ts run <taskId> --arm A|B [--trial 1]
- *       [--usage-before <text>] [--usage-after <text>] [--suite]
+ *   bun tooling/model-spot-check/spot-check.ts run <taskId> --arm A|B [--trial 1] [--suite]
  *   bun tooling/model-spot-check/spot-check.ts grade <runDir> --session <crushSessionId>
  *       [--usage-before <text>] [--usage-after <text>] [--suite]
  *   bun tooling/model-spot-check/spot-check.ts report
@@ -17,16 +16,18 @@
  */
 
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   WORKER_PROMPT,
   crushrcForRun,
   easyTierDecision,
+  formatCodexUsage,
   isInvalid,
   issueDocument,
   modelMatches,
+  normalizeCodexUsage,
   onlyNewSession,
   runOrder,
   scanToolCalls,
@@ -34,6 +35,7 @@ import {
   summarizeSession,
   toolCalls,
   type Arm,
+  type CodexUsageSnapshot,
   type CommandResult,
   type CrushSession,
   type Manifest,
@@ -111,24 +113,82 @@ function runCommand(command: string[], cwd: string): CommandResult {
 
 type SessionListEntry = { id?: unknown };
 
-function readLine(label: string): string {
-  process.stdout.write(label);
-  const bytes: number[] = [];
-  const buffer = Buffer.alloc(1);
-  for (;;) {
-    const n = readSync(process.stdin.fd, buffer, 0, 1, null);
-    if (n === 0 || buffer[0] === 10) break;
-    if (buffer[0] !== 13) bytes.push(buffer[0]);
-  }
-  return Buffer.from(bytes).toString("utf8").trim();
+const CODEX_USAGE_PROBE = String.raw`
+import json
+import subprocess
+
+p = subprocess.Popen(
+    ["codex", "app-server", "--stdio"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+    bufsize=1,
+)
+
+def send(obj):
+    p.stdin.write(json.dumps(obj) + "\\n")
+    p.stdin.flush()
+
+def recv(request_id):
+    while True:
+        line = p.stdout.readline()
+        if not line:
+            err = p.stderr.read()
+            raise RuntimeError("codex app-server exited: " + err)
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if msg.get("id") == request_id:
+            if "error" in msg:
+                raise RuntimeError(str(msg["error"]))
+            return msg["result"]
+
+try:
+    send({
+        "method": "initialize",
+        "id": 1,
+        "params": {
+            "clientInfo": {"name": "model-spot-check", "version": "1.0.0"},
+            "capabilities": {"experimentalApi": True},
+        },
+    })
+    recv(1)
+    send({"method": "initialized"})
+    send({"method": "account/read", "id": 2, "params": {}})
+    account = recv(2)
+    send({"method": "account/rateLimits/read", "id": 3})
+    limits = recv(3)
+    print(json.dumps({"account": account, "limits": limits}))
+finally:
+    p.terminate()
+`;
+
+function captureCodexUsage(cwd: string): CodexUsageSnapshot {
+  const raw = must(["python3", "-c", CODEX_USAGE_PROBE], cwd).trim();
+  const envelope = JSON.parse(raw) as { account?: unknown; limits?: unknown };
+  const snapshot = normalizeCodexUsage(envelope.account, envelope.limits);
+  if (snapshot.accountType !== "chatgpt") throw new Error(`Codex is not using a ChatGPT account (type=${snapshot.accountType ?? "unknown"})`);
+  if (snapshot.ordinaryUsageAllowed === false) throw new Error("Codex reports ordinary usage is not allowed for this account");
+  return snapshot;
 }
 
-function usageValue(args: string[], flag: string, label: string): string {
-  const supplied = arg(args, flag);
-  if (supplied !== undefined) return supplied;
-  const value = readLine(`${label} > `);
-  if (!value) throw new Error(`${label} is required; enter the Codex usage readout or pass ${flag}`);
-  return value;
+function assertPinnedCodexAccount(snapshot: CodexUsageSnapshot): void {
+  const identity = snapshot.accountId ?? snapshot.accountEmail?.toLowerCase();
+  if (!identity) throw new Error("Codex account snapshot has neither account ID nor email");
+  const fingerprint = createHash("sha256").update(identity).digest("hex");
+  const path = join(RUNS_ROOT, "codex-account.sha256");
+  if (!existsSync(path)) {
+    mkdirSync(RUNS_ROOT, { recursive: true });
+    writeFileSync(path, `${fingerprint}\\n`);
+    console.log("Pinned verified Codex account fingerprint for this experiment.");
+    return;
+  }
+  const expected = readFileSync(path, "utf8").trim();
+  if (expected !== fingerprint) {
+    throw new Error("Codex account changed from the account pinned for this experiment");
+  }
 }
 
 function sessionIds(cwd: string): string[] {
@@ -233,7 +293,11 @@ function run(args: string[]): void {
 
   console.log(`Prepared ${runDir}`);
   console.log(`Arm ${meta.arm}: ${meta.model} (${meta.reasoningEffort}); run-local .crushrc generated.`);
-  const usageBefore = usageValue(args, "--usage-before", "usage before");
+  const usageBeforeSnapshot = captureCodexUsage(meta.workDir);
+  assertPinnedCodexAccount(usageBeforeSnapshot);
+  writeFileSync(join(runDir, "usage-before.json"), `${JSON.stringify(usageBeforeSnapshot, null, 2)}\\n`);
+  const usageBefore = formatCodexUsage(usageBeforeSnapshot);
+  console.log(`Usage before: ${usageBefore}`);
   const before = sessionIds(meta.workDir);
 
   console.log("\nLaunching Crush. No picker or prompt paste is required.\n");
@@ -254,7 +318,11 @@ function run(args: string[]): void {
   writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
   const exitCode = runCrush(crushCommand, meta.workDir);
 
-  const usageAfter = usageValue(args, "--usage-after", "\nusage after");
+  const usageAfterSnapshot = captureCodexUsage(meta.workDir);
+  assertPinnedCodexAccount(usageAfterSnapshot);
+  writeFileSync(join(runDir, "usage-after.json"), `${JSON.stringify(usageAfterSnapshot, null, 2)}\\n`);
+  const usageAfter = formatCodexUsage(usageAfterSnapshot);
+  console.log(`Usage after:  ${usageAfter}`);
   const after = sessionIds(meta.workDir);
   const sessionId = onlyNewSession(before, after);
 
