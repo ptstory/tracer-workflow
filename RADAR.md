@@ -44,3 +44,11 @@ Candidates enter here before they enter the stack.
 - Verdict: undecided
 - Reason: not yet researched — recovered from memory, details to be filled from chat archaeology.
 - Taken: nothing
+
+
+## herdr — 2026-09-30 adopted
+- Source: live trial + Herdr/Crush integration inspection
+- Claims: persistent terminal/session runtime with operator-visible working/blocked/done/idle state, reattach, and an agent-drivable CLI.
+- Verdict: adopt
+- Reason: Herdr now covers the terminal/session-manager job OCS was being built to solve, and the Crush integration has been proven in fresh Herdr panes. The remaining goal-plugin question is closed by scope: pane status is useful operator telemetry, but it is not durable Tracer workflow state. A goal/auto-continue loop can make idle/blocked transitions transient, so GitHub issues, native blockers, checks, and SHA-bound verdicts remain authoritative.
+- Taken: use Herdr for persistent panes, reattach, and human attention routing; do not use Herdr status to decide workflow eligibility or merge readiness. OCS is superseded; PR #1 is already merged/closed and its stale `feat/initial-cli` branch should be removed.
