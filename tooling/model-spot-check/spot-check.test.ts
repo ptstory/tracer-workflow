@@ -94,7 +94,7 @@ describe("issueDocument", () => {
 });
 
 const session: CrushSession = {
-  meta: { cost: 1.5, skills: [{ name: "from-issue" }] },
+  meta: { cost: 1.5, prompt_tokens: 1200, completion_tokens: 300, skills: [{ name: "from-issue" }] },
   messages: [
     { role: "user", created: "2026-09-30T10:00:00-04:00", parts: [{ type: "text" }] },
     {
@@ -124,6 +124,9 @@ describe("summarizeSession", () => {
     expect(m.toolCallsByName).toEqual({ view: 2, bash: 1, agent: 1 });
     expect(m.subagentCalls).toBe(1);
     expect(m.wallSeconds).toBe(365);
+    expect(m.promptTokens).toBe(1200);
+    expect(m.completionTokens).toBe(300);
+    expect(m.totalTokens).toBe(1500);
     expect(m.cost).toBe(1.5);
     expect(m.skills).toEqual(["from-issue"]);
   });
