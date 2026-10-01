@@ -76,15 +76,15 @@ Then run `CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1 crush` from the printed work dire
 
 **5. Adjudicate failures.** For each FAIL, read `graded.tail` in the run's `result.json`. If the failure is an interface mismatch rather than wrong behavior, note it in the model log with the reason. Decide the classification before you look at which arm produced it; the arm is in the run directory name, so cover it.
 
-**6. Report.**
+**6. Report / telemetry backfill.**
 
 ```sh
 bun tooling/model-spot-check/spot-check.ts report
 ```
 
-This applies the easy-tier rule.
-- The hard tier does not decide the default. Where Luna fails a hard task, that failure defines the escalation trigger.
-- `reviewDerived` results (doordash #4's map geometry) are reported separately.
+`report` first refreshes every existing result from its saved `session.json`; it does not launch a model or rerun hidden tests. This backfills native session token telemetry for older runs, then prints correctness plus per-run and aggregate prompt/completion/total tokens, wall time, and recorded cost.
+
+The historical replay was stopped pragmatically after four complete pairs / eight decision runs on 2026-10-01. The original 24-run preregistration is retained for provenance; the closeout report describes only the completed sample. Ongoing routing evidence comes from the production log in section 4b.
 
 ## What makes a run invalid
 
@@ -101,9 +101,11 @@ Two limits:
 - Crush hooks and session records don't cover subagent sessions; `grade` counts `agent` calls so you can see when this applied. `crush session list --json` itself lists only top-level sessions, so subagent sessions do not break automatic session discovery.
 - Dependency installs happen in `prepare`, before the agent starts. DuckDB's `sqlite_scanner` extension is pre-installed for thread-atlas tasks for the same reason.
 
-## Measuring quota
+## Measuring efficiency and quota
 
-The primary quota measurement is now the structured Codex account rate-limit snapshot returned by the local `codex app-server` RPC `account/rateLimits/read`, using the same authenticated Codex account as the CLI.
+For per-run model efficiency, use Crush session `prompt_tokens`, `completion_tokens`, native `total_tokens`, wall time, and recorded session cost. Token counts are the primary consumption telemetry for comparing runs; the account quota meter is operational pressure telemetry, not a precise per-run efficiency measure.
+
+The structured Codex account rate-limit snapshot returned by the local `codex app-server` RPC `account/rateLimits/read`, using the same authenticated Codex account as the CLI.
 
 The harness reads the `codex` bucket and records:
 - the 300-minute window as the 5-hour limit;
@@ -113,4 +115,4 @@ The harness reads the `codex` bucket and records:
 
 This source was validated on 2026-10-01 against the previously recorded Pilot A Usage-page reading: the automated snapshot reported 1% used / 46% used, which renders as `5-hour 99% left; weekly 54% left`, exactly matching Pilot A's recorded post-run UI values.
 
-Crush session `cost` remains supplementary only. If it disagrees with the Codex account rate-limit snapshot, trust the account rate-limit snapshot.
+Quota snapshots remain useful for knowing whether the account is near a limit or crossed a reset. A reset does not invalidate correctness or token telemetry. Session cost is supplementary to token counts and may reflect model-specific pricing.
