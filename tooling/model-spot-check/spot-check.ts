@@ -16,7 +16,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -420,7 +420,13 @@ function grade(args: string[]): void {
   }
 
   writeFileSync(join(runDir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
-  appendFileSync(join(RUNS_ROOT, "results.jsonl"), `${JSON.stringify(result)}\n`);
+  const resultsPath = join(RUNS_ROOT, "results.jsonl");
+  const previous = existsSync(resultsPath)
+    ? readFileSync(resultsPath, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as RunResult)
+    : [];
+  const replaced = previous.filter((entry) => entry.runId !== result.runId);
+  replaced.push(result);
+  writeFileSync(resultsPath, replaced.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   console.log(`${t.id} arm ${meta.arm}: ${result.passed ? "PASS" : "FAIL"}${result.invalid ? " (INVALID)" : ""}`);
   if (matches === false) console.log(`  model mismatch: expected ${meta.model}, session used ${metrics?.models.join(", ")}`);
   for (const f of findings) console.log(`  ${f.severity}: ${f.rule} via ${f.tool}: ${f.excerpt}`);
