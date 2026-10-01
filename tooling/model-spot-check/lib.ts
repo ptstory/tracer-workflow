@@ -99,6 +99,82 @@ export function onlyNewSession(before: string[], after: string[]): string {
   return added[0];
 }
 
+export type CodexUsageWindow = {
+  usedPercent: number;
+  remainingPercent: number;
+  windowDurationMins: number;
+  resetsAt: number | null;
+};
+
+export type CodexUsageSnapshot = {
+  accountType: string | null;
+  accountEmail: string | null;
+  planType: string | null;
+  accountId: string | null;
+  ordinaryUsageAllowed: boolean | null;
+  fiveHour: CodexUsageWindow;
+  weekly: CodexUsageWindow;
+};
+
+function object(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("expected object");
+  return value as Record<string, unknown>;
+}
+
+function usageWindow(bucket: Record<string, unknown>, duration: number, label: string): CodexUsageWindow {
+  const candidates = [bucket.primary, bucket.secondary]
+    .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value));
+  const found = candidates.find((value) => value.windowDurationMins === duration);
+  if (!found || typeof found.usedPercent !== "number") {
+    throw new Error(`Codex usage snapshot is missing the ${label} (${duration}-minute) window`);
+  }
+  const remainingPercent = Math.max(0, Math.min(100, 100 - found.usedPercent));
+  return {
+    usedPercent: found.usedPercent,
+    remainingPercent,
+    windowDurationMins: duration,
+    resetsAt: typeof found.resetsAt === "number" ? found.resetsAt : null,
+  };
+}
+
+export function normalizeCodexUsage(accountRaw: unknown, limitsRaw: unknown): CodexUsageSnapshot {
+  const accountResponse = object(accountRaw);
+  const account = accountResponse.account && typeof accountResponse.account === "object"
+    ? object(accountResponse.account)
+    : {};
+  const routing = accountResponse.workspaceRouting && typeof accountResponse.workspaceRouting === "object"
+    ? object(accountResponse.workspaceRouting)
+    : {};
+  const limits = object(limitsRaw);
+  const byId = limits.rateLimitsByLimitId && typeof limits.rateLimitsByLimitId === "object"
+    ? object(limits.rateLimitsByLimitId)
+    : {};
+  const bucketRaw = byId.codex ?? limits.rateLimits;
+  const bucket = object(bucketRaw);
+
+  return {
+    accountType: typeof account.type === "string" ? account.type : null,
+    accountEmail: typeof account.email === "string" ? account.email : null,
+    planType: typeof account.planType === "string"
+      ? account.planType
+      : typeof bucket.planType === "string"
+        ? bucket.planType
+        : null,
+    accountId: typeof limits.accountId === "string"
+      ? limits.accountId
+      : typeof routing.chatgptAccountId === "string"
+        ? routing.chatgptAccountId
+        : null,
+    ordinaryUsageAllowed: typeof limits.ordinaryUsageAllowed === "boolean" ? limits.ordinaryUsageAllowed : null,
+    fiveHour: usageWindow(bucket, 300, "5-hour"),
+    weekly: usageWindow(bucket, 10_080, "weekly"),
+  };
+}
+
+export function formatCodexUsage(snapshot: CodexUsageSnapshot): string {
+  return `5-hour ${snapshot.fiveHour.remainingPercent}% left; weekly ${snapshot.weekly.remainingPercent}% left`;
+}
+
 export function issueDocument(title: string, body: string, interfaceNotes: string | null): string {
   const sections = [`# ${title}`, "", body.trim(), ""];
   if (interfaceNotes && interfaceNotes.trim()) {
