@@ -134,6 +134,12 @@ Run in the seeded order from `spot-check.ts order` (write the seed down): each t
 - **Validation.** Every graded command passes on its PR head and fails on base plus hidden tests. The one exception is three thread-atlas tests that need DuckDB's `sqlite_scanner` extension, which DuckDB downloads on first use; `prepare` now pre-installs it.
 - Also found: thread-atlas #149's first acceptance criterion (a hash on the run row) was already met at base, so the graded change is `raw_sources` population.
 
+**Pragmatic closeout — 2026-10-01.** The historical replay stopped after four complete paired tasks / eight decision runs rather than completing all 24. This weakens broad statistical claims but is sufficient for the personal routing decision; further evidence should come from real production work rather than disposable historical replays. Completed pair outcomes were: worklog #3 FAIL/FAIL, vibecoding-status-web #12 PASS/PASS, doordash-delivered #5 Sol PASS / Luna FAIL, and thread-atlas #155 PASS/PASS. The DoorDash divergence was a narrow but real canonical-identity integration miss by Luna.
+
+**Operational routing rule after the spot check:** use Luna as the normal first executor. Run the normal review gate. Escalate the same task to Sol when Luna's result has a **substantive correctness/integration failure that survives the review/repair loop**, or when the task is known up front to be dominated by subtle cross-system contracts/identity semantics where the historical spot check showed Sol's extra deliberation can matter. Do not escalate merely for copy/style nits, mechanical cleanup, environment-only failures, or a review finding Luna can repair directly. Record escalation and review rounds in the production log below.
+
+Efficiency closeout uses saved Crush session prompt/completion/total tokens, wall time, and recorded cost. Five-hour/weekly quota percentages are retained only as account-pressure telemetry.
+
 ### 4b. Running log (ongoing, starts now)
 
 For every issue finished, append one line to `docs/plans/model-log.md`:
