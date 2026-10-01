@@ -46,3 +46,40 @@ Recorded before the first decision run. Nothing in Crush changes until the last 
 23  whatimeant-20  arm A  trial 1
 24  whatimeant-20  arm B  trial 1
 ```
+
+## Spot check (#182): Pilot A and runner amendment — 2026-10-01
+
+Pilot A is complete and will not be rerun.
+
+```yaml
+task: tracer-workflow-71
+arm: A
+model: gpt-6-luna
+reasoning: max
+run dir: /Users/perrystory/spot-runs/tracer-workflow-71-A-t1-2026-10-01T08-31-44-274Z
+session: 62a8199479572d91
+worker commit: 4114931
+passed: true
+invalid: false
+modelMatches: true
+assistantMessages: 49
+toolCalls: 55
+subagentCalls: 1
+wallSeconds: 311
+cost: 0.178112
+usage before: 5-hour 100% left; weekly 54% left
+usage after: 5-hour 99% left; weekly 54% left
+```
+
+Pilot A exposed excessive manual ceremony, so the harness is being amended **after Pilot A and before any decision run**. The seed (`20260930`), task manifest, hidden tests, arm definitions, grading rules, and preregistered 24-run order are unchanged.
+
+Runner amendment:
+- `prepare` generates a project-local `.crushrc` that pins both large and small slots to the arm model/reasoning effort and disables provider auto-update.
+- New `run` command captures the before/after Codex usage strings, launches headless Crush, discovers exactly one new top-level session, and invokes the existing `grade` path automatically.
+- Headless launch passes the arm model explicitly for both `--model` and `--small-model`.
+- Crush v0.97.1 has a headless `--reasoning-effort` flag, so the runner passes the arm effort explicitly as well. The older Crush issue #3540 predates this release; the run-local `.crushrc` remains the project-scoped source of the same settings.
+- `CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1` is set for headless execution and session discovery.
+
+Pilot B remains `worklog-2`, Arm B, and is discarded. It is the acceptance test for this amended execution path. No decision run starts unless Pilot B has `modelMatches: true`, `invalid: false`, populated session/tool metrics, and a real hidden-test grade.
+
+Local cleanup before Pilot B: restore the manually edited global `~/.config/crush/crushrc` to the recorded `ptstory/crush-config@e32a32c4b5bd060733a3b12558abce8bf89cb03a` baseline and verify the config repo is clean. Arm-specific changes now belong only in each generated run directory.
