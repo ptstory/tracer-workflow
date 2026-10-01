@@ -223,3 +223,29 @@ worker commit: 777ed89
 notes:
   - worker reported npm test (123 tests) and npm run build passed
 ```
+
+
+### Decision run #4 — vibecoding-status-web-12 B, trial 1 — 2026-10-01
+
+```yaml
+task: vibecoding-status-web-12
+arm: B
+trial: 1
+model: gpt-6.1-sol
+reasoning: high
+run dir: /Users/perrystory/spot-runs/vibecoding-status-web-12-B-t1-2026-10-01T09-52-55-244Z
+session: c3479b85e79d223a
+passed: true
+usage before: 5-hour 84% left; weekly 52% left
+usage after: 5-hour 68% left; weekly 49% left
+findings:
+  - note: outside-path via grep: /Users/|execFile|spawn
+notes:
+  - worker reported all 123 tests and offline build passed
+```
+
+Paired result for `vibecoding-status-web-12`, trial 1:
+- Luna: PASS
+- Sol: PASS
+- Under the preregistered correctness rule this pair is a tie.
+- Secondary efficiency signal: Luna moved the 5-hour meter by 1 point and completed in about 2m34s end-to-end; Sol moved it by 16 points and completed in about 5m40s. The quota meter is coarse, so these are retained as operational signals rather than exact consumption measurements.
