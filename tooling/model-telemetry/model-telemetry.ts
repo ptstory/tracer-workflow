@@ -163,6 +163,12 @@ function sync(): { attempts: AttemptRecord[]; reviews: ReviewEvent[] } {
   const allowlist = reviewerAllowlist();
   const attempts: AttemptRecord[] = [];
   const reviewsByPr = new Map<string, ReviewEvent[]>();
+  for (const review of previousReviews) {
+    const key = `${review.repo}#${review.prNumber}`;
+    const list = reviewsByPr.get(key) ?? [];
+    list.push(review);
+    reviewsByPr.set(key, list);
+  }
 
   for (const marker of markers) {
     const raw = safeExec(
@@ -180,29 +186,30 @@ function sync(): { attempts: AttemptRecord[]; reviews: ReviewEvent[] } {
     const session = JSON.parse(raw) as CrushSession;
     const metrics = summarizeSession(session);
     const pr = findPr(marker);
-    const issueNumbers = (pr?.closingIssuesReferences ?? [])
-      .map((issue) => issue.number)
-      .filter((number): number is number => typeof number === "number")
-      .sort((a, b) => a - b);
+    const previous = previousAttempts.get(marker.sessionId);
+    const issueNumbers = pr
+      ? (pr.closingIssuesReferences ?? [])
+          .map((issue) => issue.number)
+          .filter((number): number is number => typeof number === "number")
+          .sort((a, b) => a - b)
+      : previous?.issueNumbers ?? [];
 
     attempts.push({
       ...marker,
       ...metrics,
       capturedAt: new Date().toISOString(),
-      prNumber: pr?.number ?? null,
+      prNumber: pr?.number ?? previous?.prNumber ?? null,
       issueNumbers,
-      prState: pr?.state ?? null,
-      prMergedAt: pr?.mergedAt ?? null,
+      prState: pr?.state ?? previous?.prState ?? null,
+      prMergedAt: pr?.mergedAt ?? previous?.prMergedAt ?? null,
     });
 
     if (marker.repo && pr && allowlist.size > 0) {
       const key = `${marker.repo}#${pr.number}`;
-      if (!reviewsByPr.has(key)) {
-        reviewsByPr.set(
-          key,
-          reviewEvents(marker.repo, pr.number, pr.comments ?? [], allowlist),
-        );
-      }
+      reviewsByPr.set(
+        key,
+        reviewEvents(marker.repo, pr.number, pr.comments ?? [], allowlist),
+      );
     }
   }
 
@@ -210,11 +217,6 @@ function sync(): { attempts: AttemptRecord[]; reviews: ReviewEvent[] } {
     process.stderr.write(
       "warning: TRACER_REVIEWER_LOGINS is empty; preserving prior review telemetry and syncing attempts only\n",
     );
-    for (const review of previousReviews) {
-      const key = `${review.repo}#${review.prNumber}`;
-      if (!reviewsByPr.has(key)) reviewsByPr.set(key, []);
-      reviewsByPr.get(key)!.push(review);
-    }
   }
 
   attempts.sort((a, b) =>
