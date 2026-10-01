@@ -293,7 +293,7 @@ function report(args: string[]): void {
     `Sol resolved escalations:    ${solSuccess.length}/${escalated.length || 0}\n`,
   );
   process.stdout.write(
-    `Median accepted tokens:      ${number(median(accepted.map((task) => task.totalTokens)))}\n`,
+    `Median final context size:   ${number(median(accepted.map((task) => task.finalContextTokens)))} tokens\n`,
   );
   process.stdout.write(
     `Median accepted wall time:   ${seconds(median(accepted.map((task) => task.wallSeconds)))}\n`,
@@ -306,7 +306,7 @@ function report(args: string[]): void {
   );
 
   if (!lifecycles.length) return;
-  process.stdout.write("\nrepo#pr                                      route                  verdict         attempts rounds tokens      wall      cost\n");
+  process.stdout.write("\nrepo#pr                                      route                  verdict         attempts rounds final_ctx   wall      cost\n");
   for (const task of lifecycles) {
     const route = task.attempts.map((attempt) => {
       const model = attempt.models.join(" ").toLowerCase();
@@ -319,7 +319,7 @@ function report(args: string[]): void {
     process.stdout.write(
       `${(`${task.repo}#${task.prNumber}`).padEnd(44)} ${route.padEnd(22)} ${verdict.padEnd(15)} ` +
       `${String(task.attempts.length).padEnd(8)} ${String(task.reviewRounds).padEnd(6)} ` +
-      `${number(task.totalTokens).padEnd(11)} ${seconds(task.wallSeconds).padEnd(9)} ${money(task.cost)}\n`,
+      `${number(task.finalContextTokens).padEnd(11)} ${seconds(task.wallSeconds).padEnd(9)} ${money(task.cost)}\n`,
     );
   }
 
