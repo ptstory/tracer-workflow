@@ -78,7 +78,7 @@ It does show that, in this bounded sample:
 - Luna matched Sol on 3 of 4 paired outcomes;
 - Sol produced one real correctness win;
 - Luna was dramatically cheaper and faster;
-- Luna still passed the sampled integration-heavy Thread Atlas task.
+- Luna still passed the sampled integration-heavy Task D.
 
 That supports **piloting a routing policy and measuring it end-to-end**, rather than declaring a winner-take-all model choice. The experiment directly measured model attempts against hidden tests; it did **not** validate the complete Luna → Review Gate → repair → Sol router.
 
@@ -86,7 +86,7 @@ That supports **piloting a routing policy and measuring it end-to-end**, rather 
 
 The largest remaining uncertainty is **Review Gate recall on substantive semantic failures**.
 
-The proposed production system does not blindly trust Luna; it relies on Review Gate to catch the cases where Luna should be repaired or escalated. But the spot check graded model output with hidden tests. It did not test whether Review Gate would have caught Luna's DoorDash canonical-identity miss before acceptance.
+The proposed production system does not blindly trust Luna; it relies on Review Gate to catch the cases where Luna should be repaired or escalated. But the spot check graded model output with hidden tests. It did not test whether Review Gate would have caught Luna's canonical-identity miss on Task C before acceptance.
 
 The spot check also did not exercise the proposed **one Luna repair cycle**. So it does not yet tell us:
 
