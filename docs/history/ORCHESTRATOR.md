@@ -8,7 +8,7 @@ By the numbers, the fence worked. Orchestrator bash share fell from 60.6 percent
 
 ## Why the fence came off
 
-The fence fixed the delegation problem but created a double-payment pattern. The orchestrator would diagnose a problem, be unable to act on it, then spend another cycle re-planning the same work for a child session. The clearest example was core-tweaks issue 10, where a single-file mobile CSS fix stretched to 2 hours and 16 minutes. The restriction was costing more than it saved, so edit and bash were flipped back to allow on 2026-08-12.
+The fence fixed the delegation problem but created a double-payment pattern. The orchestrator would diagnose a problem, be unable to act on it, then spend another cycle re-planning the same work for a child session. The clearest observed example was a single-file mobile CSS fix that stretched to 2 hours and 16 minutes. The restriction was costing more than it saved, so edit and bash were flipped back to allow on 2026-08-12.
 
 ## The two record errors that kept forcing re-derivation
 
