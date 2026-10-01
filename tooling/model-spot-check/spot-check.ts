@@ -6,6 +6,8 @@
  *
  *   bun tooling/model-spot-check/spot-check.ts order --seed <n> [--role decision|pilot]
  *   bun tooling/model-spot-check/spot-check.ts prepare <taskId> --arm A|B [--trial 1]
+ *   bun tooling/model-spot-check/spot-check.ts run <taskId> --arm A|B [--trial 1]
+ *       [--usage-before <text>] [--usage-after <text>] [--suite]
  *   bun tooling/model-spot-check/spot-check.ts grade <runDir> --session <crushSessionId>
  *       [--usage-before <text>] [--usage-after <text>] [--suite]
  *   bun tooling/model-spot-check/spot-check.ts report
@@ -15,15 +17,17 @@
  */
 
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   WORKER_PROMPT,
+  crushrcForRun,
   easyTierDecision,
   isInvalid,
   issueDocument,
   modelMatches,
+  onlyNewSession,
   runOrder,
   scanToolCalls,
   summarizeResults,
@@ -54,6 +58,8 @@ type RunMeta = {
   issueSha256: string;
   preparedAt: string;
   workDir: string;
+  crushrcSha256?: string;
+  crushExitCode?: number;
 };
 
 function manifest(): Manifest {
@@ -101,6 +107,44 @@ function runCommand(command: string[], cwd: string): CommandResult {
   return { command, exitCode: result.exitCode, tail: output.slice(-25).join("\n") };
 }
 
+type SessionListEntry = { id?: unknown };
+
+function readLine(label: string): string {
+  process.stdout.write(label);
+  const bytes: number[] = [];
+  const buffer = Buffer.alloc(1);
+  for (;;) {
+    const n = readSync(process.stdin.fd, buffer, 0, 1, null);
+    if (n === 0 || buffer[0] === 10) break;
+    if (buffer[0] !== 13) bytes.push(buffer[0]);
+  }
+  return Buffer.from(bytes).toString("utf8").trim();
+}
+
+function usageValue(args: string[], flag: string, label: string): string {
+  const supplied = arg(args, flag);
+  if (supplied !== undefined) return supplied;
+  const value = readLine(`${label} > `);
+  if (!value) throw new Error(`${label} is required; enter the Codex usage readout or pass ${flag}`);
+  return value;
+}
+
+function sessionIds(cwd: string): string[] {
+  const raw = must(["env", "CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1", "crush", "session", "list", "--json"], cwd);
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) throw new Error("crush session list --json did not return an array");
+  return parsed.map((entry, i) => {
+    const id = (entry as SessionListEntry)?.id;
+    if (typeof id !== "string" || !id) throw new Error(`crush session list entry ${i} has no string id`);
+    return id;
+  });
+}
+
+function runCrush(command: string[], cwd: string): number {
+  const result = Bun.spawnSync({ cmd: command, cwd, stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+  return result.exitCode ?? 1;
+}
+
 function order(args: string[]): void {
   const seed = Number(arg(args, "--seed"));
   if (!Number.isInteger(seed)) throw new Error("--seed <integer> is required; write it down before the first run");
@@ -110,7 +154,7 @@ function order(args: string[]): void {
   slots.forEach((s, i) => console.log(`${String(i + 1).padStart(2)}  ${s.taskId}  arm ${s.arm}  trial ${s.trial}`));
 }
 
-function prepare(args: string[]): void {
+function prepareRun(args: string[], printInstructions: boolean): string {
   const t = task(args[0] ?? "");
   const arm = (arg(args, "--arm") ?? "") as Arm;
   if (arm !== "A" && arm !== "B") throw new Error("--arm A|B is required");
@@ -135,35 +179,96 @@ function prepare(args: string[]): void {
   writeFileSync(join(workDir, "ISSUE.md"), issueDocument(issue.title, issue.body, notes));
 
   must(["git", "init", "-q"], workDir);
-  writeFileSync(join(workDir, ".git", "info", "exclude"), ".venv/\nnode_modules/\n", { flag: "a" });
+  writeFileSync(join(workDir, ".git", "info", "exclude"), ".venv/\nnode_modules/\n.crushrc\n", { flag: "a" });
   must(["git", "add", "-A"], workDir);
   must(["git", "-c", "user.name=spot-check", "-c", "user.email=spot-check@localhost", "commit", "-q", "-m", `spot-check base ${t.base}`], workDir);
   for (const line of t.setup) shell(line, workDir);
+
+  const runCrushrc = crushrcForRun(model, reasoningEffort);
+  writeFileSync(join(workDir, ".crushrc"), runCrushrc);
 
   const meta: RunMeta = {
     runId, taskId: t.id, arm, trial, model, reasoningEffort, base: t.base,
     issueSha256: createHash("sha256").update(issue.body).digest("hex"),
     preparedAt: new Date().toISOString(), workDir,
+    crushrcSha256: createHash("sha256").update(runCrushrc).digest("hex"),
   };
   writeFileSync(join(runDir, "run.json"), `${JSON.stringify(meta, null, 2)}\n`);
 
-  console.log(`Prepared ${runDir}
+  if (printInstructions) {
+    console.log(`Prepared ${runDir}
 
-Before starting Crush:
-  1. In the Crush model picker set ${model} with reasoning ${reasoningEffort}.
-     Set the small model to the same model for this run.
-  2. Note the Codex 5-hour usage readout (pass it to grade as --usage-before).
-  3. cd '${workDir}' && crush
+Run-local .crushrc pins:
+  large: ${model} (${reasoningEffort})
+  small: ${model} (${reasoningEffort})
+  provider auto-update: disabled
 
-Paste this as the only prompt:
+For the automated path, run:
+  bun ${join(HERE, "spot-check.ts")} run ${t.id} --arm ${arm} --trial ${trial}
+
+For an interactive fallback:
+  1. Note the Codex usage readout.
+  2. cd '${workDir}' && CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1 crush
+  3. Paste this as the only prompt:
 
 ${WORKER_PROMPT}
 
-When the agent stops, note the usage readout again, find the session id with
-'crush session list --json', and run:
-
-  bun ${join(HERE, "spot-check.ts")} grade '${runDir}' --session <id> --usage-before '<text>' --usage-after '<text>'
+Then note usage again, identify the new session with 'crush session list --json',
+and invoke grade manually.
 `);
+  }
+  return runDir;
+}
+
+function prepare(args: string[]): void {
+  prepareRun(args, true);
+}
+
+function run(args: string[]): void {
+  const runDir = prepareRun(args, false);
+  const metaPath = join(runDir, "run.json");
+  const meta = JSON.parse(readFileSync(metaPath, "utf8")) as RunMeta;
+
+  console.log(`Prepared ${runDir}`);
+  console.log(`Arm ${meta.arm}: ${meta.model} (${meta.reasoningEffort}); run-local .crushrc generated.`);
+  const usageBefore = usageValue(args, "--usage-before", "usage before");
+  const before = sessionIds(meta.workDir);
+
+  console.log("\nLaunching Crush. No picker or prompt paste is required.\n");
+  const exitCode = runCrush([
+    "env",
+    "CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1",
+    "crush",
+    "run",
+    "--model",
+    meta.model,
+    "--small-model",
+    meta.model,
+    "--reasoning-effort",
+    meta.reasoningEffort,
+    WORKER_PROMPT,
+  ], meta.workDir);
+
+  const usageAfter = usageValue(args, "--usage-after", "\nusage after");
+  const after = sessionIds(meta.workDir);
+  const sessionId = onlyNewSession(before, after);
+
+  meta.crushExitCode = exitCode;
+  writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+
+  if (exitCode !== 0) {
+    console.log(`Crush exited with code ${exitCode}; grading the produced work/session anyway.`);
+  }
+  console.log(`New session: ${sessionId}`);
+
+  const gradeArgs = [
+    runDir,
+    "--session", sessionId,
+    "--usage-before", usageBefore,
+    "--usage-after", usageAfter,
+  ];
+  if (args.includes("--suite")) gradeArgs.push("--suite");
+  grade(gradeArgs);
 }
 
 function grade(args: string[]): void {
@@ -246,9 +351,9 @@ function report(): void {
 }
 
 const [command, ...rest] = process.argv.slice(2);
-const commands: Record<string, (args: string[]) => void> = { order, prepare, grade, report: () => report() };
+const commands: Record<string, (args: string[]) => void> = { order, prepare, run, grade, report: () => report() };
 if (!command || !commands[command]) {
-  console.error("usage: spot-check.ts order|prepare|grade|report (see the header of this file)");
+  console.error("usage: spot-check.ts order|prepare|run|grade|report (see the header of this file)");
   process.exit(2);
 }
 commands[command](rest);
