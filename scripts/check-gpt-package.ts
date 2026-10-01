@@ -29,8 +29,7 @@ export function readmeSourcePaths(readme: string): string[] {
     if (!line.startsWith("|")) continue;
     for (const match of line.matchAll(/`([^`]+)`/g)) {
       const path = match[1];
-      if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(path) || path.startsWith("/")) continue;
-      if (path.includes(" ")) continue;
+      if (!path.includes("/") || /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(path) || path.startsWith("/")) continue;
       paths.push(path);
     }
   }

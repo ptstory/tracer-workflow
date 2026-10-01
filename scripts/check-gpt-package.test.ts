@@ -38,6 +38,10 @@ describe("Review Gate GPT package check", () => {
     expect(errors).toEqual(["README.md names a missing file: docs/missing.md"]);
   });
 
+  test("ignores inline code that is not a repository path", () => {
+    expect(readmeSourcePaths("| Action auth | \`tracer-review-bot\` classic PAT |\n| Reviewer | \`main\` branch |")).toEqual([]);
+  });
+
   test("fails when the README table names no source paths", () => {
     expect(checkPackage("ok", "no table here", allExist)).toEqual(["README.md names no repository source paths in its table"]);
   });
