@@ -55,9 +55,9 @@ describe("summarizeSession", () => {
       firstAt: "2026-10-01T10:00:00.000Z",
       lastAt: "2026-10-01T10:02:05.000Z",
       wallSeconds: 125,
-      promptTokens: 1200,
-      completionTokens: 50,
-      totalTokens: 1300,
+      contextPromptTokens: 1200,
+      lastStepCompletionTokens: 50,
+      contextTotalTokens: 1300,
       cost: 0.42,
       skills: ["from-issue"],
     });
@@ -138,9 +138,9 @@ function attempt(overrides: Partial<AttemptRecord>): AttemptRecord {
     firstAt: "2026-10-01T10:00:00Z",
     lastAt: "2026-10-01T10:02:00Z",
     wallSeconds: 120,
-    promptTokens: 1000,
-    completionTokens: 100,
-    totalTokens: 1100,
+    contextPromptTokens: 1000,
+    lastStepCompletionTokens: 100,
+    contextTotalTokens: 1100,
     cost: 0.1,
     skills: ["from-issue"],
     ...overrides,
@@ -171,7 +171,7 @@ describe("buildTaskLifecycle", () => {
         firstSeenAt: "2026-10-01T10:10:00Z",
         firstAt: "2026-10-01T10:10:00Z",
         lastAt: "2026-10-01T10:12:00Z",
-        totalTokens: 900,
+        contextTotalTokens: 900,
       }),
       attempt({
         sessionId: "sol-1",
@@ -180,7 +180,7 @@ describe("buildTaskLifecycle", () => {
         lastAt: "2026-10-01T10:25:00Z",
         models: ["gpt-6.1-sol"],
         reasoningEfforts: ["high"],
-        totalTokens: 2000,
+        contextTotalTokens: 2000,
         wallSeconds: 300,
         cost: 1.2,
       }),
@@ -210,7 +210,7 @@ describe("buildTaskLifecycle", () => {
     expect(lifecycle.escalatedToSol).toBe(true);
     expect(lifecycle.solEscalationSucceeded).toBe(true);
     expect(lifecycle.reviewRounds).toBe(3);
-    expect(lifecycle.totalTokens).toBe(4000);
+    expect(lifecycle.finalContextTokens).toBe(2000);
   });
 
   test("counts a one-repair Luna success without escalation", () => {
