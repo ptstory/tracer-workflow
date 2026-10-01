@@ -201,6 +201,9 @@ export type SessionMetrics = {
   firstAt: string | null;
   lastAt: string | null;
   wallSeconds: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
   cost: number | null;
   skills: string[];
 };
@@ -248,6 +251,12 @@ export function summarizeSession(session: CrushSession): SessionMetrics {
     firstAt,
     lastAt,
     wallSeconds: times.length > 1 ? Math.round((times[times.length - 1] - times[0]) / 1000) : null,
+    promptTokens: typeof session.meta?.prompt_tokens === "number" ? session.meta.prompt_tokens : null,
+    completionTokens: typeof session.meta?.completion_tokens === "number" ? session.meta.completion_tokens : null,
+    totalTokens:
+      typeof session.meta?.prompt_tokens === "number" && typeof session.meta?.completion_tokens === "number"
+        ? session.meta.prompt_tokens + session.meta.completion_tokens
+        : null,
     cost: typeof session.meta?.cost === "number" ? session.meta.cost : null,
     skills: (session.meta?.skills ?? []).map((s) => s.name ?? "").filter(Boolean),
   };
