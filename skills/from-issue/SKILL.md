@@ -31,6 +31,11 @@ artifact is the execution input.
 
 - If the primary checkout is dirty and isolation is required, create or reuse
   the dedicated issue branch/worktree and continue execution there.
+- Only when a new dedicated issue worktree is created, after it exists, if
+  `herdr` is on PATH, run `herdr worktree open --cwd <primary checkout path> --path <new worktree path> --no-focus`
+  directly. Do not load or follow the `herdr` skill for this CLI call. If
+  registration fails, note the failure in the run report and continue; if
+  `herdr` is not on PATH, skip registration.
 - If the dirty state belongs to the current issue and is safe, continue in
   place.
 - If the dirty state is unrelated or unsafe, stop and emit a blocker handoff
@@ -68,6 +73,10 @@ artifact is the execution input.
 3. Inspect checkout/worktree cleanliness and classify any dirtiness explicitly.
 4. If the primary checkout is dirty and isolation is required, create or reuse
    the dedicated issue branch/worktree and continue execution there.
+   Only for a newly created worktree, once it exists, if `herdr` is on PATH,
+   run `herdr worktree open --cwd <primary checkout path> --path <new worktree path> --no-focus`
+   directly, without loading or following the `herdr` skill. Skip when `herdr`
+   is not on PATH; report any registration failure in the run report and continue.
 5. Implement the smallest safe slice.
 6. Verify locally.
 7. In the PR body's Evidence section, copy the SHA from the brief's
