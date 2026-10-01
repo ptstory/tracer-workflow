@@ -67,7 +67,7 @@ export type ReviewEvent = {
 };
 
 export type LinkedAttempt = AttemptRecord & {
-  phase: "initial" | "repair" | "escalation";
+  phase: "initial" | "continuation" | "repair" | "escalation";
   review: ReviewEvent | null;
 };
 
@@ -243,14 +243,25 @@ export function buildTaskLifecycle(
       .sort((a, b) => a.commentedAt.localeCompare(b.commentedAt));
 
     const linked: LinkedAttempt[] = taskAttempts.map((attempt, index) => {
+      const start = attemptTime(attempt);
       const prior = taskAttempts.slice(0, index);
       const family = modelFamily(attempt);
+      const priorReview = [...taskReviews]
+        .filter((candidate) => candidate.commentedAt < start)
+        .at(-1) ?? null;
       const priorLuna = prior.some((item) => modelFamily(item) === "luna");
-      const priorNeedsFix = taskReviews.some(
-        (review) => review.verdict === "needs-fix" && review.commentedAt <= attemptTime(attempt),
-      );
-      const phase: LinkedAttempt["phase"] =
-        index === 0 ? "initial" : family === "sol" && priorLuna && priorNeedsFix ? "escalation" : "repair";
+
+      let phase: LinkedAttempt["phase"];
+      if (index === 0) {
+        phase = "initial";
+      } else if (!priorReview) {
+        phase = "continuation";
+      } else if (priorReview.verdict === "needs-fix") {
+        phase = family === "sol" && priorLuna ? "escalation" : "repair";
+      } else {
+        phase = "continuation";
+      }
+
       const nextAttemptAt = taskAttempts[index + 1] ? attemptTime(taskAttempts[index + 1]) : null;
       const review = taskReviews.find(
         (candidate) =>
@@ -262,22 +273,36 @@ export function buildTaskLifecycle(
 
     const acceptedIndex = linked.findIndex((attempt) => attempt.review?.verdict === "merge-candidate");
     const accepted = acceptedIndex >= 0 || taskReviews.some((review) => review.verdict === "merge-candidate");
-    const first = linked[0];
+
+    const firstReview = taskReviews[0] ?? null;
+    const initialCycle = firstReview
+      ? linked.filter((attempt) => attemptTime(attempt) < firstReview.commentedAt)
+      : linked;
+    const initialCycleAllLuna =
+      initialCycle.length > 0 && initialCycle.every((attempt) => modelFamily(attempt) === "luna");
     const firstPassLunaAccepted =
-      Boolean(first) && modelFamily(first) === "luna" && first.review?.verdict === "merge-candidate";
+      initialCycleAllLuna && firstReview?.verdict === "merge-candidate";
     const firstNeedsFix =
-      Boolean(first) && modelFamily(first) === "luna" && first.review?.verdict === "needs-fix";
+      initialCycleAllLuna && firstReview?.verdict === "needs-fix";
+
     const firstSolIndex = linked.findIndex((attempt) => attempt.phase === "escalation");
     const escalatedToSol = firstSolIndex >= 0;
-    const lunaRepairSucceeded =
-      firstNeedsFix &&
-      linked.some(
-        (attempt, index) =>
-          index > 0 &&
-          (firstSolIndex < 0 || index < firstSolIndex) &&
-          modelFamily(attempt) === "luna" &&
-          attempt.review?.verdict === "merge-candidate",
-      );
+
+    let lunaRepairSucceeded = false;
+    if (firstNeedsFix && firstReview) {
+      const nextReview = taskReviews.find((review) => review.commentedAt > firstReview.commentedAt) ?? null;
+      if (nextReview?.verdict === "merge-candidate") {
+        const repairCycle = linked.filter(
+          (attempt) =>
+            attemptTime(attempt) > firstReview.commentedAt &&
+            attemptTime(attempt) < nextReview.commentedAt,
+        );
+        lunaRepairSucceeded =
+          repairCycle.length > 0 &&
+          repairCycle.every((attempt) => modelFamily(attempt) === "luna");
+      }
+    }
+
     const solEscalationSucceeded =
       escalatedToSol &&
       linked.slice(firstSolIndex).some(
