@@ -6,7 +6,9 @@ import {
   easyTierDecision,
   isInvalid,
   issueDocument,
+  formatCodexUsage,
   modelMatches,
+  normalizeCodexUsage,
   onlyNewSession,
   runOrder,
   scanToolCalls,
@@ -58,6 +60,29 @@ describe("runner helpers", () => {
     expect(onlyNewSession(["a", "b"], ["c", "b", "a"])).toBe("c");
     expect(() => onlyNewSession(["a"], ["a"])).toThrow("expected exactly one new Crush session, found 0");
     expect(() => onlyNewSession(["a"], ["a", "b", "c"])).toThrow("expected exactly one new Crush session, found 2");
+  });
+
+  test("normalizes Codex 5-hour and weekly usage", () => {
+    const snapshot = normalizeCodexUsage(
+      {
+        account: { type: "chatgpt", email: "test@example.com", planType: "plus" },
+        workspaceRouting: { chatgptAccountId: "acct-test" },
+      },
+      {
+        ordinaryUsageAllowed: true,
+        accountId: "acct-test",
+        rateLimitsByLimitId: {
+          codex: {
+            primary: { usedPercent: 1, windowDurationMins: 300, resetsAt: 111 },
+            secondary: { usedPercent: 46, windowDurationMins: 10080, resetsAt: 222 },
+          },
+        },
+      },
+    );
+    expect(snapshot.fiveHour.remainingPercent).toBe(99);
+    expect(snapshot.weekly.remainingPercent).toBe(54);
+    expect(snapshot.accountId).toBe("acct-test");
+    expect(formatCodexUsage(snapshot)).toBe("5-hour 99% left; weekly 54% left");
   });
 });
 
