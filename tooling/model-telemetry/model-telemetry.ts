@@ -122,31 +122,73 @@ function reviewerAllowlist(): Set<string> {
   );
 }
 
-function findPr(marker: SessionMarker): PRInfo | null {
-  if (!marker.repo || !marker.branch) return null;
+function markerExecCwd(marker: SessionMarker): string {
+  if (existsSync(marker.cwd)) return marker.cwd;
+  if (marker.projectDir && existsSync(marker.projectDir)) return marker.projectDir;
+  return homedir();
+}
+
+function prView(repo: string, number: number, cwd: string): PRInfo | null {
   const out = safeExec(
     "gh",
     [
       "pr",
-      "list",
+      "view",
+      String(number),
       "--repo",
-      marker.repo,
-      "--state",
-      "all",
-      "--head",
-      marker.branch,
-      "--limit",
-      "20",
+      repo,
       "--json",
       "number,state,mergedAt,headRefOid,headRefName,closingIssuesReferences,comments",
     ],
-    marker.cwd,
+    cwd,
   );
-  if (!out) return null;
-  const prs = JSON.parse(out) as PRInfo[];
-  if (!prs.length) return null;
-  const exact = marker.headSha ? prs.find((pr) => pr.headRefOid === marker.headSha) : null;
-  return exact ?? [...prs].sort((a, b) => b.number - a.number)[0];
+  return out ? (JSON.parse(out) as PRInfo) : null;
+}
+
+function findPr(marker: SessionMarker): PRInfo | null {
+  if (!marker.repo) return null;
+  const cwd = markerExecCwd(marker);
+
+  if (marker.branch) {
+    const out = safeExec(
+      "gh",
+      [
+        "pr",
+        "list",
+        "--repo",
+        marker.repo,
+        "--state",
+        "all",
+        "--head",
+        marker.branch,
+        "--limit",
+        "20",
+        "--json",
+        "number,state,mergedAt,headRefOid,headRefName,closingIssuesReferences,comments",
+      ],
+      cwd,
+    );
+    if (out) {
+      const prs = JSON.parse(out) as PRInfo[];
+      const exact = marker.headSha ? prs.find((pr) => pr.headRefOid === marker.headSha) : null;
+      const newest = [...prs].sort((a, b) => b.number - a.number)[0];
+      if (exact ?? newest) return exact ?? newest;
+    }
+  }
+
+  if (!marker.headSha) return null;
+  const numberRaw = safeExec(
+    "gh",
+    [
+      "api",
+      `repos/${marker.repo}/commits/${marker.headSha}/pulls`,
+      "--jq",
+      ".[0].number // empty",
+    ],
+    cwd,
+  );
+  const number = Number(numberRaw);
+  return Number.isInteger(number) && number > 0 ? prView(marker.repo, number, cwd) : null;
 }
 
 function sync(): { attempts: AttemptRecord[]; reviews: ReviewEvent[] } {
@@ -174,7 +216,7 @@ function sync(): { attempts: AttemptRecord[]; reviews: ReviewEvent[] } {
     const raw = safeExec(
       "crush",
       ["session", "show", marker.sessionId, "--json"],
-      marker.cwd,
+      markerExecCwd(marker),
     );
     if (!raw) {
       const previous = previousAttempts.get(marker.sessionId);
