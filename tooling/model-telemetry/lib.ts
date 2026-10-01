@@ -38,9 +38,9 @@ export type SessionMetrics = {
   firstAt: string | null;
   lastAt: string | null;
   wallSeconds: number | null;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  totalTokens: number | null;
+  contextPromptTokens: number | null;
+  lastStepCompletionTokens: number | null;
+  contextTotalTokens: number | null;
   cost: number | null;
   skills: string[];
 };
@@ -83,7 +83,7 @@ export type TaskLifecycle = {
   escalatedToSol: boolean;
   solEscalationSucceeded: boolean;
   reviewRounds: number;
-  totalTokens: number;
+  finalContextTokens: number;
   wallSeconds: number;
   cost: number;
 };
@@ -126,12 +126,12 @@ export function summarizeSession(session: CrushSession): SessionMetrics {
   if (session.meta?.reasoning_effort) reasoning.add(session.meta.reasoning_effort);
   times.sort((a, b) => a - b);
 
-  const promptTokens = typeof session.meta?.prompt_tokens === "number" ? session.meta.prompt_tokens : null;
-  const completionTokens = typeof session.meta?.completion_tokens === "number" ? session.meta.completion_tokens : null;
-  const totalTokens = typeof session.meta?.total_tokens === "number"
+  const contextPromptTokens = typeof session.meta?.prompt_tokens === "number" ? session.meta.prompt_tokens : null;
+  const lastStepCompletionTokens = typeof session.meta?.completion_tokens === "number" ? session.meta.completion_tokens : null;
+  const contextTotalTokens = typeof session.meta?.total_tokens === "number"
     ? session.meta.total_tokens
-    : promptTokens !== null && completionTokens !== null
-      ? promptTokens + completionTokens
+    : contextPromptTokens !== null && lastStepCompletionTokens !== null
+      ? contextPromptTokens + lastStepCompletionTokens
       : null;
 
   return {
@@ -143,9 +143,9 @@ export function summarizeSession(session: CrushSession): SessionMetrics {
     firstAt: times.length ? new Date(times[0]).toISOString() : null,
     lastAt: times.length ? new Date(times[times.length - 1]).toISOString() : null,
     wallSeconds: times.length > 1 ? Math.round((times[times.length - 1] - times[0]) / 1000) : null,
-    promptTokens,
-    completionTokens,
-    totalTokens,
+    contextPromptTokens,
+    lastStepCompletionTokens,
+    contextTotalTokens,
     cost: typeof session.meta?.cost === "number" ? session.meta.cost : null,
     skills: (session.meta?.skills ?? []).map((skill) => skill.name ?? "").filter(Boolean).sort(),
   };
@@ -296,8 +296,8 @@ export function buildTaskLifecycle(
       lunaRepairSucceeded,
       escalatedToSol,
       solEscalationSucceeded,
-      reviewRounds: taskReviews.length ? Math.max(...taskReviews.map((review) => review.reviewRound)) + 1 : 0,
-      totalTokens: counted.reduce((sum, attempt) => sum + (attempt.totalTokens ?? 0), 0),
+      reviewRounds: taskReviews.length,
+      finalContextTokens: counted.at(-1)?.contextTotalTokens ?? 0,
       wallSeconds: counted.reduce((sum, attempt) => sum + (attempt.wallSeconds ?? 0), 0),
       cost: counted.reduce((sum, attempt) => sum + (attempt.cost ?? 0), 0),
     });
