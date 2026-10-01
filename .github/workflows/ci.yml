@@ -42,6 +42,8 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Check review-gate contract
         run: bun scripts/check-review-gate-contract.ts
+      - name: Check Review Gate GPT package
+        run: bun scripts/check-gpt-package.ts
 
   pr-body:
     if: github.event_name == 'pull_request'
