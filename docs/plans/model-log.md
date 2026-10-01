@@ -92,3 +92,42 @@ Automated quota capture validation — 2026-10-01:
 - That normalizes to `5-hour 99% left; weekly 54% left`, exactly matching Pilot A's previously recorded post-run Usage-page reading.
 - The runner now stores normalized `usage-before.json` / `usage-after.json` snapshots automatically and pins only a SHA-256 account fingerprint under `~/spot-runs/codex-account.sha256`; it aborts if the Codex login changes.
 - This is an execution/measurement automation amendment made before any decision run. The decision rule, arms, tasks, hidden tests, seed, and run order remain unchanged.
+
+
+## Spot check (#182): Pilot B — 2026-10-01
+
+Pilot B validated the amended automated execution path and is discarded from the decision result.
+
+```yaml
+task: worklog-2
+arm: B
+model: gpt-6.1-sol
+reasoning: high
+run dir: /Users/perrystory/spot-runs/worklog-2-B-t1-2026-10-01T09-15-59-840Z
+session: 32ba6ebe7432fb0d
+passed: true
+invalid: false
+modelMatches: true
+assistantMessages: 23
+toolCalls: 32
+subagentCalls: 0
+wallSeconds: 323
+cost: 0.6336647999999999
+usage before: 5-hour 99% left; weekly 54% left
+usage after: 5-hour 92% left; weekly 53% left
+skills:
+  - from-issue
+findings:
+  - note: outside-path /Users/perrystory/.local/share/mise/installs/bun/1.3.14/bin/bun
+  - note: outside-path /Users/perrystory/.local/share/mise/installs/node/26.8.2/bin/tsc
+```
+
+Acceptance:
+- Headless Crush selected only `gpt-6.1-sol`.
+- Hidden grading ran and passed.
+- Leakage/model validity checks passed; the two outside-path findings are executable-location notes, not violations.
+- Automatic top-level session discovery worked.
+- Automatic Codex quota capture worked before and after with no human quota prompts.
+- The verified account fingerprint remained pinned.
+
+The automated runner is accepted for the 24 preregistered decision runs. Decision run #1 remains `worklog-3`, Arm B, trial 1.
