@@ -32,6 +32,12 @@ describe("Review Gate GPT package check", () => {
     expect(errors).toEqual(["README.md names a missing file: skills/review-gate/references/verdict-contract.md"]);
   });
 
+  test("fails when a repository path outside actions and skills is missing", () => {
+    const missingPathReadme = `${readme}\n| Knowledge | \`docs/missing.md\` |`;
+    const errors = checkPackage("ok", missingPathReadme, (path) => path !== "docs/missing.md");
+    expect(errors).toEqual(["README.md names a missing file: docs/missing.md"]);
+  });
+
   test("fails when the README table names no source paths", () => {
     expect(checkPackage("ok", "no table here", allExist)).toEqual(["README.md names no repository source paths in its table"]);
   });

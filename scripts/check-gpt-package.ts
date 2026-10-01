@@ -27,8 +27,11 @@ export function readmeSourcePaths(readme: string): string[] {
   const paths: string[] = [];
   for (const line of readme.split("\n")) {
     if (!line.startsWith("|")) continue;
-    for (const match of line.matchAll(/`((?:actions|skills)\/[^`]+)`/g)) {
-      paths.push(match[1]);
+    for (const match of line.matchAll(/`([^`]+)`/g)) {
+      const path = match[1];
+      if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(path) || path.startsWith("/")) continue;
+      if (path.includes(" ")) continue;
+      paths.push(path);
     }
   }
   return paths;
