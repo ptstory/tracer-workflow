@@ -328,3 +328,48 @@ notes:
   - worker did not create its own commit before stopping; hidden grading still passed the resulting worktree
   - end-to-end runner wall time was about 8m21s
 ```
+
+
+### Decision run #8 — thread-atlas-155 A, trial 1 — 2026-10-01
+
+```yaml
+task: thread-atlas-155
+arm: A
+trial: 1
+model: gpt-6-luna
+reasoning: max
+run dir: /Users/perrystory/spot-runs/thread-atlas-155-A-t1-2026-10-01T14-01-58-088Z
+session: a81ed86862083e06
+passed: true
+usage before: 5-hour 77% left; weekly 42% left
+usage after: 5-hour 76% left; weekly 42% left
+findings:
+  - notes only: synthetic missing-file paths and one Library/Application path; no violations
+notes:
+  - implemented targeted attachment metadata ingestion plus fixtures for idempotency, multiple attachments, attachment-only messages, chat isolation, and missing media
+  - focused tests: 22 passed
+  - full suite: 163 passed, 1 skipped, 1 failure in installed-xt console-script environment check
+  - git diff --check passed
+  - no worker commit because the full repository checks were not all green
+  - end-to-end runner wall time was about 3m52s
+```
+
+Paired result for `thread-atlas-155`, trial 1:
+- Sol: PASS
+- Luna: PASS
+- This pair is a correctness tie on the most integration/repo-archaeology-heavy task sampled.
+- Secondary wall-time signal: Luna completed in about 3m52s versus Sol about 8m21s.
+
+### Pragmatic stopping point after decision run #8
+
+The historical replay is stopped after four complete paired tasks / eight decision runs. This is an intentional operational stopping decision for a personal model-routing choice, not the original preregistered 24-run completion.
+
+Observed paired correctness:
+- `worklog-3`: Sol FAIL / Luna FAIL
+- `vibecoding-status-web-12`: Sol PASS / Luna PASS
+- `doordash-delivered-5`: Sol PASS / Luna FAIL
+- `thread-atlas-155`: Sol PASS / Luna PASS
+
+Thus Sol has one unique correctness win; Luna has none. The unique Sol win is a narrow but real canonical-identity integration miss by Luna. Thread Atlas, the sampled messy integration/archaeology task, is a tie.
+
+Efficiency conclusions should use per-session token counts, recorded cost, and wall time. Quota percentages are retained only as account-pressure telemetry.
