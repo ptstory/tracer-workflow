@@ -203,3 +203,23 @@ Paired hidden-grade comparison for `worklog-3`:
 - Sol preserved both `pr_opened` and `pr_merged` rows for the tested interval but produced different human labels (`Opened a pull request` / `Merged a pull request`) than the hidden contract (`PR opened` / `PR merged`).
 - Luna returned only `pr_opened` for the same interval, so it failed earlier on PR lifecycle/timestamp-query behavior before the hidden label assertion was reached.
 - This qualitative distinction is recorded only as secondary diagnostic evidence; it does not change either arm's FAIL score.
+
+
+### Decision run #3 — vibecoding-status-web-12 A, trial 1 — 2026-10-01
+
+```yaml
+task: vibecoding-status-web-12
+arm: A
+trial: 1
+model: gpt-6-luna
+reasoning: max
+run dir: /Users/perrystory/spot-runs/vibecoding-status-web-12-A-t1-2026-10-01T09-40-12-087Z
+session: 628ba734bfd7b1f2
+passed: true
+invalid: false
+usage before: 5-hour 85% left; weekly 52% left
+usage after: 5-hour 84% left; weekly 52% left
+worker commit: 777ed89
+notes:
+  - worker reported npm test (123 tests) and npm run build passed
+```
