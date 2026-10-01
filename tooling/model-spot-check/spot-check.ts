@@ -430,7 +430,7 @@ function grade(args: string[]): void {
   writeFileSync(resultsPath, replaced.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   console.log(`${t.id} arm ${meta.arm}: ${result.passed ? "PASS" : "FAIL"}${result.invalid ? " (INVALID)" : ""}`);
   if (metrics) {
-    console.log(`  tokens: prompt=${metrics.promptTokens ?? "-"} completion=${metrics.completionTokens ?? "-"} total=${metrics.totalTokens ?? "-"}; wall=${metrics.wallSeconds ?? "-"}s; cost=${metrics.cost ?? "-"}`);
+    console.log(`  context snapshot: prompt=${metrics.contextPromptTokens ?? "-"} last-output=${metrics.lastStepCompletionTokens ?? "-"} total=${metrics.contextTotalTokens ?? "-"}; wall=${metrics.wallSeconds ?? "-"}s; cost=${metrics.cost ?? "-"}`);
   }
   if (matches === false) console.log(`  model mismatch: expected ${meta.model}, session used ${metrics?.models.join(", ")}`);
   for (const f of findings) console.log(`  ${f.severity}: ${f.rule} via ${f.tool}: ${f.excerpt}`);
@@ -468,28 +468,27 @@ function report(): void {
   const decision = results
     .filter((r) => r.role === "decision" && !r.invalid)
     .sort((a, b) => a.taskId.localeCompare(b.taskId) || a.arm.localeCompare(b.arm));
-  console.log("\nPer-run efficiency (valid decision runs)");
-  console.log("task                         arm result  wall_s  prompt_tok  completion_tok  total_tok  cost");
+  console.log("\nPer-run telemetry (valid decision runs)");
+  console.log("task                         arm result  wall_s  context_prompt  last_output  context_total  cost");
   for (const r of decision) {
     const s = r.session;
     console.log(
       `${r.taskId.padEnd(28)} ${r.arm.padEnd(3)} ${(r.passed ? "PASS" : "FAIL").padEnd(7)} ` +
-      `${String(s?.wallSeconds ?? "-").padEnd(7)} ${String(s?.promptTokens ?? "-").padEnd(11)} ` +
-      `${String(s?.completionTokens ?? "-").padEnd(15)} ${String(s?.totalTokens ?? "-").padEnd(10)} ` +
+      `${String(s?.wallSeconds ?? "-").padEnd(7)} ${String(s?.contextPromptTokens ?? "-").padEnd(15)} ` +
+      `${String(s?.lastStepCompletionTokens ?? "-").padEnd(12)} ${String(s?.contextTotalTokens ?? "-").padEnd(13)} ` +
       `${typeof s?.cost === "number" ? s.cost.toFixed(6) : "-"}`,
     );
   }
 
   const efficiency = summarizeEfficiency(results);
-  console.log("\nAggregate efficiency (valid decision runs)");
-  console.log("arm  runs passed wall_s token_runs prompt_tok completion_tok total_tok cost");
+  console.log("\nAggregate efficiency (valid decision runs; cumulative metrics only)");
+  console.log("arm  runs passed wall_s cost");
   for (const e of efficiency) {
     console.log(
-      `${e.arm.padEnd(4)} ${String(e.runs).padEnd(4)} ${String(e.passed).padEnd(6)} ${String(e.wallSeconds).padEnd(6)} ` +
-      `${String(e.tokenRuns).padEnd(10)} ${String(e.promptTokens).padEnd(10)} ${String(e.completionTokens).padEnd(14)} ` +
-      `${String(e.totalTokens).padEnd(9)} ${e.cost.toFixed(6)}`,
+      `${e.arm.padEnd(4)} ${String(e.runs).padEnd(4)} ${String(e.passed).padEnd(6)} ${String(e.wallSeconds).padEnd(6)} ${e.cost.toFixed(6)}`,
     );
   }
+  console.log("\nNote: Crush session prompt/completion/total token fields are latest-step context/output snapshots, not cumulative session token spend; they are intentionally not aggregated.");
 
   const d = easyTierDecision(rows);
   console.log(`\nOriginal preregistered easy/medium rule on completed runs: Luna ${d.lunaPassed} passed, Sol ${d.solPassed} passed -> ${d.lunaDefault ? "Luna stays default" : "Sol becomes default"} if applied only to these completed easy/medium runs.`);
