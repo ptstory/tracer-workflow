@@ -1131,7 +1131,7 @@ test("one repo failing label access does not block another repo's label comparis
 
   const report = (buildDoctorReport as any)([clean.repoRoot, blocked.repoRoot], clean.home, makeDoctorDeps({
     [clean.repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL },
-    [blocked.repoRoot]: { remoteUrl: "git@github.com:ptstory/blocked-repo.git", ghFailure: "gh: unable to reach api\n" },
+    [blocked.repoRoot]: { remoteUrl: "git@github.com:acme/blocked-repo.git", ghFailure: "gh: unable to reach api\n" },
   }));
 
   expect(report.findings.some((item: any) => item.component === `repo-labels:${clean.repoRoot}`)).toBe(false);
