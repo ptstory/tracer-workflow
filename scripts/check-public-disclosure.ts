@@ -24,7 +24,9 @@ function scanText(path: string, text: string): Finding[] {
   const repoPattern = new RegExp(`\\b${PUBLIC_OWNER}\\/([A-Za-z0-9._-]+)\\b`, "g");
 
   for (const match of text.matchAll(repoPattern)) {
-    if (match[1] !== PUBLIC_REPO) findings.push({ path, kind: "owner-qualified cross-repository reference" });
+    if (match[1] !== PUBLIC_REPO && match[1] !== `${PUBLIC_REPO}.git`) {
+      findings.push({ path, kind: "owner-qualified cross-repository reference" });
+    }
   }
 
   for (const [kind, pattern] of sensitivePatterns) {
