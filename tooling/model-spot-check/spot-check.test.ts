@@ -166,6 +166,18 @@ describe("scanToolCalls", () => {
   test("does not mistake words containing gh for the gh CLI", () => {
     expect(scanToolCalls([{ name: "bash", input: '{"command":"echo high; rg -n thought"}' }], options)).toEqual([]);
   });
+
+  test("allows GitHub URLs and pull refs as source-code literals", () => {
+    expect(scanToolCalls([
+      {
+        name: "write",
+        input: JSON.stringify({
+          file_path: "/Users/p/spot-runs/r1/work/test/ledger.test.js",
+          content: "const url = 'https://github.com/acme/repo/pull/7'; const ref = 'refs/pull/7/head';",
+        }),
+      },
+    ], options)).toEqual([]);
+  });
 });
 
 describe("validity and decisions", () => {
