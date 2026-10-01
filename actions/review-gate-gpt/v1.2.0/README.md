@@ -12,7 +12,7 @@ This folder holds only what changed since `v1.1.0`. Everything else stays at its
 | Knowledge | `actions/review-gate-gpt/v1.2.0/knowledge/review-gate-procedure-extras.md` |
 | Knowledge | `skills/review-gate/references/verdict-contract.md` (canonical; re-upload whenever it changes on `main`) |
 | Action schema | `actions/review-gate-gpt/v1.1.0/actions/github-review-gate.openapi.yaml` (unchanged; no re-import needed) |
-| Action auth | `tracer-review-bot` classic PAT; see `actions/review-gate-gpt/v1.1.0/actions/IMPORT.md` (expires by 2026-12-11) |
+| Action auth | dedicated review account PAT; see `actions/review-gate-gpt/v1.1.0/actions/IMPORT.md` |
 
 Builder fields: `builder.md` in this folder.
 
