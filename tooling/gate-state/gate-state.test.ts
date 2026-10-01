@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { REPOS, classifyGateState } from "./gate-state";
+import { REPOS, classifyGateState, configuredRepos } from "./gate-state";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -75,12 +75,13 @@ esac
   );
 }
 
-function runGateState(h: Harness, args: string[] = [], reviewerLogins = "reviewer") {
+function runGateState(h: Harness, args: string[] = [], reviewerLogins = "reviewer", repos = REPOS.join(",")) {
   return spawnSync("bun", ["tooling/gate-state/gate-state.ts", ...args], {
     cwd: repoRoot,
     env: {
       ...process.env,
       TRACER_REVIEWER_LOGINS: reviewerLogins,
+      TRACER_REPOS: repos,
       PATH: `${h.binDir}:${process.env.PATH ?? ""}`,
     },
     encoding: "utf8",
@@ -145,6 +146,13 @@ describe("tooling/gate-state/gate-state.ts", () => {
     expect(readFileSync(harness.ghLog, "utf8")).toBe("");
   });
 
+  test("loads repository fleet from runtime configuration", () => {
+    expect(configuredRepos({ TRACER_REPOS: "acme/project-a, acme/project-b" })).toEqual([
+      "acme/project-a",
+      "acme/project-b",
+    ]);
+  });
+
   test("classifies ungated, current, and stale PRs in the default table", () => {
     const responses = Object.fromEntries(REPOS.map((repo) => [repo, gateRows(false)]));
     writeGhStub(harness, responses);
@@ -184,7 +192,7 @@ describe("tooling/gate-state/gate-state.ts", () => {
 
   test("keeps a PR classified from an older conforming verdict when a newer gate comment is malformed", () => {
     expect(
-      classifyGateState("ptstory/core-tweaks", {
+      classifyGateState("acme/project-alpha", {
         number: 99,
         title: "malformed latest",
         headRefOid: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
@@ -256,14 +264,15 @@ describe("tooling/gate-state/gate-state.ts", () => {
   });
 
   test("continues when gh fails for one repo and warns on stderr", () => {
-    const [failedRepo, ...rest] = REPOS;
+    const repos = ["acme/project-a", "acme/project-b"];
+    const [failedRepo, ...rest] = repos;
     const responses = Object.fromEntries([
       [failedRepo, { error: "gh auth failed for repo" }],
       ...rest.map((repo) => [repo, gateRows(false)]),
     ]);
     writeGhStub(harness, responses);
 
-    const result = runGateState(harness);
+    const result = runGateState(harness, [], "reviewer", repos.join(","));
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain(`warning: failed to load open PRs for ${failedRepo}`);
