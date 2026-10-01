@@ -90,13 +90,14 @@ bun run model:report
 
 Report syncs first by default. Use `--no-sync` for a local-only read or `--json` for lifecycle JSON.
 
-The lifecycle join is chronological. For one PR it classifies:
+The lifecycle join is chronological and uses **Review Gate cycles**, not a one-session-equals-one-attempt assumption. For one PR it classifies:
 
-- first observed attempt → `initial`
-- later Luna attempt → `repair`
-- Sol attempt after Luna plus a prior `needs-fix` → `escalation`
+- first observed session before any gate → `initial`
+- additional sessions before that first gate → `continuation`
+- sessions after a `needs-fix` verdict → `repair`
+- a Sol session after Luna plus a prior `needs-fix` → `escalation`
 
-An attempt is associated with the first trusted Review Gate verdict after that session ends and before the next observed attempt begins.
+A Review Gate verdict is associated with the last observed session before that verdict. Multiple Luna sessions before the first gate still count as one first-pass Luna cycle; likewise a repair cycle may contain multiple Luna sessions.
 
 The summary is designed to answer:
 
