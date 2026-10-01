@@ -39,7 +39,7 @@ describe("Review Gate GPT package check", () => {
   });
 
   test("ignores inline code that is not a repository path", () => {
-    expect(readmeSourcePaths("| Action auth | \`tracer-review-bot\` classic PAT |\n| Reviewer | \`main\` branch |")).toEqual([]);
+    expect(readmeSourcePaths("| Action auth | \`review-bot\` classic PAT |\n| Reviewer | \`main\` branch |")).toEqual([]);
   });
 
   test("fails when the README table names no source paths", () => {
