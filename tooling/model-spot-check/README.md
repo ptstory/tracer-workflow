@@ -10,7 +10,7 @@ The decision rule and its rationale are in `docs/plans/2026-09-29-stack-and-mode
 |---|---|
 | `tasks.json` | For each task: repo, issue, PR, base SHA, setup commands, graded tests, excluded tests and why. Each graded command was checked on 2026-09-30 to pass on the PR head and fail on base plus hidden tests. |
 | `interfaces/<task>.md` | Interface requirements appended to the task's `ISSUE.md`, identical for both arms. Several merged test suites assert module paths, function names or JSON keys that the issue never specified. Without these notes, a correct solution with different names would fail. The notes give names and shapes only, never expected results. |
-| `spot-check.ts` | Commands: `order`, `prepare`, `grade`, `report`. |
+| `spot-check.ts` | Commands: `order`, `prepare`, `run`, `grade`, `report`. `run` is the normal execution path; `prepare` + interactive Crush remains the fallback. |
 | `lib.ts`, `spot-check.test.ts` | Pure logic, and tests for it: run order, session parsing, leakage scan, decision rule. |
 | `crush-prices.json` | Optional price overrides so Crush's `cost` tracks quota. See "Measuring quota" below. |
 
@@ -32,31 +32,55 @@ bun tooling/model-spot-check/spot-check.ts order --seed <n>
 
 Easy tasks get 2 trials per arm and hard tasks 1, so 24 runs. Run them in the printed order.
 
-**2. Pilot (results discarded).**
+**2. Pilots (results discarded).**
+
+Pilot A was run manually before the automated path existed. Do not rerun it.
+
+Pilot B validates the automated path end to end:
 
 ```sh
-bun tooling/model-spot-check/spot-check.ts prepare tracer-workflow-71 --arm A
-bun tooling/model-spot-check/spot-check.ts prepare worklog-2 --arm B
+bun tooling/model-spot-check/spot-check.ts run worklog-2 --arm B
 ```
 
-`prepare` prints the exact steps: which model to set in the picker, the prompt to paste, and the `grade` command to run afterwards. The pilot should confirm four things:
-- `grade` reports the session's model, and the model matches the arm.
-- Tool calls are counted.
-- The leakage scan reports nothing unexpected.
-- The hidden tests run.
+`run` performs `prepare`, writes a project-local `.crushrc`, asks for the Codex usage readout, snapshots the current top-level Crush session IDs, launches headless Crush, asks for the usage readout again, requires exactly one new top-level session, and feeds that session directly to `grade`.
 
-**3. Decision runs.** For each slot in the order:
-1. `prepare <task> --arm <A|B> --trial <n>`
-2. Set the model in the picker and note the Codex usage readout.
-3. Start `crush` in the printed work directory and paste the prompt.
-4. When the agent stops, note the readout again.
-5. Run `grade <runDir> --session <id> --usage-before … --usage-after …`.
+For each arm the generated `.crushrc` pins both large and small model slots to the arm model and reasoning effort and disables provider auto-update. On Crush v0.97.1 the runner also passes `--model`, `--small-model`, and `--reasoning-effort` explicitly. The explicit model flags defend against historical headless model-selection bugs; the local config remains the project-scoped source of the arm settings.
 
-If the 5-hour limit hits mid-run, abandon that run and prepare it again in the next window. Never switch models mid-run.
+Pilot B is acceptable only if:
+- `modelMatches: true`
+- `invalid: false`
+- the hidden graded command actually runs
+- session/tool metrics are populated and plausible
 
-**4. Adjudicate failures.** For each FAIL, read `graded.tail` in the run's `result.json`. If the failure is an interface mismatch rather than wrong behavior, note it in the model log with the reason. Decide the classification before you look at which arm produced it; the arm is in the run directory name, so cover it.
+If that fails because headless Crush is unreliable, use `prepare` and launch interactive `crush` from the generated work directory. The local `.crushrc` means no model-picker changes are needed; only the prompt paste and session identification remain manual.
 
-**5. Report.**
+**3. Decision runs.** For each slot in the preregistered order:
+
+```sh
+bun tooling/model-spot-check/spot-check.ts run <task> --arm <A|B> --trial <n>
+```
+
+The only normal human inputs are the two Codex usage readings:
+
+```text
+usage before >
+...
+usage after >
+```
+
+Do not run other work on the GivenPrompt OpenAI/Codex account between those readings. If the 5-hour limit hits mid-run, abandon that run and prepare it again in the next window. Never switch models mid-run.
+
+**4. Interactive fallback.** `prepare` still creates the isolated worktree and run-local `.crushrc` without launching Crush:
+
+```sh
+bun tooling/model-spot-check/spot-check.ts prepare <task> --arm <A|B> --trial <n>
+```
+
+Then run `CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1 crush` from the printed work directory, paste the printed worker prompt, identify the one new top-level session with `crush session list --json`, and invoke `grade` manually with the two usage readings.
+
+**5. Adjudicate failures.** For each FAIL, read `graded.tail` in the run's `result.json`. If the failure is an interface mismatch rather than wrong behavior, note it in the model log with the reason. Decide the classification before you look at which arm produced it; the arm is in the run directory name, so cover it.
+
+**6. Report.**
 
 ```sh
 bun tooling/model-spot-check/spot-check.ts report
@@ -77,7 +101,7 @@ This applies the easy-tier rule.
 Reads under `~/.config/crush`, `~/.agents/skills` and `~/.claude/skills` are allowed. Any other path outside the work directory is listed as a note.
 
 Two limits:
-- Crush hooks and session records don't cover subagent sessions; `grade` counts `agent` calls so you can see when this applied.
+- Crush hooks and session records don't cover subagent sessions; `grade` counts `agent` calls so you can see when this applied. `crush session list --json` itself lists only top-level sessions, so subagent sessions do not break automatic session discovery.
 - Dependency installs happen in `prepare`, before the agent starts. DuckDB's `sqlite_scanner` extension is pre-installed for thread-atlas tasks for the same reason.
 
 ## Measuring quota
