@@ -373,3 +373,38 @@ Observed paired correctness:
 Thus Sol has one unique correctness win; Luna has none. The unique Sol win is a narrow but real canonical-identity integration miss by Luna. Thread Atlas, the sampled messy integration/archaeology task, is a tie.
 
 Efficiency conclusions should use per-session token counts, recorded cost, and wall time. Quota percentages are retained only as account-pressure telemetry.
+
+
+### Final eight-run telemetry closeout — 2026-10-01
+
+```text
+Arm A — Luna max
+valid decision runs: 4
+passes: 2
+wall time: 646 s
+prompt tokens: 152,331
+completion tokens: 258
+total tokens: 152,589
+recorded cost: $0.285483
+
+Arm B — Sol high
+valid decision runs: 4
+passes: 3
+wall time: 1,665 s
+prompt tokens: 203,925
+completion tokens: 140
+total tokens: 204,065
+recorded cost: $6.327426
+```
+
+Observed aggregate efficiency ratios, Sol relative to Luna:
+- wall time: 2.58x
+- total tokens: 1.34x
+- recorded cost: 22.16x
+
+Interpretation:
+- Sol produced one additional hidden-test pass across the four paired tasks (3/4 vs 2/4).
+- The only unique correctness win was doordash-delivered #5, a narrow but real canonical-identity integration miss by Luna.
+- On thread-atlas #155, the most integration/repo-archaeology-heavy sampled task, both passed; Luna used 62,854 total tokens and 212 session seconds versus Sol's 70,999 tokens and 474 session seconds.
+- The original preregistered easy/medium decision rule was not completed as designed: the historical replay stopped after four pairs rather than all 24 runs. Applying that rule mechanically to the partial easy/medium sample gives Sol 3 passes vs Luna 2, but that is not a completed preregistered-protocol result.
+- For the personal production-routing decision, the closeout policy remains Luna first, normal Review Gate, one Luna repair for ordinary/local findings, then Sol escalation when a substantive correctness/integration failure persists or when Review Gate exposes a deep semantic/contract miss.
