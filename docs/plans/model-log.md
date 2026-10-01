@@ -131,3 +131,18 @@ Acceptance:
 - The verified account fingerprint remained pinned.
 
 The automated runner is accepted for the 24 preregistered decision runs. Decision run #1 remains `worklog-3`, Arm B, trial 1.
+
+
+### Scanner correction after decision run #1 — 2026-10-01
+
+Decision run #1 (`worklog-3`, Arm B, trial 1; session `487676c3f64978dd`) initially graded `PASS (INVALID)` solely because the leakage scanner treated any literal `github.com` string inside any tool payload as evidence of network access.
+
+That rule was a harness implementation bug for this task: worklog issue #3 explicitly requires canonical GitHub URLs and public/private GitHub fixtures, so writing a GitHub URL into `test/ledger.test.js` is task-compliant source generation and does not establish network access.
+
+Before accepting the run, the scanner was corrected to distinguish literals from actual network behavior:
+- generated source may contain GitHub URLs and `refs/pull/...` strings;
+- `gh`, `curl`, `wget`, Git network commands, forbidden network tools, and forbidden checkout paths remain violations;
+- a regression test now covers GitHub URL/pull-ref literals in a `write` tool call;
+- regrading replaces the prior entry for the same `runId` in `results.jsonl` rather than double-counting it.
+
+The worker session, model, work product, hidden tests, task definition, arm definitions, seed, and run order were not changed. The existing run is regraded; it is not rerun, avoiding additional model/quota consumption.
