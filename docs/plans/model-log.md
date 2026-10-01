@@ -146,3 +146,29 @@ Before accepting the run, the scanner was corrected to distinguish literals from
 - regrading replaces the prior entry for the same `runId` in `results.jsonl` rather than double-counting it.
 
 The worker session, model, work product, hidden tests, task definition, arm definitions, seed, and run order were not changed. The existing run is regraded; it is not rerun, avoiding additional model/quota consumption.
+
+
+### Decision run #1 — worklog-3 B, trial 1 — 2026-10-01
+
+```yaml
+task: worklog-3
+arm: B
+trial: 1
+model: gpt-6.1-sol
+reasoning: high
+run dir: /Users/perrystory/spot-runs/worklog-3-B-t1-2026-10-01T09-24-47-156Z
+session: 487676c3f64978dd
+passed: false
+invalid: false
+modelMatches: true
+assistantMessages: 23
+toolCalls: 30
+subagentCalls: 0
+wallSeconds: 326
+cost: 0.6094063999999999
+usage before: 5-hour 92% left; weekly 53% left
+usage after: 5-hour 85% left; weekly 52% left
+findings: []
+```
+
+The initial invalidation was a scanner false positive and was corrected without rerunning the worker. Regrading the same session produced a valid hidden-grade FAIL. Hidden failure details were intentionally not inspected before the paired Luna run.
