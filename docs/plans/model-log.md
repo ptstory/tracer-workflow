@@ -16,7 +16,7 @@ Recorded before the first decision run. Nothing in Crush changes until the last 
 | Skills content | `~/.agents/skills`: 16 files, manifest SHA-256 `36826df4d97ccb4beec713162ffa6ba16a1c09633d47810b040bced6b809fbde` (`~/crush-skills-manifest-20261001.txt`); frozen 2026-10-01 before pilots; re-check before `report` |
 | Harness | `ptstory/tracer-workflow` @ `35b6a71`, run from worktree `~/Code/tracer-workflow-spot-check` |
 | Crush | v0.97.1 |
-| Price override | Skipped (`crush-prices.json` not merged); quota measured by the Codex usage readout only |
+| Price override | Skipped (`crush-prices.json` not merged); quota measured from the authenticated Codex account rate-limit snapshot |
 | Seed | `20260930` (chosen 2026-09-30, before any run) |
 | Run order | Below; output of `order --seed 20260930`, identical on the Mac and in the cloud container |
 
@@ -75,7 +75,7 @@ Pilot A exposed excessive manual ceremony, so the harness is being amended **aft
 
 Runner amendment:
 - `prepare` generates a project-local `.crushrc` that pins both large and small slots to the arm model/reasoning effort and disables provider auto-update.
-- New `run` command captures the before/after Codex usage strings, launches headless Crush, discovers exactly one new top-level session, and invokes the existing `grade` path automatically.
+- New `run` command captures the before/after Codex quota automatically from `codex app-server`, launches headless Crush, discovers exactly one new top-level session, and invokes the existing `grade` path automatically.
 - Headless launch passes the arm model explicitly for both `--model` and `--small-model`.
 - Crush v0.97.1 has a headless `--reasoning-effort` flag, so the runner passes the arm effort explicitly as well. The older Crush issue #3540 predates this release; the run-local `.crushrc` remains the project-scoped source of the same settings.
 - `CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1` is set for headless execution and session discovery.
@@ -85,3 +85,10 @@ Pilot B remains `worklog-2`, Arm B, and is discarded. It is the acceptance test 
 Local cleanup before Pilot B: restore the manually edited global `~/.config/crush/crushrc` to the recorded `ptstory/crush-config@e32a32c4b5bd060733a3b12558abce8bf89cb03a` baseline and verify the config repo is clean. Arm-specific changes now belong only in each generated run directory.
 
 Runner implementation provenance: branch `chore/model-spot-check-runner-automation` was created directly from `63472bffb5d881c5d2e603146c04a3ac0d42ccaf`. The amendment changes only harness code, harness tests, runbook, and experiment log; `tooling/model-spot-check/tasks.json` is unchanged from `63472bf`.
+
+Automated quota capture validation — 2026-10-01:
+- A direct `codex app-server` probe confirmed the currently authenticated Codex CLI account is the intended GivenPrompt ChatGPT Plus account.
+- `account/rateLimits/read` returned the `codex` bucket with a 300-minute primary window at 1% used and a 10,080-minute secondary window at 46% used.
+- That normalizes to `5-hour 99% left; weekly 54% left`, exactly matching Pilot A's previously recorded post-run Usage-page reading.
+- The runner now stores normalized `usage-before.json` / `usage-after.json` snapshots automatically and pins only a SHA-256 account fingerprint under `~/spot-runs/codex-account.sha256`; it aborts if the Codex login changes.
+- This is an execution/measurement automation amendment made before any decision run. The decision rule, arms, tasks, hidden tests, seed, and run order remain unchanged.
