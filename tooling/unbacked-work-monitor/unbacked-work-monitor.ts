@@ -58,7 +58,7 @@ type ParsedArgs = {
 };
 
 const DEFAULT_TRUSTED_REMOTES = ["origin"];
-const DEFAULT_ROOTS = ["/Users/perrystory/Code/vibecoding", "/Users/perrystory/Code/corby"];
+const DEFAULT_ROOTS = [join(process.env.HOME ?? "", "Code")];
 const DEFAULT_OUTPUT_DIR = `${process.env.HOME ?? ""}/.local/state/tracer/unbacked-work`;
 const DEFAULT_OUTPUT_JSON = "scan.json";
 const DEFAULT_OUTPUT_MD = "attention.md";
