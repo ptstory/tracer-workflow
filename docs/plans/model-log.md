@@ -305,3 +305,26 @@ Telemetry amendment after run #6:
 - Future grading now records `promptTokens`, `completionTokens`, and `totalTokens` in session metrics.
 - Token counts are treated as the primary per-run efficiency telemetry alongside wall time and recorded cost; quota percentages remain account-pressure telemetry only.
 - Existing session artifacts can be regraded to backfill token counts without rerunning model work.
+
+
+### Decision run #7 — thread-atlas-155 B, trial 1 — 2026-10-01
+
+```yaml
+task: thread-atlas-155
+arm: B
+trial: 1
+model: gpt-6.1-sol
+reasoning: high
+run dir: /Users/perrystory/spot-runs/thread-atlas-155-B-t1-2026-10-01T13-42-49-871Z
+session: 37dabe0635acf36d
+passed: true
+usage before: 5-hour 100% left; weekly 45% left
+usage after: 5-hour 77% left; weekly 42% left
+notes:
+  - worker reproduced missing attachment metadata on targeted refresh
+  - implemented targeted attachment refresh with regression coverage
+  - reported focused tests, 9 UI tests, and git diff --check passing
+  - reported full offline suite 164 passed / 1 skipped, with 2 checks blocked by missing local .venv/bin/xt and setuptools
+  - worker did not create its own commit before stopping; hidden grading still passed the resulting worktree
+  - end-to-end runner wall time was about 8m21s
+```
