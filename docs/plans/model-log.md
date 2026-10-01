@@ -268,3 +268,33 @@ notes:
   - worker reported coordinated exhibit state, browser interaction verification, unit/browser regression coverage, keyboard and reduced-motion coverage
   - end-to-end runner wall time was about 9m15s
 ```
+
+
+### Decision run #6 — doordash-delivered-5 A, trial 2 — 2026-10-01
+
+```yaml
+task: doordash-delivered-5
+arm: A
+trial: 2
+model: gpt-6-luna
+reasoning: max
+run dir: /Users/perrystory/spot-runs/doordash-delivered-5-A-t2-2026-10-01T13-37-49-840Z
+session: 5d4244c66c73a4a8
+passed: false
+usage before: 5-hour 44% left; weekly 45% left
+usage after: 5-hour 100% left; weekly 45% left
+notes:
+  - the 5-hour quota window reset during this run; the before/after 5-hour percentage is unusable as a per-run efficiency measure
+  - worker reported shared selection state and local checks passing
+```
+
+Paired result for `doordash-delivered-5`, trial 2:
+- Sol: PASS
+- Luna: FAIL
+- This is the first correctness divergence in the three completed decision pairs.
+
+Telemetry amendment after run #6:
+- The harness already received Crush session `prompt_tokens` and `completion_tokens` in session metadata but did not expose them in `result.json`.
+- Future grading now records `promptTokens`, `completionTokens`, and `totalTokens` in session metrics.
+- Token counts are treated as the primary per-run efficiency telemetry alongside wall time and recorded cost; quota percentages remain account-pressure telemetry only.
+- Existing session artifacts can be regraded to backfill token counts without rerunning model work.
