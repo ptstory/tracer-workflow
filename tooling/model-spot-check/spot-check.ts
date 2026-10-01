@@ -127,7 +127,7 @@ p = subprocess.Popen(
 )
 
 def send(obj):
-    p.stdin.write(json.dumps(obj) + "\\n")
+    p.stdin.write(json.dumps(obj) + "\n")
     p.stdin.flush()
 
 def recv(request_id):
@@ -181,7 +181,7 @@ function assertPinnedCodexAccount(snapshot: CodexUsageSnapshot): void {
   const path = join(RUNS_ROOT, "codex-account.sha256");
   if (!existsSync(path)) {
     mkdirSync(RUNS_ROOT, { recursive: true });
-    writeFileSync(path, `${fingerprint}\\n`);
+    writeFileSync(path, `${fingerprint}\n`);
     console.log("Pinned verified Codex account fingerprint for this experiment.");
     return;
   }
@@ -295,7 +295,7 @@ function run(args: string[]): void {
   console.log(`Arm ${meta.arm}: ${meta.model} (${meta.reasoningEffort}); run-local .crushrc generated.`);
   const usageBeforeSnapshot = captureCodexUsage(meta.workDir);
   assertPinnedCodexAccount(usageBeforeSnapshot);
-  writeFileSync(join(runDir, "usage-before.json"), `${JSON.stringify(usageBeforeSnapshot, null, 2)}\\n`);
+  writeFileSync(join(runDir, "usage-before.json"), `${JSON.stringify(usageBeforeSnapshot, null, 2)}\n`);
   const usageBefore = formatCodexUsage(usageBeforeSnapshot);
   console.log(`Usage before: ${usageBefore}`);
   const before = sessionIds(meta.workDir);
@@ -320,7 +320,7 @@ function run(args: string[]): void {
 
   const usageAfterSnapshot = captureCodexUsage(meta.workDir);
   assertPinnedCodexAccount(usageAfterSnapshot);
-  writeFileSync(join(runDir, "usage-after.json"), `${JSON.stringify(usageAfterSnapshot, null, 2)}\\n`);
+  writeFileSync(join(runDir, "usage-after.json"), `${JSON.stringify(usageAfterSnapshot, null, 2)}\n`);
   const usageAfter = formatCodexUsage(usageAfterSnapshot);
   console.log(`Usage after:  ${usageAfter}`);
   const after = sessionIds(meta.workDir);
