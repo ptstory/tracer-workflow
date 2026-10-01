@@ -12,8 +12,8 @@ For each observed Crush session:
 - repository, branch, and HEAD at first observation
 - PR and closing issue linkage when available
 - model(s) and reasoning effort when Crush exposes it
-- prompt, completion, and total tokens
-- recorded model cost
+- end-of-session context token snapshot (`prompt_tokens` / `total_tokens`) and last-step output tokens
+- cumulative recorded model cost
 - session wall time
 - assistant/tool/subagent counts
 - skills used
@@ -104,7 +104,7 @@ The summary is designed to answer:
 - Luna repair success rate
 - Sol escalation rate
 - Sol escalation success rate
-- tokens / wall time / recorded model cost per accepted PR
+- final context footprint / wall time / cumulative recorded model cost per accepted PR
 - review rounds
 - recurring blocking paths
 
@@ -126,4 +126,5 @@ The telemetry measures the policy; it does not autonomously choose or launch Sol
 - PR discovery requires the session's branch to correspond to a GitHub PR. Sessions before a PR exists remain in `attempts.jsonl` with `prNumber: null`; rerunning sync can attach them later after the PR is opened.
 - Review Gate comments must be authored by `TRACER_REVIEWER_LOGINS`.
 - Reasoning effort is recorded only when the Crush session JSON exposes it.
-- Session token counters are provider/Crush telemetry. Recorded cost can differ materially between model families even when raw token counts are similar.
+- Crush's saved `prompt_tokens` / `completion_tokens` are the latest step's context/output counters, not cumulative session token spend. `session.cost` is cumulative. The report therefore labels tokens as a final context snapshot and does not sum them across attempts. If Crush later persists per-step usage, this collector can add true cumulative token volume without changing the lifecycle model.
+- Recorded cost can differ materially between model families even when final context size is similar.
