@@ -82,7 +82,7 @@ Then run `CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1 crush` from the printed work dire
 bun tooling/model-spot-check/spot-check.ts report
 ```
 
-`report` first refreshes every existing result from its saved `session.json`; it does not launch a model or rerun hidden tests. This backfills native session token telemetry for older runs, then prints correctness plus per-run and aggregate prompt/completion/total tokens, wall time, and recorded cost.
+`report` first refreshes every existing result from its saved `session.json`; it does not launch a model or rerun hidden tests. It prints correctness, per-run final context/output snapshots, wall time, and recorded cost. Crush's saved `prompt_tokens` / `completion_tokens` / `total_tokens` are latest-step counters rather than cumulative session token spend, so the report does not aggregate them.
 
 The historical replay was stopped pragmatically after four complete pairs / eight decision runs on 2026-10-01. The original 24-run preregistration is retained for provenance; the closeout report describes only the completed sample. Ongoing routing evidence comes from the production log in section 4b.
 
@@ -103,16 +103,13 @@ Two limits:
 
 ## Measuring efficiency and quota
 
-For per-run model efficiency, use Crush session `prompt_tokens`, `completion_tokens`, native `total_tokens`, wall time, and recorded session cost. Token counts are the primary consumption telemetry for comparing runs; the account quota meter is operational pressure telemetry, not a precise per-run efficiency measure.
+For per-run efficiency, use wall time and the cumulative Crush session `cost`. The saved session `prompt_tokens`, `completion_tokens`, and `total_tokens` fields are useful as end-of-session context/output snapshots only: current Crush updates those counters to the latest model step rather than accumulating them across a session.
 
-The structured Codex account rate-limit snapshot returned by the local `codex app-server` RPC `account/rateLimits/read`, using the same authenticated Codex account as the CLI.
+The structured Codex account rate-limit snapshot remains useful for account pressure:
+- 300-minute window = 5-hour limit;
+- 10,080-minute window = weekly limit;
+- each snapshot includes its reset timestamp.
 
-The harness reads the `codex` bucket and records:
-- the 300-minute window as the 5-hour limit;
-- the 10,080-minute window as the weekly limit;
-- `remainingPercent = 100 - usedPercent`;
-- each reset timestamp.
+Quota percentages are coarse and can reset during a run, so they are not a precise efficiency measure. A reset does not invalidate correctness, wall time, cost, or the context snapshot.
 
-This source was validated on 2026-10-01 against the previously recorded Pilot A Usage-page reading: the automated snapshot reported 1% used / 46% used, which renders as `5-hour 99% left; weekly 54% left`, exactly matching Pilot A's recorded post-run UI values.
-
-Quota snapshots remain useful for knowing whether the account is near a limit or crossed a reset. A reset does not invalidate correctness or token telemetry. Session cost is supplementary to token counts and may reflect model-specific pricing.
+Session cost is cumulative but model-price-dependent. Compare it alongside correctness and wall time, not as a proxy for raw token volume.
