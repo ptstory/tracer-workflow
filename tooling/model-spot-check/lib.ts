@@ -188,7 +188,7 @@ export function issueDocument(title: string, body: string, interfaceNotes: strin
 type SessionPart = { type?: string; name?: string; input?: unknown };
 type SessionMessage = { role?: string; created?: string; model?: string; parts?: SessionPart[] };
 export type CrushSession = {
-  meta?: { cost?: number; prompt_tokens?: number; completion_tokens?: number; skills?: { name?: string }[] };
+  meta?: { cost?: number; prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; skills?: { name?: string }[] };
   messages?: SessionMessage[];
 };
 
@@ -253,8 +253,9 @@ export function summarizeSession(session: CrushSession): SessionMetrics {
     wallSeconds: times.length > 1 ? Math.round((times[times.length - 1] - times[0]) / 1000) : null,
     promptTokens: typeof session.meta?.prompt_tokens === "number" ? session.meta.prompt_tokens : null,
     completionTokens: typeof session.meta?.completion_tokens === "number" ? session.meta.completion_tokens : null,
-    totalTokens:
-      typeof session.meta?.prompt_tokens === "number" && typeof session.meta?.completion_tokens === "number"
+    totalTokens: typeof session.meta?.total_tokens === "number"
+      ? session.meta.total_tokens
+      : typeof session.meta?.prompt_tokens === "number" && typeof session.meta?.completion_tokens === "number"
         ? session.meta.prompt_tokens + session.meta.completion_tokens
         : null,
     cost: typeof session.meta?.cost === "number" ? session.meta.cost : null,
@@ -378,4 +379,64 @@ export function easyTierDecision(rows: ReportRow[]): { lunaPassed: number; solPa
   const lunaPassed = easy.filter((r) => r.arm === "A").reduce((n, r) => n + r.passed, 0);
   const solPassed = easy.filter((r) => r.arm === "B").reduce((n, r) => n + r.passed, 0);
   return { lunaPassed, solPassed, lunaDefault: lunaPassed >= solPassed };
+}
+
+
+export type EfficiencyRow = {
+  arm: Arm;
+  runs: number;
+  passed: number;
+  wallRuns: number;
+  wallSeconds: number;
+  tokenRuns: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costRuns: number;
+  cost: number;
+};
+
+export function summarizeEfficiency(
+  results: RunResult[],
+  roles: TaskRole[] = ["decision"],
+): EfficiencyRow[] {
+  const rows = new Map<Arm, EfficiencyRow>();
+  for (const r of results) {
+    if (!roles.includes(r.role) || r.invalid || !r.session) continue;
+    const row = rows.get(r.arm) ?? {
+      arm: r.arm,
+      runs: 0,
+      passed: 0,
+      wallRuns: 0,
+      wallSeconds: 0,
+      tokenRuns: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      costRuns: 0,
+      cost: 0,
+    };
+    row.runs++;
+    if (r.passed) row.passed++;
+    if (typeof r.session.wallSeconds === "number") {
+      row.wallRuns++;
+      row.wallSeconds += r.session.wallSeconds;
+    }
+    if (
+      typeof r.session.promptTokens === "number" &&
+      typeof r.session.completionTokens === "number" &&
+      typeof r.session.totalTokens === "number"
+    ) {
+      row.tokenRuns++;
+      row.promptTokens += r.session.promptTokens;
+      row.completionTokens += r.session.completionTokens;
+      row.totalTokens += r.session.totalTokens;
+    }
+    if (typeof r.session.cost === "number") {
+      row.costRuns++;
+      row.cost += r.session.cost;
+    }
+    rows.set(r.arm, row);
+  }
+  return [...rows.values()].sort((a, b) => a.arm.localeCompare(b.arm));
 }
