@@ -33,7 +33,7 @@ If you have an existing editable GPT, this package can be pasted into it. Otherw
 
 ## GitHub authentication
 
-Use the tracer-review-bot account's classic GitHub personal access token with `repo` scope as the Action's Bearer API key. See `actions/IMPORT.md` for access and expiration details. The OpenAPI schema exposes no merge, push, branch/ref, label, review-approval, workflow-dispatch, or file-write endpoint.
+Use a GitHub personal access token from a dedicated review account as the Action's Bearer API key. See `actions/IMPORT.md` for access constraints and keep token lifecycle details outside this public repository. The OpenAPI schema exposes no merge, push, branch/ref, label, review-approval, workflow-dispatch, or file-write endpoint.
 
 If you want the safest bring-up, initially remove/disable the `postReviewGateComment` operation and run read-only previews. Add comment posting only after the acceptance tests pass.
 
@@ -44,7 +44,7 @@ If you want the safest bring-up, initially remove/disable the `postReviewGateCom
 3. Paste `custom-gpt-instructions.md` into Instructions.
 4. Upload `knowledge/review-gate-constitution.md` as Knowledge.
 5. Add a Custom Action and import `https://raw.githubusercontent.com/ptstory/tracer-workflow/main/actions/review-gate-gpt/v1.1.0/actions/github-review-gate.openapi.yaml`.
-6. Configure Action authentication as API Key -> Bearer and provide the tracer-review-bot classic PAT.
+6. Configure Action authentication as API Key -> Bearer and provide the dedicated review account's PAT.
 7. In Preview, run the tests in `tests/reviewer-acceptance-tests.md`.
 8. Do not connect this GPT to an implementation/planning chat. Start a fresh Review Gate conversation for each review.
 
