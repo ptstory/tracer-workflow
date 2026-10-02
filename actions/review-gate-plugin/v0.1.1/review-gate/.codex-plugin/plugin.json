@@ -1,0 +1,25 @@
+{
+  "interface": {
+    "displayName": "Review Gate",
+    "shortDescription": "SHA-pinned GitHub PR review",
+    "longDescription": "Review a GitHub pull request as a disposable independent reviewer. Reconstruct intent and evidence from live GitHub state, apply the current Tracer Review Gate contract, verify exact-head CI/readiness, and post a SHA-bound canonical verdict comment without taking merge or implementation authority.",
+    "developerName": "Perry",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Review this GitHub pull request with Review Gate and publish the canonical SHA-pinned Review Record to the PR.",
+      "Run Review Gate on this PR from live GitHub state, then post the canonical SHA-pinned Review Record to GitHub.",
+      "Re-review this PR independently from live GitHub state and publish the new canonical verdict. Ignore conclusions from earlier review conversations."
+    ]
+  },
+  "name": "review-gate",
+  "version": "0.1.1",
+  "description": "Independent SHA-pinned GitHub pull-request review using the live Tracer Review Gate contract, exact-head evidence, current CI/readiness checks, and a comment-only canonical verdict.",
+  "author": {
+    "name": "Perry"
+  },
+  "keywords": [],
+  "skills": "./skills"
+}

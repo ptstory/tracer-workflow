@@ -28,6 +28,14 @@ actions/review-gate-plugin/
         review-gate/
           SKILL.md
           references/
+  v0.1.1/
+    review-gate/
+      plugin.json
+      .codex-plugin/plugin.json
+      skills/
+        review-gate/
+          SKILL.md
+          references/
 ```
 
 The nested `review-gate/` directory is the standalone plugin package root. Its directory name matches `plugin.json.name`.
@@ -47,3 +55,5 @@ Protocol-only changes normally do not require a plugin release because the skill
 ## Initial release
 
 `v0.1.0` is the first ChatGPT plugin port of the former Review Gate Custom GPT.
+
+`v0.1.1` restores the original durable-workflow behavior: invoking Review Gate publishes the final canonical verdict to GitHub by default after the exact-head guard, with explicit preview-only/no-post requests as the opt-out. It also versions the deployed `.codex-plugin/plugin.json` compatibility manifest so the in-repo package matches the live release surface.

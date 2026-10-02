@@ -12,12 +12,21 @@ export const REQUIRED_LIVE_CONTRACT_PATHS = [
 ] as const;
 
 export const REQUIRED_PACKAGE_PATHS = [
+  ".codex-plugin/plugin.json",
   "plugin.json",
   "skills/review-gate/SKILL.md",
   "skills/review-gate/references/acceptance-tests.md",
   "skills/review-gate/references/contract-snapshot-2026-10-01.md",
   "skills/review-gate/references/review-method.md",
 ] as const;
+
+export const REQUIRED_PUBLICATION_MARKERS = [
+  "Review Gate is publish-by-default.",
+  "Do not require a second \"publish\" instruction.",
+] as const;
+
+export const REQUIRED_DEFAULT_PROMPT_MARKER =
+  "publish the canonical SHA-pinned Review Record to the PR";
 
 export function compareVersions(a: string, b: string): number {
   const pa = a.replace(/^v/, "").split(".").map(Number);
@@ -70,6 +79,16 @@ export function checkPluginPackage(
     if (!pathExists(join(packageRoot, path))) {
       errors.push(`missing package file: ${path}`);
     }
+  }
+
+  for (const marker of REQUIRED_PUBLICATION_MARKERS) {
+    if (!skillText.includes(marker)) {
+      errors.push(`SKILL.md missing default-publication marker: ${marker}`);
+    }
+  }
+
+  if (!manifestText.toLowerCase().includes(REQUIRED_DEFAULT_PROMPT_MARKER.toLowerCase())) {
+    errors.push("plugin.json default prompt must publish the canonical Review Record");
   }
 
   for (const path of REQUIRED_LIVE_CONTRACT_PATHS) {

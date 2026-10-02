@@ -3,8 +3,10 @@ import { describe, expect, test } from "bun:test";
 import {
   checkPluginPackage,
   compareVersions,
+  REQUIRED_DEFAULT_PROMPT_MARKER,
   REQUIRED_LIVE_CONTRACT_PATHS,
   REQUIRED_PACKAGE_PATHS,
+  REQUIRED_PUBLICATION_MARKERS,
 } from "./check-review-gate-plugin-package";
 
 const packageRoot = "/repo/actions/review-gate-plugin/v0.1.0/review-gate";
@@ -12,9 +14,15 @@ const manifest = JSON.stringify({
   $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   name: "review-gate",
   version: "0.1.0",
-  extensions: { "com.openai": {} },
+  extensions: {
+    "com.openai": {
+      interface: {
+        defaultPrompt: [`Review and ${REQUIRED_DEFAULT_PROMPT_MARKER}.`],
+      },
+    },
+  },
 });
-const skill = REQUIRED_LIVE_CONTRACT_PATHS.join("\n");
+const skill = [...REQUIRED_LIVE_CONTRACT_PATHS, ...REQUIRED_PUBLICATION_MARKERS].join("\n");
 const allExist = () => true;
 
 describe("Review Gate plugin package check", () => {
@@ -40,6 +48,27 @@ describe("Review Gate plugin package check", () => {
     const wrong = manifest.replace('"name":"review-gate"', '"name":"other"');
     expect(checkPluginPackage("v0.1.0", packageRoot, wrong, skill, allExist)).toContain(
       "plugin.json name must match package directory review-gate",
+    );
+  });
+
+  test("requires the deployed compatibility manifest", () => {
+    const missing = `${packageRoot}/.codex-plugin/plugin.json`;
+    expect(
+      checkPluginPackage("v0.1.0", packageRoot, manifest, skill, (path) => path !== missing),
+    ).toContain("missing package file: .codex-plugin/plugin.json");
+  });
+
+  test("requires publish-by-default skill policy", () => {
+    const incomplete = skill.replace(REQUIRED_PUBLICATION_MARKERS[0], "");
+    expect(checkPluginPackage("v0.1.0", packageRoot, manifest, incomplete, allExist)).toContain(
+      `SKILL.md missing default-publication marker: ${REQUIRED_PUBLICATION_MARKERS[0]}`,
+    );
+  });
+
+  test("requires a publish-by-default manifest prompt", () => {
+    const wrong = manifest.replace(REQUIRED_DEFAULT_PROMPT_MARKER, "return the Review Record in chat");
+    expect(checkPluginPackage("v0.1.0", packageRoot, wrong, skill, allExist)).toContain(
+      "plugin.json default prompt must publish the canonical Review Record",
     );
   });
 
