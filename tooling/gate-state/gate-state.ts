@@ -1,17 +1,12 @@
 #!/usr/bin/env bun
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { latestConformingGateComment, reviewerLogins, type GateComment } from "../lib/verdict";
 
-const REPOS = [
-  "ptstory/core-tweaks",
-  "ptstory/discipline-kit",
-  "ptstory/retro-learnings",
-  "ptstory/the-filter-transcript",
-  "ptstory/thread-atlas",
-  "ptstory/tracer-workflow",
-  "ptstory/what-does-half-mean",
-] as const;
+const REPOS = ["ptstory/tracer-workflow"] as const;
+
+type Env = Record<string, string | undefined>;
 
 type PRComment = {
   author: { login: string } | null;
@@ -43,19 +38,34 @@ type ParsedArgs = {
   countOpen: boolean;
 };
 
+function splitRepoList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(/[\n,]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function configuredRepos(env: Env = process.env): string[] {
+  const inline = splitRepoList(env.TRACER_REPOS);
+  if (inline.length > 0) return inline;
+
+  const file = env.TRACER_REPOS_FILE?.trim();
+  if (file) {
+    const fromFile = splitRepoList(readFileSync(file, "utf8"));
+    if (fromFile.length > 0) return fromFile;
+  }
+
+  return [...REPOS];
+}
+
 function gh(args: string[]): string {
   return execFileSync("gh", args, { encoding: "utf8" });
 }
 
 function listOpenPRs(repo: string): OpenPR[] {
   const out = gh([
-    "pr",
-    "list",
-    "--repo",
-    repo,
-    "--state",
-    "open",
-    "--json",
+    "pr","list","--repo",repo,"--state","open","--json",
     "number,title,headRefOid,comments,isDraft",
   ]);
   return JSON.parse(out) as OpenPR[];
@@ -88,7 +98,7 @@ function classifyGateState(repo: string, pr: OpenPR): GateState {
   };
 }
 
-function collectGateStates(repos: readonly string[] = REPOS): GateState[] {
+function collectGateStates(repos: readonly string[] = configuredRepos()): GateState[] {
   reviewerLogins();
   const rows: GateState[] = [];
 
@@ -106,19 +116,11 @@ function collectGateStates(repos: readonly string[] = REPOS): GateState[] {
 
 function parseArgs(argv: string[]): ParsedArgs {
   const args: ParsedArgs = { json: false, countOpen: false };
-
   for (const arg of argv) {
-    if (arg === "--json") {
-      args.json = true;
-      continue;
-    }
-    if (arg === "--count-open") {
-      args.countOpen = true;
-      continue;
-    }
+    if (arg === "--json") { args.json = true; continue; }
+    if (arg === "--count-open") { args.countOpen = true; continue; }
     throw new Error(`unknown argument: ${arg}`);
   }
-
   return args;
 }
 
@@ -137,30 +139,19 @@ function formatTable(rows: GateState[]): string {
   ]);
   const widths = headers.map((header, index) => Math.max(header.length, ...values.map((row) => row[index].length)));
   const line = (cells: string[]) => cells.map((cell, index) => cell.padEnd(widths[index])).join("  ").trimEnd();
-
   if (values.length === 0) return line(headers);
-
   return [line(headers), ...values.map(line)].join("\n");
 }
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
   const rows = collectGateStates();
-
-  if (args.countOpen) {
-    process.stdout.write(`${countOpen(rows)}\n`);
-    return;
-  }
-
-  if (args.json) {
-    process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`);
-    return;
-  }
-
+  if (args.countOpen) { process.stdout.write(`${countOpen(rows)}\n`); return; }
+  if (args.json) { process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`); return; }
   process.stdout.write(`${formatTable(rows)}\n`);
 }
 
 if (import.meta.main) main();
 
 export type { GateState, OpenPR };
-export { REPOS, classifyGateState, collectGateStates, countOpen, formatTable, listOpenPRs, main, parseArgs };
+export { REPOS, classifyGateState, collectGateStates, configuredRepos, countOpen, formatTable, listOpenPRs, main, parseArgs };

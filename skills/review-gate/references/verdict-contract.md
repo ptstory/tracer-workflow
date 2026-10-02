@@ -174,8 +174,7 @@ regression, which stays `fix-now` at any round.
 Acceptance-criteria carve-out: an unmet acceptance criterion of the binding
 issue stays `fix-now` at any round while the PR still closes that issue. It may
 move to `follow-up-issue` only if the closing linkage changes in that same pass
-so the PR no longer closes the issue. This carve-out resolves the round-1 /
-round-2 conflict seen on `ptstory/thread-atlas#94`.
+so the PR no longer closes the issue. This carve-out resolves a round-1 / round-2 conflict observed in an earlier private-repository review.
 
 Rationale: a gate that can raise pre-existing conditions at any round has no
 termination condition.

@@ -249,8 +249,8 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe("");
     const copied = readFileSync(harness.pbcopyLog, "utf8");
-    expect(copied).toContain("=== ptstory/core-tweaks#1 — ungated");
-    expect(copied).toContain("=== ptstory/core-tweaks#2 — stale");
+    expect(copied).toContain("=== ptstory/tracer-workflow#1 — ungated");
+    expect(copied).toContain("=== ptstory/tracer-workflow#2 — stale");
     expect(copied).not.toContain("current");
     expect(copied).not.toContain("draft");
     expect(copied).toContain("--- issue ---");
@@ -284,7 +284,7 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
     expect(readFileSync(harness.pbcopyLog, "utf8")).toBe("");
-    expect(result.stdout).toContain("=== ptstory/core-tweaks#7 — packet");
+    expect(result.stdout).toContain("=== ptstory/tracer-workflow#7 — packet");
     expect(result.stdout).toContain("issue #77 — packet");
     expect(result.stdout).toContain("head: aaaaaaa   gate: stale");
   });
@@ -314,7 +314,7 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("=== ptstory/core-tweaks#8 — invalid verdict");
+    expect(result.stdout).toContain("=== ptstory/tracer-workflow#8 — invalid verdict");
     expect(result.stdout).toContain("--- prior verdict ---\nnone");
   });
 
@@ -384,7 +384,7 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     state.diffs[`${repo}#2`] = { text: "diff --git a/b.txt b/b.txt\n+small\n" };
     writeGhStub(harness, state);
 
-    const result = runGatePacket(harness, ["--stdout", "--budget", "500"]);
+    const result = runGatePacket(harness, ["--stdout", "--budget", "600"]);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
@@ -432,8 +432,8 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("=== ptstory/core-tweaks#9 — keep");
-    expect(result.stdout).not.toContain("=== ptstory/core-tweaks#10 — omit");
+    expect(result.stdout).toContain("=== ptstory/tracer-workflow#9 — keep");
+    expect(result.stdout).not.toContain("=== ptstory/tracer-workflow#10 — omit");
     expect(result.stdout).toContain("omitted");
     expect(result.stdout).toContain("- 10");
   });
@@ -472,8 +472,8 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain(`warning: failed to load PR #21 from ${repo}`);
-    expect(result.stdout).toContain("=== ptstory/core-tweaks#22 — healthy");
-    expect(result.stdout).toContain("=== ptstory/core-tweaks#21 — broken");
+    expect(result.stdout).toContain("=== ptstory/tracer-workflow#22 — healthy");
+    expect(result.stdout).toContain("=== ptstory/tracer-workflow#21 — broken");
     expect(result.stdout).toContain("--- issue ---\nnone");
   });
 });

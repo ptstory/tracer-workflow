@@ -110,6 +110,8 @@ The full stage table, including every skill, owner, and role, is in
 
 ## Tooling
 
+**`tooling/gate-state/`**: repository gate-state inventory. The monitored fleet is runtime configuration: set `TRACER_REPOS` to a comma/newline-separated list or `TRACER_REPOS_FILE` to a local file. The public source intentionally checks in no private repository inventory and falls back to this repository only.
+
 **`tooling/review-gate-poller/`**: Bun poller that watches open PRs for a fresh
 `needs-fix` verdict at the current head and contains the legacy fix-pass
 launcher. The poller is currently **not in use**; `RUNTIME.md` records the

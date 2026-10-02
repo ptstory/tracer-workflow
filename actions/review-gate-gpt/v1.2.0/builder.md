@@ -41,7 +41,7 @@ Authentication:
 - Bearer
 
 Secret:
-- a classic GitHub PAT from tracer-review-bot with `repo` scope. The bot must be a write collaborator on each private repository using the gate. See `../v1.1.0/actions/IMPORT.md` for the token expiry and access constraints.
+- a GitHub PAT from a dedicated review account with only the repository access required by the gate. See `../v1.1.0/actions/IMPORT.md` for access constraints; keep account identity and token lifecycle details outside this public repository.
 
 The schema exposes exactly one write operation: posting a normal issue/PR timeline comment.
 
