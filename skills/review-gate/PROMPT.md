@@ -147,7 +147,7 @@ Rules:
     blocking set, and everything else becomes `follow-up-issue`
 - `merge-candidate` only if zero `fix-now` findings remain and the target branch's
   required status-check configuration satisfies one of these paths:
-  Determine the configuration from getBranch (protection.required_status_checks) and getRulesForBranch. If both show no required checks, apply the no-required-check path. If either call fails, emit `blocked` and name the failed call.
+  Determine the configuration from getBranch (protection.required_status_checks) and getRulesForBranch. If both show no required checks, apply the no-required-check path and record readiness evidence path `available`. If getRulesForBranch returns HTTP 403 with exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` and getBranch shows no required_status_checks, treat rulesets as absent, use the no-required-check path, and record `plan-unavailable`. Captured from `gh api -i repos/ptstory/thread-atlas/rules/branches/main` on 2026-10-08: `HTTP/2.0 403 Forbidden`, body `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}`. Any other 403 or 404 from either call is a readiness blocker named `rules-unverifiable`; record path `indeterminate`, name call and HTTP status, and retain all code findings in the blocking-set. A failure never clears code findings.
   - configured path: all applicable required checks are green at the current
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head

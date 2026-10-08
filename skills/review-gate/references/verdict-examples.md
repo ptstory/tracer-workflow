@@ -19,6 +19,7 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 
 ### Merge preconditions
 - head is still 0123456789abcdef0123456789abcdef01234567
+- readiness evidence path: available
 - all applicable required checks are green on the current head
 - at least one applicable required check exercises the changed paths
 
@@ -61,6 +62,7 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 
 ### Merge preconditions
 - head is still 0123456789abcdef0123456789abcdef01234567
+- readiness evidence path: plan-unavailable (captured rules endpoint plan response; no classic required checks)
 - no required checks are configured on the target branch
 - at least one green CI/check run on the current head exercises the changed paths
 

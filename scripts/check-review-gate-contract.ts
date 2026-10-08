@@ -257,7 +257,7 @@ function validateVerdictBlock(block: string, index: number, requiredFields: stri
   return issues;
 }
 
-function validateReadinessExamples(blocks: string[]): Issue[] {
+function validateReadinessExamples(blocks: string[], contractText: string): Issue[] {
   const issues: Issue[] = [];
   const file = "skills/review-gate/references/verdict-examples.md";
   const mergeCandidateBlocks = blocks.filter((block) => block.startsWith("## review-gate: merge-candidate"));
@@ -282,6 +282,18 @@ function validateReadinessExamples(blocks: string[]): Issue[] {
       field: "merge-candidate (no required checks configured)",
       message: "missing no-required-check readiness path",
     });
+  }
+
+  if (!mergeCandidateBlocks.some((block) => normalizeWhitespace(block).includes("readiness evidence path: available"))) {
+    issues.push({ file, field: "readiness evidence path", message: "missing available evidence-path example" });
+  }
+
+  if (!mergeCandidateBlocks.some((block) => normalizeWhitespace(block).includes("readiness evidence path: plan-unavailable"))) {
+    issues.push({ file, field: "readiness evidence path", message: "missing plan-unavailable evidence-path example" });
+  }
+
+  if (!normalizeWhitespace(contractText).includes("Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`.")) {
+    issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "readiness evidence path", message: "missing indeterminate evidence-path rule" });
   }
 
   if (!blocks.some((block) => normalizeWhitespace(block).includes("only older-head results exist; no current-head evidence counts"))) {
@@ -392,7 +404,7 @@ function main(): void {
     issues.push(...validateVerdictBlock(block, index, requiredFields));
   });
 
-  issues.push(...validateReadinessExamples(blocks));
+  issues.push(...validateReadinessExamples(blocks, contractText));
 
   if (issues.length > 0) {
     report(issues);

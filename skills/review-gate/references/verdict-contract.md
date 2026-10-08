@@ -216,7 +216,7 @@ configuration.
   draft status as the blocker; a human marks it ready and requests a fresh
   verdict on the current head before merging.
 - Older-head results never count.
-- Branch protection is not required.
+- Branch protection is not required. Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`. For getRulesForBranch HTTP 403 with body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` and getBranch with no required_status_checks, use the no-required-check path and record `plan-unavailable`. The captured `gh api -i repos/ptstory/thread-atlas/rules/branches/main` response was HTTP 403 with that exact message on 2026-10-08. Any other 403 or 404 is a readiness blocker named `rules-unverifiable`, with failed call and HTTP status; record `indeterminate` and preserve all code findings in the blocking-set. Record `available` when both lookups return usable configuration.
 - Merge remains HITL.
 
 On round `N > 0`, the reviewer compares the current evidence bundle against the
