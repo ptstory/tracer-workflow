@@ -18,7 +18,9 @@ Builder fields: `../v1.2.0/builder.md`.
 
 ## Changes from v1.2.0
 
-- Readiness records `available`, `plan-unavailable`, or `indeterminate`; only the exact captured plan-upgrade response falls back. Other 403/404 responses remain blockers and preserve code findings.
-- The captured response and its source are documented in `skills/review-gate/PROMPT.md`.
+- `getBranch protected: false` is sufficient evidence that there are no classic required checks; `/protection` is not required.
+- If `rules/branches/{branch}` is rejected by the connector with HTTP 400 before reaching GitHub, fall through to `rulesets`.
+- The exact plan-upgrade message is accepted from either rules endpoint; other responses remain `indeterminate` blockers.
+- For `blocked` verdicts, `blocking-set` lists every file with a `fix-now` finding.
 
 Follow the v1.2.0 load-check and known-gap guidance.
