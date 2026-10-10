@@ -19,6 +19,7 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 
 ### Merge preconditions
 - head is still 0123456789abcdef0123456789abcdef01234567
+- readiness evidence path: available
 - all applicable required checks are green on the current head
 - at least one applicable required check exercises the changed paths
 
@@ -61,6 +62,7 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 
 ### Merge preconditions
 - head is still 0123456789abcdef0123456789abcdef01234567
+- readiness evidence path: plan-unavailable (rulesets fall-through; getRulesForBranch returned connector HTTP 400 unsupported endpoint, then getRulesets returned the exact captured plan HTTP 403; getBranch `protected: false`)
 - no required checks are configured on the target branch
 - at least one green CI/check run on the current head exercises the changed paths
 
@@ -146,6 +148,31 @@ next-action: gh pr view 789 --web
 
 ### Post-merge
 - confirm Closes #789 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## blocked (fix-now findings plus indeterminate readiness)
+
+```verdict
+## review-gate: blocked
+
+head-sha: 00112233445566778899aabbccddeeff00112233
+review-round: 0
+reviewed-files: 2
+blocking-set: src/auth.ts
+next-action: gh api repos/example/project/rulesets
+
+### Standards
+- [high] [fix-now] src/auth.ts — missing authorization guard.
+
+### Spec
+- No blocking findings.
+
+### Merge preconditions
+- readiness evidence path: indeterminate (getRulesForBranch HTTP 400 unsupported endpoint; getRulesets HTTP 403 with a non-plan message)
+
+### Post-merge
+- confirm Closes #123 closed the issue
 - next eligible ready-for-agent issue
 ```
 

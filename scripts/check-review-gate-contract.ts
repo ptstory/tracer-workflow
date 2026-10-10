@@ -216,17 +216,17 @@ function validateVerdictBlock(block: string, index: number, requiredFields: stri
 
   const blockingSet = parsed["blocking-set"];
   if (blockingSet !== undefined) {
-    if (verdict !== "needs-fix") {
+    if (verdict !== "needs-fix" && verdict !== "blocked") {
       if (blockingSet !== "") {
         issues.push({
           file,
           field: "blocking-set",
-          message: `expected empty blocking-set for ${verdict}, got ${JSON.stringify(blockingSet)}`,
+          message: `expected empty blocking-set for ${verdict} without fix-now findings, got ${JSON.stringify(blockingSet)}`,
         });
       }
     } else {
       const entries = blockingSet.split(",").map((entry) => entry.trim()).filter(Boolean);
-      if (entries.length === 0) {
+      if (entries.length === 0 && verdict === "needs-fix") {
         issues.push({ file, field: "blocking-set", message: "expected at least one repo-relative path for needs-fix" });
       }
       for (const entry of entries) {
@@ -257,7 +257,7 @@ function validateVerdictBlock(block: string, index: number, requiredFields: stri
   return issues;
 }
 
-function validateReadinessExamples(blocks: string[]): Issue[] {
+function validateReadinessExamples(blocks: string[], contractText: string): Issue[] {
   const issues: Issue[] = [];
   const file = "skills/review-gate/references/verdict-examples.md";
   const mergeCandidateBlocks = blocks.filter((block) => block.startsWith("## review-gate: merge-candidate"));
@@ -282,6 +282,25 @@ function validateReadinessExamples(blocks: string[]): Issue[] {
       field: "merge-candidate (no required checks configured)",
       message: "missing no-required-check readiness path",
     });
+  }
+
+  if (!mergeCandidateBlocks.some((block) => normalizeWhitespace(block).includes("readiness evidence path: available"))) {
+    issues.push({ file, field: "readiness evidence path", message: "missing available evidence-path example" });
+  }
+
+  if (!mergeCandidateBlocks.some((block) => normalizeWhitespace(block).includes("readiness evidence path: plan-unavailable"))) {
+    issues.push({ file, field: "readiness evidence path", message: "missing plan-unavailable evidence-path example" });
+  }
+
+  const normalizedContract = normalizeWhitespace(contractText);
+  if (!normalizedContract.includes("Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`.")) {
+    issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "readiness evidence path", message: "missing indeterminate evidence-path rule" });
+  }
+  if (!normalizedContract.includes("`getBranch protected: false` is sufficient evidence that no classic required checks exist")) {
+    issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "classic protection", message: "missing protected:false readiness rule" });
+  }
+  if (!normalizedContract.includes("when the calling surface rejects it before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`")) {
+    issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "rulesets fallback", message: "missing rulesets fall-through rule" });
   }
 
   if (!blocks.some((block) => normalizeWhitespace(block).includes("only older-head results exist; no current-head evidence counts"))) {
@@ -392,7 +411,7 @@ function main(): void {
     issues.push(...validateVerdictBlock(block, index, requiredFields));
   });
 
-  issues.push(...validateReadinessExamples(blocks));
+  issues.push(...validateReadinessExamples(blocks, contractText));
 
   if (issues.length > 0) {
     report(issues);
