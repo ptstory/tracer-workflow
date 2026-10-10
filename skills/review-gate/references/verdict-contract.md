@@ -23,9 +23,9 @@ Required fields immediately below the marker:
 - `head-sha:` — full 40-character commit SHA
 - `review-round:` — integer, 0-based
 - `reviewed-files:` — integer
-- `blocking-set:` — comma-separated repo-relative file paths naming the files
-  that the round's blocking findings are against; empty when the verdict state
-  is not `needs-fix`
+- `blocking-set:` — comma-separated repo-relative file paths naming every file
+  with a `fix-now` finding; required for `blocked` and `needs-fix` when such
+  findings exist, and empty only when there are no `fix-now` findings
 - `next-action:` — one concrete copy-pasteable command or invocation for the
   verdict state; never empty on newly emitted verdicts. Historical verdicts
   emitted before this field was required remain valid without it for round
@@ -216,7 +216,7 @@ configuration.
   draft status as the blocker; a human marks it ready and requests a fresh
   verdict on the current head before merging.
 - Older-head results never count.
-- Branch protection is not required. Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`. For getRulesForBranch HTTP 403 with body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` and getBranch with no required_status_checks, use the no-required-check path and record `plan-unavailable`. The captured `gh api -i repos/ptstory/thread-atlas/rules/branches/main` response was HTTP 403 with that exact message on 2026-10-08. Any other 403 or 404 is a readiness blocker named `rules-unverifiable`, with failed call and HTTP status; record `indeterminate` and preserve all code findings in the blocking-set. Record `available` when both lookups return usable configuration.
+- Branch protection is not required. `getBranch protected: false` is sufficient evidence that no classic required checks exist; `/protection` is not required, and its 403 is not a readiness blocker when `protected: false`. Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`. Try `rules/branches/{branch}` first; when the calling surface rejects it before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`. HTTP 403 with the exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` from either endpoint, with no classic required checks, uses the no-required-check path and records `plan-unavailable`; name the successful evidence call next to the path. The captured `gh api -i repos/ptstory/thread-atlas/rules/branches/main` response was HTTP 403 with that exact message on 2026-10-08. Any other status or message, including HTTP 400 except the described pre-GitHub endpoint rejection, or both rules calls unreachable, is `rules-unverifiable`: record `indeterminate`, name each call and status, and preserve every fix-now file in `blocking-set`. Record `available` when usable configuration is obtained.
 - Merge remains HITL.
 
 On round `N > 0`, the reviewer compares the current evidence bundle against the

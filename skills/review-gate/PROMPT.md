@@ -57,7 +57,7 @@ Comment format (post verbatim, filling in):
 head-sha: <full 40-char SHA you reviewed>
 review-round: <0-based integer>
 reviewed-files: <n>
-blocking-set: <comma-separated repo-relative file paths; empty unless needs-fix>
+blocking-set: <comma-separated repo-relative file paths; every fix-now finding's files for blocked or needs-fix, otherwise empty>
 next-action: <one command or invocation matching the verdict state>
 rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 
@@ -79,9 +79,7 @@ rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 Rules:
 - The `head-sha`, `review-round`, `reviewed-files`, `blocking-set`, and
   `next-action` lines are mandatory. Emit them exactly in that parser shape.
-- Emit `blocking-set:` on every verdict. It is empty unless the verdict is
-  `needs-fix`, in which case it lists the repo-relative file paths named by the
-  round's blocking findings.
+- Emit `blocking-set:` on every verdict. For `blocked` or `needs-fix`, list the repo-relative files of every `fix-now` finding, preserving all code findings. It is empty only when there are no `fix-now` findings.
 - Emit `rebaseline: yes` only on the fresh round-0 verdict after a late-created
   or materially amended binding issue. Omit it otherwise.
 - Emit `next-action:` on every verdict using exactly one of these state templates,
@@ -147,11 +145,11 @@ Rules:
     blocking set, and everything else becomes `follow-up-issue`
 - `merge-candidate` only if zero `fix-now` findings remain and the target branch's
   required status-check configuration satisfies one of these paths:
-  Determine the configuration from getBranch (protection.required_status_checks) and getRulesForBranch. If both show no required checks, apply the no-required-check path and record readiness evidence path `available`. If getRulesForBranch returns HTTP 403 with exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` and getBranch shows no required_status_checks, treat rulesets as absent, use the no-required-check path, and record `plan-unavailable`. Captured from `gh api -i repos/ptstory/thread-atlas/rules/branches/main` on 2026-10-08: `HTTP/2.0 403 Forbidden`, body `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}`. Any other 403 or 404 from either call is a readiness blocker named `rules-unverifiable`; record path `indeterminate`, name call and HTTP status, and retain all code findings in the blocking-set. A failure never clears code findings.
+  Determine required checks from getBranch and rulesets. `getBranch protected: false` establishes there are no classic required checks; do not require `/protection`, and a 403 from that subresource is not a readiness blocker with `protected: false`. Otherwise use getBranch's classic protection.required_status_checks. Try `rules/branches/{branch}` first. If that call is rejected by the calling surface before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`. The exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` on HTTP 403 from either call establishes rulesets are unavailable; with no classic required checks, use the no-required-check path and record `plan-unavailable`, naming which call supplied that evidence next to the readiness evidence path. Captured 2026-10-08 responses are quoted below; do not invent response bodies. Any other status/message, or both calls unreachable, is a readiness blocker named `rules-unverifiable`; record `indeterminate`, name each call and its status (including 400), and retain every fix-now file in blocking-set. A failure never clears code findings.
   - configured path: all applicable required checks are green at the current
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head
-    exercises the changed paths
+    exercises the changed paths. This applies when `protected: false` and exact plan-unavailable evidence is obtained from either rules endpoint.
 - If neither path is satisfied, or there is no current-head evidence, emit
   `blocked` rather than green.
 - If the PR is draft, emit `blocked` even when checks satisfy a readiness path.
