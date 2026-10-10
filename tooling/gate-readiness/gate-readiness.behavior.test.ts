@@ -29,6 +29,8 @@ type WorkflowFixture = {
   checkRunsJson: unknown[];
   statusesJson: unknown[];
   blockPulls?: boolean;
+  /** Head SHA the live re-check sees; defaults to the evaluated head. */
+  liveHeadSha?: string;
   reviewerLogins?: string;
   failure?: {
     endpointIncludes: string;
@@ -88,6 +90,9 @@ const logPath = ${JSON.stringify(harness.ghLog)};
 const commentPath = ${JSON.stringify(harness.commentLog)};
 const fixture = ${JSON.stringify({
     blockPulls: fixture.blockPulls ?? false,
+    eventName: fixture.eventName,
+    eventPullRequest: (fixture.eventPayload as { pull_request?: unknown } | undefined)?.pull_request ?? null,
+    liveHeadSha: fixture.liveHeadSha ?? null,
     pullJson: fixture.pullJson ?? null,
     labels: fixture.labels ?? (fixture.pullJson && typeof fixture.pullJson === "object" ? (fixture.pullJson as { labels?: { name: string }[] }).labels : undefined) ?? [],
     labelCreateFailure: fixture.labelCreateFailure ?? null,
@@ -131,7 +136,15 @@ if (endpoint.includes("/pulls/")) {
     process.stderr.write("GET /pulls/98 blocked\\n");
     process.exit(42);
   }
-  process.stdout.write(JSON.stringify({ ...(fixture.pullJson ?? {}), labels: fixture.labels ?? fixture.pullJson?.labels ?? [] }));
+  // workflow_call evaluates from the first pulls read, so the live re-check is the second;
+  // pull_request evaluates from the event payload, so its only pulls read is the re-check.
+  const countPath = logPath + ".pulls";
+  const calls = (fs.existsSync(countPath) ? Number(fs.readFileSync(countPath, "utf8")) : 0) + 1;
+  fs.writeFileSync(countPath, String(calls));
+  const base = fixture.pullJson ?? fixture.eventPullRequest ?? {};
+  const isRecheck = calls >= (fixture.eventName === "workflow_call" ? 2 : 1);
+  const head = isRecheck && fixture.liveHeadSha ? { sha: fixture.liveHeadSha } : base.head;
+  process.stdout.write(JSON.stringify({ ...base, head, labels: fixture.labels ?? base.labels ?? [] }));
   process.exit(0);
 }
 
@@ -188,7 +201,7 @@ function runWorkflow(fixture: WorkflowFixture) {
 
 const currentReviewGateComment = {
   user: { login: "reviewer" },
-  body: "## review-gate: merge-candidate\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 1\nreviewed-files: 2\n",
+  body: "## review-gate: merge-candidate\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 1\nreviewed-files: 2\nblocking-set:\nnext-action: gh pr view 98\n",
   created_at: "2026-01-01T00:00:00Z",
 };
 
@@ -209,7 +222,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
       pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
       commentsJson: [currentReviewGateComment, {
         user: { login: "attacker" },
-        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 2\nreviewed-files: 1\n",
+        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 2\nreviewed-files: 1\nblocking-set:\nnext-action: gh pr view 98\n",
         created_at: "2026-01-02T00:00:00Z",
       }],
       checkRunsJson: [], statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
@@ -304,7 +317,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:ready","method":"DELETE"');
   });
 
-  test("pull_request uses event payload data and never touches the pulls endpoint", () => {
+  test("pull_request evaluates from the event payload and reads pulls only for the live head re-check", () => {
     const { result, ghLog, commentLog } = runWorkflow({
       eventName: "pull_request",
       eventPayload: {
@@ -316,16 +329,96 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
         },
       },
       prNumber: 98,
-      blockPulls: true,
       commentsJson: [],
       checkRunsJson: [],
       statusesJson: [],
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(ghLog).not.toContain("/pulls/98");
+    const pullsReads = ghLog.split("\n").filter((line) => line.includes('"endpoint":"repos/acme/repo/pulls/98"'));
+    expect(pullsReads).toHaveLength(1);
     expect(commentLog).toContain("- PR metadata source: pull_request event payload");
     expect(commentLog).toContain("- auth path: GH_TOKEN -> secrets.GITHUB_TOKEN");
+  });
+
+  test("a failed live head re-check fails the run before any write", () => {
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "pull_request",
+      eventPayload: {
+        pull_request: { number: 98, head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Fixes #97", labels: [] },
+      },
+      prNumber: 98,
+      blockPulls: true,
+      commentsJson: [currentReviewGateComment],
+      checkRunsJson: [],
+      statusesJson: [],
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(commentLog).toBe("");
+    expect(ghLog).not.toContain('"method":"POST"');
+    expect(ghLog).not.toContain('"method":"DELETE"');
+    expect(ghLog).not.toContain('"method":"PATCH"');
+  });
+
+  test.each(["pull_request", "workflow_call"] as const)(
+    "%s: a head that moved during evaluation skips every comment and label write",
+    (eventName) => {
+      const pr = { number: 98, head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Fixes #97", labels: [{ name: "gate:needs-fix" }] };
+      const { result, ghLog, commentLog } = runWorkflow({
+        eventName,
+        eventPayload: eventName === "pull_request" ? { pull_request: pr } : undefined,
+        pullJson: eventName === "workflow_call" ? pr : undefined,
+        prNumber: 98,
+        liveHeadSha: "cccccccccccccccccccccccccccccccccccccccc",
+        commentsJson: [currentReviewGateComment],
+        checkRunsJson: [],
+        statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain("PR head moved from aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa to cccccccccccccccccccccccccccccccccccccccc");
+      expect(commentLog).toBe("");
+      expect(ghLog).not.toContain('"method":"POST"');
+      expect(ghLog).not.toContain('"method":"DELETE"');
+      expect(ghLog).not.toContain('"method":"PATCH"');
+    },
+  );
+
+  test.each([
+    ["missing blocking-set", currentReviewGateComment.body.replace("blocking-set:\n", "")],
+    ["missing next-action", currentReviewGateComment.body.replace("next-action: gh pr view 98\n", "")],
+    ["empty next-action", currentReviewGateComment.body.replace("next-action: gh pr view 98", "next-action:")],
+    ["unknown verdict state", currentReviewGateComment.body.replace("merge-candidate", "approved")],
+  ])("a trusted verdict with %s parses as invalid and gets no label", (_case, body) => {
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [{ name: "gate:merge-candidate" }] },
+      commentsJson: [{ ...currentReviewGateComment, body }],
+      checkRunsJson: [], statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- latest marker parse: invalid");
+    expect(commentLog).toContain("- review gate state: ungated");
+    expect(commentLog).toContain("- readiness: false");
+    expect(ghLog).not.toContain("labels[]=gate:");
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:merge-candidate","method":"DELETE"');
+  });
+
+  test("a newer malformed trusted verdict invalidates an older valid one", () => {
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [
+        currentReviewGateComment,
+        { ...currentReviewGateComment, body: currentReviewGateComment.body.replace("blocking-set:\n", ""), created_at: "2026-01-02T00:00:00Z" },
+      ],
+      checkRunsJson: [], statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- latest marker parse: invalid");
+    expect(commentLog).toContain("- readiness: false");
+    expect(ghLog).not.toContain("labels[]=gate:");
   });
 
   test("workflow_call still uses the PR endpoint when no event payload is available", () => {
@@ -449,7 +542,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
       commentsJson: [
         {
           user: { login: "reviewer" },
-          body: "## review-gate: merge-candidate\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 1\nreviewed-files: 2\n",
+          body: "## review-gate: merge-candidate\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 1\nreviewed-files: 2\nblocking-set:\nnext-action: gh pr view 98\n",
           created_at: "2026-01-01T00:00:00Z",
         },
       ],

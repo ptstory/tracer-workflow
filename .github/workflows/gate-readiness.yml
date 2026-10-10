@@ -150,13 +150,22 @@ jobs:
           if [ "$latest_review_gate_json" = "null" ]; then
             marker_parse_status="none"
           else
+            # Contract-mandatory fields are all required: blocking-set may be empty, next-action may not,
+            # and the verdict must be one of the four contract states. Anything else parses as invalid.
+            # `capture` emits nothing (not an error) when a field is missing, so `// null` is what turns
+            # an incomplete body into an explicit null instead of an empty string.
             review_gate_details="$(printf '%s' "$latest_review_gate_json" | jq -c '
-              try {
-                verdict: (.body | capture("^## review-gate:\\s*(?<verdict>\\S+)").verdict),
-                head_sha: (.body | capture("(?m)^head-sha:\\s*(?<head_sha>[0-9a-f]{40})\\s*$").head_sha),
-                review_round: (.body | capture("(?m)^review-round:\\s*(?<review_round>\\d+)\\s*$").review_round | tonumber),
-                reviewed_files: (.body | capture("(?m)^reviewed-files:\\s*(?<reviewed_files>\\d+)\\s*$").reviewed_files | tonumber)
-              } catch null
+              (try (
+                {
+                  verdict: (.body | capture("^## review-gate:\\s*(?<verdict>\\S+)").verdict),
+                  head_sha: (.body | capture("(?m)^head-sha:\\s*(?<head_sha>[0-9a-f]{40})\\s*$").head_sha),
+                  review_round: (.body | capture("(?m)^review-round:\\s*(?<review_round>\\d+)\\s*$").review_round | tonumber),
+                  reviewed_files: (.body | capture("(?m)^reviewed-files:\\s*(?<reviewed_files>\\d+)\\s*$").reviewed_files | tonumber),
+                  blocking_set: (.body | capture("(?m)^blocking-set:(?<blocking_set>[^\\n]*)$").blocking_set),
+                  next_action: (.body | capture("(?m)^next-action:[ \\t]*(?<next_action>\\S[^\\n]*)$").next_action)
+                }
+                | if (.verdict | IN("merge-candidate", "needs-fix", "needs-human", "blocked")) then . else error("unknown verdict") end
+              ) catch null) // null
             ')"
             if [ "$review_gate_details" = "null" ]; then
               marker_parse_status="invalid"
@@ -181,38 +190,6 @@ jobs:
               review_gate_state="stale"
             fi
           fi
-
-          pr_label_json="$(printf '%s' "$pr_metadata_json" | jq -c '[.labels // [] | .[] | .name]')"
-          verdict_label=""
-          if [ "$review_gate_state" = "current" ]; then
-            case "$review_gate_verdict" in
-              merge-candidate) verdict_label="gate:merge-candidate" ;;
-              needs-fix) verdict_label="gate:needs-fix" ;;
-              needs-human) verdict_label="gate:needs-human" ;;
-              blocked) verdict_label="gate:blocked" ;;
-            esac
-          fi
-          existing_verdict_labels="$pr_label_json"
-          while IFS='|' read -r label color description; do
-            if ! gh api "repos/$repo/labels/$label" >/dev/null 2>&1; then
-              if ! create_error="$(gh api -X POST "repos/$repo/labels" -f name="$label" -f color="$color" -f description="$description" 2>&1 >/dev/null)"; then
-                if [[ "$create_error" != *"already_exists"* && "$create_error" != *"HTTP 422"* ]]; then
-                  printf 'gate-readiness: failed to create label %s: %s\n' "$label" "$create_error" >&2
-                  exit 1
-                fi
-              fi
-            fi
-            if [ "$label" = "$verdict_label" ]; then
-              gh_api "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="$label" >/dev/null
-            elif printf '%s' "$existing_verdict_labels" | jq -e --arg label "$label" 'index($label) != null' >/dev/null; then
-              gh_api "DELETE repos/$repo/issues/$pr_number/labels/$label" -X DELETE "repos/$repo/issues/$pr_number/labels/$label" >/dev/null || true
-            fi
-          done <<'LABELS'
-          gate:merge-candidate|0e8a16|Trusted current-head merge-candidate verdict
-          gate:needs-fix|d93f0b|Trusted current-head needs-fix verdict
-          gate:needs-human|fbca04|Trusted current-head needs-human verdict
-          gate:blocked|b60205|Trusted current-head blocked verdict
-          LABELS
 
           # Exact selection rule: ignore only GitHub Actions check-runs from this workflow job
           # (name: gate-readiness, app.slug: github-actions). They can be in-progress on the
@@ -325,6 +302,19 @@ jobs:
             done
           fi
 
+          # Re-read the live PR immediately before any write. Event payloads and earlier reads can
+          # describe a head that has since been replaced; writing labels or the readiness comment
+          # for a superseded head would restore stale state. A newer run evaluates the new head.
+          if ! gh_api_capture live_pr_json "GET repos/$repo/pulls/$pr_number (live head re-check)" "repos/$repo/pulls/$pr_number"; then
+            exit 1
+          fi
+          live_head_sha="$(printf '%s' "$live_pr_json" | jq -r '.head.sha // empty')"
+          if [ "$live_head_sha" != "$head_sha" ]; then
+            printf 'gate-readiness: PR head moved from %s to %s during evaluation; skipping comment and label writes\n' "$head_sha" "${live_head_sha:-unknown}" >&2
+            exit 0
+          fi
+          has_ready_label="$(printf '%s' "$live_pr_json" | jq -r '([(.labels // [])[] | .name] | index("gate:ready")) != null')"
+
           comment_body="$(printf '%s\n' "${comment_lines[@]}")"
           existing_comment_id="$(printf '%s' "$comments_json" | jq -r --arg marker "$marker" '
             [ .[] | select(.body | contains($marker)) | {id, created_at} ]
@@ -338,6 +328,38 @@ jobs:
           else
             gh_api "POST repos/$repo/issues/$pr_number/comments" -X POST "repos/$repo/issues/$pr_number/comments" -f body="$comment_body" >/dev/null
           fi
+
+          pr_label_json="$(printf '%s' "$live_pr_json" | jq -c '[.labels // [] | .[] | .name]')"
+          verdict_label=""
+          if [ "$review_gate_state" = "current" ]; then
+            case "$review_gate_verdict" in
+              merge-candidate) verdict_label="gate:merge-candidate" ;;
+              needs-fix) verdict_label="gate:needs-fix" ;;
+              needs-human) verdict_label="gate:needs-human" ;;
+              blocked) verdict_label="gate:blocked" ;;
+            esac
+          fi
+          existing_verdict_labels="$pr_label_json"
+          while IFS='|' read -r label color description; do
+            if ! gh api "repos/$repo/labels/$label" >/dev/null 2>&1; then
+              if ! create_error="$(gh api -X POST "repos/$repo/labels" -f name="$label" -f color="$color" -f description="$description" 2>&1 >/dev/null)"; then
+                if [[ "$create_error" != *"already_exists"* && "$create_error" != *"HTTP 422"* ]]; then
+                  printf 'gate-readiness: failed to create label %s: %s\n' "$label" "$create_error" >&2
+                  exit 1
+                fi
+              fi
+            fi
+            if [ "$label" = "$verdict_label" ]; then
+              gh_api "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="$label" >/dev/null
+            elif printf '%s' "$existing_verdict_labels" | jq -e --arg label "$label" 'index($label) != null' >/dev/null; then
+              gh_api "DELETE repos/$repo/issues/$pr_number/labels/$label" -X DELETE "repos/$repo/issues/$pr_number/labels/$label" >/dev/null || true
+            fi
+          done <<'LABELS'
+          gate:merge-candidate|0e8a16|Trusted current-head merge-candidate verdict
+          gate:needs-fix|d93f0b|Trusted current-head needs-fix verdict
+          gate:needs-human|fbca04|Trusted current-head needs-human verdict
+          gate:blocked|b60205|Trusted current-head blocked verdict
+          LABELS
 
           if [ "$ready" = "true" ]; then
             if [ "$has_ready_label" != "true" ]; then

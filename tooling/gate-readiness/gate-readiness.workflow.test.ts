@@ -63,9 +63,19 @@ describe(".github/workflows/gate-readiness.yml", () => {
     expect(script).toContain('"HTTP 422"');
   });
 
+  test("re-reads the live PR head before every comment and label write", () => {
+    const script = runScript();
+    const recheck = script.indexOf("(live head re-check)");
+    expect(recheck).toBeGreaterThan(-1);
+    for (const write of ['-X PATCH "repos/$repo/issues/comments/', '-X POST "repos/$repo/issues/$pr_number/comments"', '-X POST "repos/$repo/issues/$pr_number/labels"', '-X DELETE "repos/$repo/issues/$pr_number/labels/', '-X POST "repos/$repo/labels"']) {
+      const first = script.indexOf(write);
+      expect(first, write).toBeGreaterThan(recheck);
+    }
+  });
+
   test("deletes verdict labels only when the PR already has them", () => {
     const script = runScript();
-    expect(script).toContain('pr_label_json="$(printf \'%s\' "$pr_metadata_json" | jq -c \'[.labels // [] | .[] | .name]\')"');
+    expect(script).toContain('pr_label_json="$(printf \'%s\' "$live_pr_json" | jq -c \'[.labels // [] | .[] | .name]\')"');
     expect(script).toContain('existing_verdict_labels="$pr_label_json"');
     expect(script).toContain('elif printf \'%s\' "$existing_verdict_labels" | jq -e --arg label "$label" \'index($label) != null\' >/dev/null; then');
   });
