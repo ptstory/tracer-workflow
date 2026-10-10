@@ -222,6 +222,59 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(commentLog).toContain("- review gate state: ungated");
     expect(commentLog).toContain("- readiness: false");
   });
+  test.each([
+    ["merge-candidate", "gate:merge-candidate"],
+    ["needs-fix", "gate:needs-fix"],
+    ["needs-human", "gate:needs-human"],
+    ["blocked", "gate:blocked"],
+  ])("mirrors the current %s verdict as %s", (verdict, label) => {
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [{ ...currentReviewGateComment, body: currentReviewGateComment.body.replace("merge-candidate", verdict) }],
+      checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).toContain(`"labels[]=${label}"`);
+    expect(ghLog).toContain("gate:merge-candidate");
+  });
+
+  test("removes all verdict labels when the latest trusted verdict is stale", () => {
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, body: "Closes #97", labels: [] },
+      commentsJson: [currentReviewGateComment], checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:merge-candidate","method":"DELETE"');
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-fix","method":"DELETE"');
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-human","method":"DELETE"');
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:blocked","method":"DELETE"');
+  });
+
+  test("an untrusted commenter cannot apply a verdict label", () => {
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [{ ...currentReviewGateComment, user: { login: "attacker" }, body: currentReviewGateComment.body.replace("merge-candidate", "needs-fix") }],
+      checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).not.toContain('labels[]=gate:needs-fix');
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-fix","method":"DELETE"');
+  });
+
+  test("preserves existing gate:ready behavior", () => {
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [{ name: "gate:ready" }] },
+      commentsJson: [currentReviewGateComment], checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).not.toContain("labels[]=gate:ready");
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:ready","method":"DELETE"');
+  });
+
   test("pull_request uses event payload data and never touches the pulls endpoint", () => {
     const { result, ghLog, commentLog } = runWorkflow({
       eventName: "pull_request",

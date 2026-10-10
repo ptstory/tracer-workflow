@@ -8,6 +8,10 @@ on:
         description: PR number to evaluate.
         required: true
         type: number
+      reviewer-logins:
+        description: Comma-separated trusted review-gate GitHub logins; defaults to the caller repository variable.
+        required: false
+        type: string
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -28,7 +32,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           INPUT_PR_NUMBER: ${{ inputs.pr-number }}
           REPOSITORY: ${{ github.repository }}
-          TRACER_REVIEWER_LOGINS: ${{ vars.TRACER_REVIEWER_LOGINS }}
+          TRACER_REVIEWER_LOGINS: ${{ inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS }}
         run: |
           set -euo pipefail
 
@@ -176,6 +180,31 @@ jobs:
               review_gate_state="stale"
             fi
           fi
+
+          verdict_label=""
+          if [ "$review_gate_state" = "current" ]; then
+            case "$review_gate_verdict" in
+              merge-candidate) verdict_label="gate:merge-candidate" ;;
+              needs-fix) verdict_label="gate:needs-fix" ;;
+              needs-human) verdict_label="gate:needs-human" ;;
+              blocked) verdict_label="gate:blocked" ;;
+            esac
+          fi
+          while IFS='|' read -r label color description; do
+            if ! gh api "repos/$repo/labels/$label" >/dev/null 2>&1; then
+              gh_api "POST repos/$repo/labels" -X POST "repos/$repo/labels" -f name="$label" -f color="$color" -f description="$description" >/dev/null
+            fi
+            if [ "$label" = "$verdict_label" ]; then
+              gh_api "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="$label" >/dev/null
+            else
+              gh_api "DELETE repos/$repo/issues/$pr_number/labels/$label" -X DELETE "repos/$repo/issues/$pr_number/labels/$label" >/dev/null || true
+            fi
+          done <<'LABELS'
+          gate:merge-candidate|0e8a16|Trusted current-head merge-candidate verdict
+          gate:needs-fix|d93f0b|Trusted current-head needs-fix verdict
+          gate:needs-human|fbca04|Trusted current-head needs-human verdict
+          gate:blocked|b60205|Trusted current-head blocked verdict
+          LABELS
 
           # Exact selection rule: ignore only GitHub Actions check-runs from this workflow job
           # (name: gate-readiness, app.slug: github-actions). They can be in-progress on the

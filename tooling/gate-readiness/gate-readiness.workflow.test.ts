@@ -43,6 +43,14 @@ describe(".github/workflows/gate-readiness.yml", () => {
     expect(workflow).toContain("workflow_call metadata lookup stays read-only via gh api");
   });
 
+  test("is self-contained and accepts trusted reviewer logins from the caller", () => {
+    expect(workflow).toContain("reviewer-logins:");
+    expect(workflow).toContain("${{ inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS }}");
+    expect(workflow).toContain("inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS");
+    expect(workflow).not.toContain("actions/checkout");
+    expect(workflow).toContain('gh api "repos/$repo/');
+  });
+
   test("evaluates only the current relevant check/status instance before readiness decisions", () => {
     const script = runScript();
 
