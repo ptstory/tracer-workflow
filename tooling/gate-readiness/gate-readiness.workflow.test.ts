@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflowPath = join(repoRoot, ".github/workflows/gate-readiness.yml");
 const workflow = readFileSync(workflowPath, "utf8");
+const callerTemplate = readFileSync(join(repoRoot, "templates/gate-labels.yml"), "utf8");
 
 function runScript(): string {
   const lines = workflow.split("\n");
@@ -49,6 +50,24 @@ describe(".github/workflows/gate-readiness.yml", () => {
     expect(workflow).toContain("inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS");
     expect(workflow).not.toContain("actions/checkout");
     expect(workflow).toContain('gh api "repos/$repo/');
+  });
+
+  test("caller template only reevaluates for review-gate PR comments", () => {
+    expect(callerTemplate).toContain("github.event.issue.pull_request &&");
+    expect(callerTemplate).toContain("startsWith(github.event.comment.body, '## review-gate:')");
+  });
+
+  test("tolerates a concurrent already_exists response while creating labels", () => {
+    const script = runScript();
+    expect(script).toContain('"already_exists"');
+    expect(script).toContain('"HTTP 422"');
+  });
+
+  test("deletes verdict labels only when the PR already has them", () => {
+    const script = runScript();
+    expect(script).toContain('pr_label_json="$(printf \'%s\' "$pr_metadata_json" | jq -c \'[.labels // [] | .[] | .name]\')"');
+    expect(script).toContain('existing_verdict_labels="$pr_label_json"');
+    expect(script).toContain('elif printf \'%s\' "$existing_verdict_labels" | jq -e --arg label "$label" \'index($label) != null\' >/dev/null; then');
   });
 
   test("evaluates only the current relevant check/status instance before readiness decisions", () => {

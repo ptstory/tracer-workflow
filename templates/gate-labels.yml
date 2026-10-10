@@ -47,7 +47,10 @@ jobs:
     secrets: inherit
 
   from-comment:
-    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '## review-gate:')
     uses: ptstory/tracer-workflow/.github/workflows/gate-readiness.yml@main
     with:
       pr-number: ${{ github.event.issue.number }}

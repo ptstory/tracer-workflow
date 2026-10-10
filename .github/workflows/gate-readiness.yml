@@ -109,6 +109,7 @@ jobs:
             head_sha="$(printf '%s' "$pr_metadata_json" | jq -r '.pull_request.head.sha')"
             pr_body="$(printf '%s' "$pr_metadata_json" | jq -r '.pull_request.body // ""')"
             has_ready_label="$(printf '%s' "$pr_metadata_json" | jq -r '([(.pull_request.labels // [])[] | .name] | index("gate:ready")) != null')"
+            pr_metadata_json="$(printf '%s' "$pr_metadata_json" | jq -c '.pull_request')"
           else
             if ! gh_api_capture pr_metadata_json "GET repos/$repo/pulls/$pr_number" "repos/$repo/pulls/$pr_number"; then
               exit 1
@@ -181,6 +182,7 @@ jobs:
             fi
           fi
 
+          pr_label_json="$(printf '%s' "$pr_metadata_json" | jq -c '[.labels // [] | .[] | .name]')"
           verdict_label=""
           if [ "$review_gate_state" = "current" ]; then
             case "$review_gate_verdict" in
@@ -190,13 +192,19 @@ jobs:
               blocked) verdict_label="gate:blocked" ;;
             esac
           fi
+          existing_verdict_labels="$pr_label_json"
           while IFS='|' read -r label color description; do
             if ! gh api "repos/$repo/labels/$label" >/dev/null 2>&1; then
-              gh_api "POST repos/$repo/labels" -X POST "repos/$repo/labels" -f name="$label" -f color="$color" -f description="$description" >/dev/null
+              if ! create_error="$(gh api -X POST "repos/$repo/labels" -f name="$label" -f color="$color" -f description="$description" 2>&1 >/dev/null)"; then
+                if [[ "$create_error" != *"already_exists"* && "$create_error" != *"HTTP 422"* ]]; then
+                  printf 'gate-readiness: failed to create label %s: %s\n' "$label" "$create_error" >&2
+                  exit 1
+                fi
+              fi
             fi
             if [ "$label" = "$verdict_label" ]; then
               gh_api "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="$label" >/dev/null
-            else
+            elif printf '%s' "$existing_verdict_labels" | jq -e --arg label "$label" 'index($label) != null' >/dev/null; then
               gh_api "DELETE repos/$repo/issues/$pr_number/labels/$label" -X DELETE "repos/$repo/issues/$pr_number/labels/$label" >/dev/null || true
             fi
           done <<'LABELS'

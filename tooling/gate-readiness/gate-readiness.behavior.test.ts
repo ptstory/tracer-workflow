@@ -23,6 +23,8 @@ type WorkflowFixture = {
   eventPayload?: unknown;
   prNumber: number;
   pullJson?: unknown;
+  labelCreateFailure?: { label: string; stderr: string; exitCode?: number };
+  labels?: { name: string }[];
   commentsJson: unknown[];
   checkRunsJson: unknown[];
   statusesJson: unknown[];
@@ -87,6 +89,8 @@ const commentPath = ${JSON.stringify(harness.commentLog)};
 const fixture = ${JSON.stringify({
     blockPulls: fixture.blockPulls ?? false,
     pullJson: fixture.pullJson ?? null,
+    labels: fixture.labels ?? (fixture.pullJson && typeof fixture.pullJson === "object" ? (fixture.pullJson as { labels?: { name: string }[] }).labels : undefined) ?? [],
+    labelCreateFailure: fixture.labelCreateFailure ?? null,
     commentsJson: fixture.commentsJson,
     checkRunsJson: fixture.checkRunsJson,
     statusesJson: fixture.statusesJson,
@@ -102,6 +106,11 @@ for (let i = 0; i < argv.length; i += 1) {
   if (argv[i].startsWith("body=")) body = argv[i].slice(5);
 }
 fs.appendFileSync(logPath, JSON.stringify({ argv, endpoint, method }) + "\\n");
+
+if (fixture.labelCreateFailure && method === "POST" && endpoint === "repos/acme/repo/labels" && argv.includes("name=" + fixture.labelCreateFailure.label)) {
+  process.stderr.write(fixture.labelCreateFailure.stderr);
+  process.exit(fixture.labelCreateFailure.exitCode ?? 1);
+}
 
 if (fixture.failure && endpoint.includes(fixture.failure.endpointIncludes) && (!fixture.failure.method || method === fixture.failure.method)) {
   if (fixture.failure.stdout) {
@@ -122,7 +131,7 @@ if (endpoint.includes("/pulls/")) {
     process.stderr.write("GET /pulls/98 blocked\\n");
     process.exit(42);
   }
-  process.stdout.write(JSON.stringify(fixture.pullJson ?? {}));
+  process.stdout.write(JSON.stringify({ ...(fixture.pullJson ?? {}), labels: fixture.labels ?? fixture.pullJson?.labels ?? [] }));
   process.exit(0);
 }
 
@@ -239,17 +248,27 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(ghLog).toContain("gate:merge-candidate");
   });
 
-  test("removes all verdict labels when the latest trusted verdict is stale", () => {
+  test("removes an existing stale verdict label without deleting absent labels", () => {
     const { result, ghLog } = runWorkflow({
       eventName: "workflow_call", prNumber: 98,
-      pullJson: { head: { sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, body: "Closes #97", labels: [] },
+      pullJson: { head: { sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, body: "Closes #97", labels: [{ name: "gate:merge-candidate" }] },
       commentsJson: [currentReviewGateComment], checkRunsJson: [], statusesJson: [],
     });
     expect(result.status, result.stderr).toBe(0);
     expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:merge-candidate","method":"DELETE"');
-    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-fix","method":"DELETE"');
-    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-human","method":"DELETE"');
-    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:blocked","method":"DELETE"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-fix","method":"DELETE"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-human","method":"DELETE"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:blocked","method":"DELETE"');
+  });
+
+  test("does not delete absent verdict labels when no trusted verdict exists", () => {
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [{ name: "triage" }] },
+      commentsJson: [], checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).not.toContain('"method":"DELETE"');
   });
 
   test("an untrusted commenter cannot apply a verdict label", () => {
@@ -261,13 +280,23 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     });
     expect(result.status, result.stderr).toBe(0);
     expect(ghLog).not.toContain('labels[]=gate:needs-fix');
-    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-fix","method":"DELETE"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-fix","method":"DELETE"');
+  });
+
+  test("treats a concurrent already_exists label creation response as success", () => {
+    const { result } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [currentReviewGateComment], checkRunsJson: [], statusesJson: [],
+      labelCreateFailure: { label: "gate:merge-candidate", stderr: "HTTP 422: already_exists\\n" },
+    });
+    expect(result.status, result.stderr).toBe(0);
   });
 
   test("preserves existing gate:ready behavior", () => {
     const { result, ghLog } = runWorkflow({
       eventName: "workflow_call", prNumber: 98,
-      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [{ name: "gate:ready" }] },
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [{ name: "gate:ready" }, { name: "gate:merge-candidate" }] },
       commentsJson: [currentReviewGateComment], checkRunsJson: [], statusesJson: [],
     });
     expect(result.status, result.stderr).toBe(0);
