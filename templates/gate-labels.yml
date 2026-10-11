@@ -1,0 +1,80 @@
+name: Gate Labels
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created, edited]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  issues: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+jobs:
+  resolve-ci-pr:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    outputs:
+      pr-number: ${{ steps.resolve.outputs.pr-number }}
+    steps:
+      - id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_PATH: ${{ github.event_path }}
+        run: |
+          set -euo pipefail
+          pr_number="$(jq -r '.workflow_run.pull_requests[0].number // empty' "$EVENT_PATH")"
+          if [ -z "$pr_number" ]; then
+            head_sha="$(jq -r '.workflow_run.head_sha // empty' "$EVENT_PATH")"
+            if [ -n "$head_sha" ]; then
+              pr_number="$(gh api "repos/$REPOSITORY/commits/$head_sha/pulls" --jq '[.[] | select(.state == "open")] | sort_by(.number) | first | .number // empty')"
+            fi
+          fi
+          printf 'pr-number=%s\n' "$pr_number" >> "$GITHUB_OUTPUT"
+
+  from-pull-request:
+    if: github.event_name == 'pull_request'
+    # One gate run per PR at a time; a newer event supersedes an in-flight one. Kept on the
+    # calling job (not workflow level) so skipped jobs, e.g. unrelated PR comments, never cancel a real run.
+    concurrency:
+      group: gate-readiness-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    uses: ptstory/tracer-workflow/.github/workflows/gate-readiness.yml@main
+    with:
+      pr-number: ${{ github.event.pull_request.number }}
+    secrets: inherit
+
+  from-comment:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '## review-gate:')
+    # One gate run per PR at a time; a newer event supersedes an in-flight one. Kept on the
+    # calling job (not workflow level) so skipped jobs, e.g. unrelated PR comments, never cancel a real run.
+    concurrency:
+      group: gate-readiness-pr-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    uses: ptstory/tracer-workflow/.github/workflows/gate-readiness.yml@main
+    with:
+      pr-number: ${{ github.event.issue.number }}
+    secrets: inherit
+
+  from-ci:
+    needs: resolve-ci-pr
+    if: needs.resolve-ci-pr.outputs.pr-number != ''
+    # One gate run per PR at a time; a newer event supersedes an in-flight one. Kept on the
+    # calling job (not workflow level) so skipped jobs, e.g. unrelated PR comments, never cancel a real run.
+    concurrency:
+      group: gate-readiness-pr-${{ needs.resolve-ci-pr.outputs.pr-number }}
+      cancel-in-progress: true
+    uses: ptstory/tracer-workflow/.github/workflows/gate-readiness.yml@main
+    with:
+      pr-number: ${{ fromJSON(needs.resolve-ci-pr.outputs.pr-number) }}
+    secrets: inherit

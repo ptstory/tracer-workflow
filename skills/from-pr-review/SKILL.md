@@ -21,7 +21,8 @@ against actual check-run state, and hand back.
 
 - Resolve the PR in order: (a) use an explicit PR URL or number; (b) if absent,
   run `gh pr view --json number,url,headRefName,headRefOid` for the current branch;
-  (c) if neither resolves, list open PRs labeled `gate:needs-fix` and stop,
+  (c) if neither resolves, list open PRs labeled `gate:needs-fix` (the reusable
+  gate applies this label only for a trusted current-head verdict) and stop,
   printing the exact rerun command `from-pr-review <PR_URL>` for the selected PR.
   Do not choose a PR from the list automatically. The first output line must
   state `owner/repo#N`, the head SHA, and the resolution path used (`explicit`

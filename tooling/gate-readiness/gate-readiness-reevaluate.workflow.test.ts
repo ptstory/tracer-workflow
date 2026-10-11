@@ -13,7 +13,7 @@ describe("gate-readiness reevaluation workflow", () => {
     expect(workflow).toContain("workflow_run:");
     expect(workflow).toContain("workflows: [CI]");
     expect(workflow).toContain("types: [completed]");
-    expect(workflow).toContain("uses: ./.github/workflows/gate-readiness.yml");
+    expect(workflow).toContain("uses: ptstory/tracer-workflow/.github/workflows/gate-readiness.yml@main");
     expect(workflow).toContain("needs.resolve-ci-pr.outputs.pr-number");
   });
 
