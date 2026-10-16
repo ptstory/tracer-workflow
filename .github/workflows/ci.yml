@@ -48,12 +48,17 @@ jobs:
   pr-body:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
       - name: Validate PR body
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: bun scripts/check-pr-body.ts
 
   gpt-openapi-importer:

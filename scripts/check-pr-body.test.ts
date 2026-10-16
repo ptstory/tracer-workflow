@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { validatePrBody } from "./check-pr-body";
+import { closingReferences, validateIssueLinkage, validatePrBody } from "./check-pr-body";
 
 const sha = "a".repeat(40);
 const valid = `Closes #160
@@ -35,6 +35,19 @@ describe("PR body validation", () => {
 
   test("rejects a missing closing reference", () => {
     expect(validatePrBody(valid.replace("Closes #160", "Related to #160"), sha)).toContain("missing Fixes/Closes/Resolves issue reference");
+  });
+
+  test("ignores quoted and fenced closing references", () => {
+    expect(closingReferences(["> Closes #1", "", "```", "Closes #2", "```", "Closes #3"].join("\n"), "ptstory/tracer-workflow")).toEqual([{ number: 3, repository: "ptstory/tracer-workflow" }]);
+  });
+
+  test("validates one open same-repository issue and fails closed", async () => {
+    const lookup = async () => ({ state: "open" });
+    expect(await validateIssueLinkage([{ number: 160, repository: "ptstory/tracer-workflow" }], "ptstory/tracer-workflow", lookup)).toEqual([]);
+    expect(await validateIssueLinkage([], "ptstory/tracer-workflow", lookup)).toHaveLength(1);
+    expect(await validateIssueLinkage([{ number: 1, repository: "attacker/repo" }], "ptstory/tracer-workflow", lookup)).toHaveLength(1);
+    expect(await validateIssueLinkage([{ number: 1, repository: "ptstory/tracer-workflow" }], "ptstory/tracer-workflow", async () => ({ state: "closed" }))).toHaveLength(1);
+    expect(await validateIssueLinkage([{ number: 1, repository: "ptstory/tracer-workflow" }], "ptstory/tracer-workflow", async () => { throw new Error("403"); })).toContain("issue lookup for ptstory/tracer-workflow#1 is unverifiable: 403");
   });
 
   test("rejects each missing section, not mentions in prose", () => {

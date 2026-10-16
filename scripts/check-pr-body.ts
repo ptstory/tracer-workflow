@@ -3,12 +3,45 @@ import { readFileSync } from "node:fs";
 const sections = ["Summary", "Evidence", "Merge Danger", "Docs"] as const;
 
 type PullRequestEvent = {
+  repository?: { full_name?: string };
   pull_request?: { body?: string | null; head?: { sha?: string } };
 };
 
+type IssueRecord = { state?: string; pull_request?: unknown };
+
+export async function validateIssueLinkage(
+  references: Array<{ number: number; repository: string }>,
+  repository: string,
+  fetchIssue: (repository: string, number: number) => Promise<IssueRecord>,
+): Promise<string[]> {
+  if (references.length !== 1) return [`expected exactly one closing reference, found ${references.length}`];
+  const reference = references[0];
+  if (reference.repository.toLowerCase() !== repository.toLowerCase()) return [`closing reference targets foreign repository ${reference.repository}`];
+  try {
+    const issue = await fetchIssue(repository, reference.number);
+    if (issue.pull_request) return [`#${reference.number} is a pull request, not an issue`];
+    if (issue.state !== "open") return [`#${reference.number} is not open`];
+    return [];
+  } catch (error) {
+    return [`issue lookup for ${repository}#${reference.number} is unverifiable: ${error instanceof Error ? error.message : "request failed"}`];
+  }
+}
+
+export function closingReferences(body: string, repository: string): Array<{ number: number; repository: string }> {
+  const text = body.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, "").replace(/`[^`]*`/g, "").replace(/^\s*>.*$/gm, "");
+  const references: Array<{ number: number; repository: string }> = [];
+  const pattern = /^\s*(?:[-*+]\s*)?(?:Fixes|Closes|Resolves)\s+((?:[\w.-]+\/[\w.-]+)?#\d+)(?=\s|$)/gim;
+  for (const match of text.matchAll(pattern)) {
+    const target = match[1];
+    const parsed = target.match(/^([\w.-]+)\/([\w.-]+)#(\d+)$/);
+    references.push({ number: Number(parsed?.[3] ?? target.slice(1)), repository: parsed ? `${parsed[1]}/${parsed[2]}` : repository });
+  }
+  return references;
+}
+
 export function validatePrBody(body: string, headSha: string): string[] {
   const errors: string[] = [];
-  if (!/\b(?:Fixes|Closes|Resolves)\s+(?:[\w.-]+\/[\w.-]+)?#\d+\b/i.test(body)) {
+  if (closingReferences(body, "ptstory/tracer-workflow").length === 0) {
     errors.push("missing Fixes/Closes/Resolves issue reference");
   }
 
@@ -32,7 +65,7 @@ export function validatePrBody(body: string, headSha: string): string[] {
   return errors;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) {
     console.error("GITHUB_EVENT_PATH is required");
@@ -56,7 +89,24 @@ function main(): void {
     for (const error of errors) console.error(error);
     process.exit(1);
   }
-  console.log(`PR body contract passed for head ${sha}`);
+  const repository = event.repository?.full_name;
+  if (!repository) {
+    console.error("pull request event is missing repository identity");
+    process.exit(2);
+  }
+  const references = closingReferences(body ?? "", repository);
+  const linkageErrors = await validateIssueLinkage(references, repository, async (repo, number) => {
+    const response = await fetch(`https://api.github.com/repos/${repo}/issues/${number}`, {
+      headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, "X-GitHub-Api-Version": "2022-11-28" },
+    });
+    if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+    return await response.json() as IssueRecord;
+  });
+  if (linkageErrors.length) {
+    for (const error of linkageErrors) console.error(error);
+    process.exit(1);
+  }
+  console.log(`PR body and issue linkage passed for head ${sha}`);
 }
 
 if (import.meta.main) {
