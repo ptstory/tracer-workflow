@@ -33,8 +33,9 @@ describe("PR body validation", () => {
     expect(validatePrBody(valid.replace("Closes #160", "Fixes #160"), sha)).toEqual([]);
   });
 
-  test("rejects a missing closing reference", () => {
-    expect(validatePrBody(valid.replace("Closes #160", "Related to #160"), sha)).toContain("missing Fixes/Closes/Resolves issue reference");
+  test("rejects a missing reference and accepts a non-closing draft reference", () => {
+    expect(validatePrBody(valid.replace("Closes #160", "Related to #160"), sha)).toContain("missing Fixes/Closes/Resolves issue reference or standalone Refs #N for a partial draft");
+    expect(validatePrBody(valid.replace("Closes #160", "Refs #160"), sha)).toEqual([]);
   });
 
   test("ignores quoted and fenced closing references", () => {

@@ -4,7 +4,7 @@ const sections = ["Summary", "Evidence", "Merge Danger", "Docs"] as const;
 
 type PullRequestEvent = {
   repository?: { full_name?: string };
-  pull_request?: { body?: string | null; head?: { sha?: string } };
+  pull_request?: { body?: string | null; draft?: boolean; head?: { sha?: string } };
 };
 
 type IssueRecord = { state?: string; pull_request?: unknown };
@@ -41,8 +41,8 @@ export function closingReferences(body: string, repository: string): Array<{ num
 
 export function validatePrBody(body: string, headSha: string): string[] {
   const errors: string[] = [];
-  if (closingReferences(body, "ptstory/tracer-workflow").length === 0) {
-    errors.push("missing Fixes/Closes/Resolves issue reference");
+  if (closingReferences(body, "ptstory/tracer-workflow").length === 0 && !/^Refs\s+(?:[\w.-]+\/[\w.-]+)?#\d+\s*$/im.test(body)) {
+    errors.push("missing Fixes/Closes/Resolves issue reference or standalone Refs #N for a partial draft");
   }
 
   const headings = [...body.matchAll(/^## (Summary|Evidence|Merge Danger|Docs)\s*$/gm)];
