@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { closingReferences, validateIssueLinkage, validatePrBody } from "./check-pr-body";
+import { closingReferences, validateIssueLinkage, validatePrBody, validatePullRequestEvent } from "./check-pr-body";
 
 const sha = "a".repeat(40);
 const valid = `Closes #160
@@ -40,6 +40,12 @@ describe("PR body validation", () => {
 
   test("ignores quoted and fenced closing references", () => {
     expect(closingReferences(["> Closes #1", "", "```", "Closes #2", "```", "Closes #3"].join("\n"), "ptstory/tracer-workflow")).toEqual([{ number: 3, repository: "ptstory/tracer-workflow" }]);
+  });
+
+  test("permits a Refs reference only for a draft PR", async () => {
+    const baseEvent = { repository: { full_name: "ptstory/tracer-workflow" }, pull_request: { body: valid.replace("Closes #160", "Refs #210"), draft: true, head: { sha } } };
+    expect(await validatePullRequestEvent(baseEvent, async () => { throw new Error("lookup should not be needed"); })).toEqual([]);
+    expect(await validatePullRequestEvent({ ...baseEvent, pull_request: { ...baseEvent.pull_request, draft: false } }, async () => ({ state: "open" }))).toContain("expected exactly one closing reference, found 0");
   });
 
   test("validates one open same-repository issue and fails closed", async () => {

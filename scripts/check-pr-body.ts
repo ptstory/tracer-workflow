@@ -65,6 +65,19 @@ export function validatePrBody(body: string, headSha: string): string[] {
   return errors;
 }
 
+export async function validatePullRequestEvent(event: PullRequestEvent, fetchIssue: (repository: string, number: number) => Promise<IssueRecord>): Promise<string[]> {
+  const body = event.pull_request?.body ?? "";
+  const sha = event.pull_request?.head?.sha;
+  if (typeof sha !== "string" || !/^[0-9a-f]{40}$/i.test(sha)) return ["pull request event is missing a valid head SHA"];
+  const errors = validatePrBody(body, sha);
+  if (errors.length) return errors;
+  const repository = event.repository?.full_name;
+  if (!repository) return ["pull request event is missing repository identity"];
+  const references = closingReferences(body, repository);
+  if (event.pull_request?.draft === true && references.length === 0 && /^Refs\s+(?:[\w.-]+\/[\w.-]+)?#\d+\s*$/im.test(body)) return [];
+  return await validateIssueLinkage(references, repository, fetchIssue);
+}
+
 async function main(): Promise<void> {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) {
@@ -84,18 +97,7 @@ async function main(): Promise<void> {
     console.error("pull request event is missing a valid body or head SHA");
     process.exit(2);
   }
-  const errors = validatePrBody(body ?? "", sha);
-  if (errors.length) {
-    for (const error of errors) console.error(error);
-    process.exit(1);
-  }
-  const repository = event.repository?.full_name;
-  if (!repository) {
-    console.error("pull request event is missing repository identity");
-    process.exit(2);
-  }
-  const references = closingReferences(body ?? "", repository);
-  const linkageErrors = await validateIssueLinkage(references, repository, async (repo, number) => {
+  const linkageErrors = await validatePullRequestEvent(event, async (repo, number) => {
     const response = await fetch(`https://api.github.com/repos/${repo}/issues/${number}`, {
       headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, "X-GitHub-Api-Version": "2022-11-28" },
     });
