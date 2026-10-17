@@ -49,6 +49,7 @@ against actual check-run state, and hand back.
   is within this skill's own steps, perform that step instead of reporting it as
   blocked. If an external prerequisite cannot be satisfied, report the exact
   blocker without claiming the pass is complete.
+- Invoking this skill authorizes committing and pushing to the PR's existing head branch. Never ask the user for push authorization and never use the question tool to confirm a push. Force-push, pushing to any other branch, and merging still require explicit user instruction.
 
 ## Steps
 
