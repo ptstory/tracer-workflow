@@ -71,10 +71,10 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 - next eligible ready-for-agent issue
 ```
 
-## blocked (draft PR with green checks)
+## merge-candidate (clean draft PR with green checks)
 
 ```verdict
-## review-gate: blocked
+## review-gate: merge-candidate
 
 head-sha: 0123456789abcdef0123456789abcdef01234567
 review-round: 0
@@ -90,15 +90,16 @@ next-action: gh pr ready 123
 
 ### Merge preconditions
 - head is still 0123456789abcdef0123456789abcdef01234567
-- checks satisfy the current-head readiness path, but the PR is draft
-- a human marks the PR ready and requests a fresh verdict before merging
+- checks satisfy the current-head readiness path
+- PR is draft; this is informational, and GitHub's native draft lock blocks merge until ready
+- marking ready without a head change requires no fresh verdict
 
 ### Post-merge
 - confirm Closes #123 closed the issue
 - next eligible ready-for-agent issue
 ```
 
-## needs-fix
+## needs-fix (draft PR with fix-now finding)
 
 ```verdict
 ## review-gate: needs-fix
@@ -118,10 +119,37 @@ rebaseline: yes
 
 ### Merge preconditions
 - head is still 89abcdef0123456789abcdef0123456789abcdef
+- PR is draft; draft status does not override this needs-fix verdict
 - fix-now findings resolved
 
 ### Post-merge
 - confirm Closes #456 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## needs-fix (draft PR with PR-body contract violation)
+
+```verdict
+## review-gate: needs-fix
+
+head-sha: 1023456789abcdef0123456789abcdef01234567
+review-round: 0
+reviewed-files: 3
+blocking-set: .github/PULL_REQUEST_TEMPLATE.md
+next-action: from-pr-review https://github.com/ptstory/tracer-workflow/pull/124
+
+### Standards
+- No blocking findings.
+
+### Spec
+- [medium] [fix-now] PR body — missing required Docs explanation violates the PR-body contract.
+
+### Merge preconditions
+- head is still 1023456789abcdef0123456789abcdef01234567
+- fix-now PR-body contract violation resolved
+
+### Post-merge
+- confirm Closes #123 closed the issue
 - next eligible ready-for-agent issue
 ```
 
