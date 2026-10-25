@@ -41,6 +41,15 @@ artifact is the execution input.
 - Resume the existing issue/worktree if it already exists.
 - Treat a validated issue brief, pasted implementation handoff, or pasted
   durable agent brief as valid execution input; do not require chat memory.
+- For GitHub issues, load the body and comments with `gh issue view <n> --comments`.
+  Treat an `## Agent Brief` comment as the durable brief when present, and apply
+  later owner decision comments to it. The issue body may itself serve as the
+  brief when it contains the complete execution contract; do not block for a
+  missing `Agent Brief` heading.
+- A reference to another open or HITL issue is not a blocker when the brief
+  provides a default, marks the decision out of scope, or a later owner comment
+  records the decision. A genuinely missing required decision with no default
+  may block execution.
 - Once action-ready input is accepted, any nested `using-superpowers`,
   brainstorming, or planning step is a subordinate subroutine and must return
   control to execution.
@@ -49,6 +58,10 @@ artifact is the execution input.
   absent from the issue or brief.
 - Multi-file scope, UI impact, a desire for planning, or a nested skill's
   default approval checkpoint are not blockers by themselves.
+- Missing dependencies, generated files, local services, or web-fetch 404s on
+  private repositories are recoverable environment gaps, not blockers. Run the
+  documented repository setup and repair the local environment before considering
+  a blocker.
 - A handoff-only result is allowed only for genuine blockers or verified failures that cannot be recovered in the current worktree.
 - Do not emit another implementation handoff for the same issue; update or
   resume the existing stage instead.
@@ -68,18 +81,22 @@ artifact is the execution input.
 3. Inspect checkout/worktree cleanliness and classify any dirtiness explicitly.
 4. If the primary checkout is dirty and isolation is required, create or reuse
    the dedicated issue branch/worktree and continue execution there.
-5. Implement the smallest safe slice.
-6. Verify locally.
-7. In the PR body's Evidence section, copy the SHA from the brief's
+5. Run repository-documented setup before implementation: dependency installation
+   and any applicable local-service, migration, or browser setup documented in
+   `AGENTS.md`, `README.md`, or `.agents/repo-context.md`. Repair missing local
+   prerequisites rather than treating them as blockers.
+6. Implement the smallest safe slice.
+7. Verify locally.
+8. In the PR body's Evidence section, copy the SHA from the brief's
    `written-against` line into `Brief written against`, or use `none recorded`
    if the brief has no recorded SHA. If a SHA is recorded, compare the files
    named in the brief against the live default branch since that SHA and list
    any that changed there under Evidence; do not treat this as a parser or
    automatic blocker. If none changed, state that explicitly.
-8. Commit, push, open or update the PR, and include the evidence bundle. Stop
+9. Commit, push, open or update the PR, and include the evidence bundle. Stop
    there; review, check-run, and merge remain downstream.
    Use `references/pr-body-contract.md` when creating or updating the PR body.
-9. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the failure, and the next required recovery contract.
+10. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the recovery attempted, why it failed, and the next required recovery contract.
 
 ## Do not
 
