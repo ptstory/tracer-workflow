@@ -87,14 +87,13 @@ Rules:
   - `needs-fix`: `next-action: from-pr-review <PR_URL>` (start a new fixer
     session for this round, not the session that implemented the PR).
   - `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
-    (only for a non-draft PR; a human runs this after rechecking the current
-    head and check-run gate).
-  - `blocked`: `next-action: gh pr ready N` for a draft PR that otherwise meets
-    merge-candidate criteria (human-run; request a fresh review-gate verdict
-    after marking ready, before merging). Use `next-action: gh pr checks N` when
-    waiting for current-head checks; for another blocker, use one exact command
-    that obtains the missing evidence or repairs the blocker, not a merge or fix
-    invocation.
+    for a human to run after rechecking the current head and check-run gate. If
+    draft, record draft status in the Review Record and use
+    `next-action: gh pr ready N`; marking ready at the same SHA requires no fresh
+    verdict because GitHub's native draft lock blocks merging until then.
+  - `blocked`: use `next-action: gh pr checks N` when waiting for current-head
+    checks; for another blocker, use one exact command that obtains the missing
+    evidence or repairs the blocker, not a merge or fix invocation.
   - `needs-human`: `next-action: gh pr view N --web` for a human to inspect
     and decide the named policy, scope, or circuit-breaker question; never
     launch an automated fix pass.
@@ -150,11 +149,14 @@ Rules:
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head
     exercises the changed paths. This applies when `protected: false` and exact plan-unavailable evidence is obtained from either rules endpoint.
-- If neither path is satisfied, or there is no current-head evidence, emit
-  `blocked` rather than green.
-- If the PR is draft, emit `blocked` even when checks satisfy a readiness path.
-  Name draft status as the blocker and direct a human to mark it ready; after
-  that transition, require a fresh verdict on the current head before merging.
+- Apply verdict precedence: if review cannot credibly be completed, emit
+  `blocked`; otherwise, any `fix-now` finding, including a PR-body contract
+  violation, yields `needs-fix` regardless of draft status or readiness evidence;
+  otherwise, a clean review with either readiness path satisfied yields
+  `merge-candidate`, whether draft or ready. Record draft status informationally
+  in the Review Record and use `gh pr ready N` as next action when draft. Marking
+  ready without changing the head SHA does not require a fresh verdict. If
+  readiness is not met or current-head evidence is absent, emit `blocked`.
 - Older-head results never count.
 - A PR with `Door: one-way` cannot receive a ready (`merge-candidate`) verdict and routes to `needs-human`; the Evidence section is only a pointer to verify, never evidence itself.
 - Use `skills/from-issue/references/pr-body-contract.md` for the PR body contract.

@@ -56,13 +56,12 @@ references and the reviewed SHA substituted:
 - `needs-fix`: `next-action: from-pr-review <PR_URL>` in a new fixer session
   for this round, never the implementing session.
 - `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
-  only for a non-draft PR, for a human to run after confirming current-head
-  checks and authority.
-- `blocked`: `next-action: gh pr ready N` for a draft PR that otherwise meets
-  merge-candidate criteria. A human runs it, then requests a fresh review-gate
-  verdict on the current head before merging. Use `next-action: gh pr checks N`
-  if current-head checks are pending; otherwise use one exact command to
-  inspect or resolve the named blocker.
+  for a human to run after confirming current-head checks and authority. If the
+  PR is draft, use `next-action: gh pr ready N`; GitHub's native draft lock
+  prevents merging until it is marked ready.
+- `blocked`: use `next-action: gh pr checks N` if current-head checks are
+  pending; otherwise use one exact command to inspect or resolve the named
+  blocker.
 - `needs-human`: `next-action: gh pr view N --web` so a human can make the
   named decision. Never send an automated fixer to this state.
 
@@ -210,11 +209,15 @@ configuration.
   and at least one applicable required check exercises the changed paths.
 - No-required-check path: at least one green CI/check run on the current head
   exercises the changed paths.
-- If neither path is satisfied, or there is no current-head evidence, the verdict
-  is `blocked`.
-- A draft PR is `blocked` even if its checks satisfy a readiness path. Name
-  draft status as the blocker; a human marks it ready and requests a fresh
-  verdict on the current head before merging.
+- If review cannot credibly be completed, emit `blocked`.
+- If any `fix-now` finding remains, including a PR-body contract violation, emit
+  `needs-fix`, regardless of draft status or readiness evidence.
+- If the review is clean and either readiness path is satisfied, emit
+  `merge-candidate`. Record draft status as informational in the Review Record;
+  use `gh pr ready N` as next action when draft. Marking the PR ready without
+  changing its head SHA does not require a fresh verdict.
+- Otherwise, including when neither readiness path is satisfied or there is no
+  current-head evidence, emit `blocked` rather than green.
 - Older-head results never count.
 - Branch protection is not required. `getBranch protected: false` is sufficient evidence that no classic required checks exist; `/protection` is not required, and its 403 is not a readiness blocker when `protected: false`. Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`. Try `rules/branches/{branch}` first; when the calling surface rejects it before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`. HTTP 403 with the exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` from either endpoint, with no classic required checks, uses the no-required-check path and records `plan-unavailable`; name the successful evidence call next to the path. Captured bodies: 2026-10-08 rules-for-branch, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}`; 2026-10-10 get-all-repository-rulesets on a private repo under GitHub Free, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-all-repository-rulesets","status":"403"}`. Any other status or message, including HTTP 400 except the described pre-GitHub endpoint rejection, or both rules calls unreachable, is `rules-unverifiable`: record `indeterminate`, name each call and status, and preserve every fix-now file in `blocking-set`. Record `available` when usable configuration is obtained.
 - Merge remains HITL.
@@ -225,8 +228,9 @@ added coverage is an evidence inconsistency and must be reported as `blocked`.
 
 ## What the reader does per state
 
-- `merge-candidate` + SHA current + non-draft PR → eligible to merge; human
-  still owns the button for HITL.
+- `merge-candidate` + SHA current → eligible to merge once the PR is ready;
+  GitHub's native draft lock blocks merge while draft, and human still owns the
+  button for HITL.
 - `needs-fix` + SHA current → run the fix pass on `fix-now` findings via
   `skills/from-pr-review/references/disposition-rules.md`; any push invalidates this verdict and requires a
   fresh review.

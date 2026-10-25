@@ -117,14 +117,22 @@ describe("verdict examples", () => {
   const blocks = extractVerdictBlocks(verdictExamples);
   const mergeCandidateBlocks = blocks.filter((block) => /^## review-gate:\s*merge-candidate\s*$/m.test(block));
 
-  test("contains seven conforming verdict blocks", () => {
-    expect(blocks).toHaveLength(7);
+  test("contains eight conforming verdict blocks", () => {
+    expect(blocks).toHaveLength(8);
   });
 
-  test("includes a draft-safe blocked verdict", () => {
-    const draftBlock = blocks.find((block) => block.includes("next-action: gh pr ready 123"));
-    expect(draftBlock).toBeDefined();
-    expect(parseGateBody(draftBlock ?? "")?.verdict).toBe("blocked");
+  test("includes a clean draft merge-candidate and draft needs-fix examples", () => {
+    const draftMergeCandidate = blocks.find((block) => block.includes("next-action: gh pr ready 123"));
+    expect(draftMergeCandidate).toBeDefined();
+    expect(parseGateBody(draftMergeCandidate ?? "")?.verdict).toBe("merge-candidate");
+
+    const draftNeedsFix = blocks.find((block) => block.includes("PR is draft; draft status does not override this needs-fix verdict"));
+    expect(draftNeedsFix).toBeDefined();
+    expect(parseGateBody(draftNeedsFix ?? "")?.verdict).toBe("needs-fix");
+
+    const bodyViolation = blocks.find((block) => block.includes("fix-now PR-body contract violation resolved"));
+    expect(bodyViolation).toBeDefined();
+    expect(parseGateBody(bodyViolation ?? "")?.verdict).toBe("needs-fix");
   });
 
   test("documents round continuity from a legacy verdict to the current writer schema", () => {
@@ -139,7 +147,7 @@ describe("verdict examples", () => {
   });
 
   test("includes both merge-candidate examples and they parse", () => {
-    expect(mergeCandidateBlocks).toHaveLength(2);
+    expect(mergeCandidateBlocks).toHaveLength(3);
 
     expect(
       mergeCandidateBlocks.map((block) => {
@@ -148,7 +156,7 @@ describe("verdict examples", () => {
         expect(parsed.verdict).toBe("merge-candidate");
         return parsed.reviewRound;
       }),
-    ).toEqual([0, 1]);
+    ).toEqual([0, 1, 0]);
   });
 
   for (const [index, block] of blocks.entries()) {
