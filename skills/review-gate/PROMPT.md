@@ -27,25 +27,26 @@ Do this:
 1. Resolve the PR's current head SHA. Every verdict you post is tied to this SHA.
 2. Get the actual changed-file list from the PR (the GitHub connector's file list,
    NOT the PR body's prose list — the body is often stale after rebase).
-3. If this is round `0`, run a full review with two independent axes —
+3. Before reviewing scope, derive the governing issue from the PR's sole real closing keyword (`Closes`, `Fixes`, or `Resolves`), then verify through GitHub that it is an existing, open issue in this repository and not a pull request. Ignore quoted/code-fenced examples. Multiple or foreign-repository closing targets are a structural failure. Read the live issue body and durable brief, then compare every binding acceptance criterion with the actual diff and changed files. Record unmet criteria and affected files under `### Spec`; use `needs-fix` for repairable gaps, `needs-human` for authority/contract conflicts, and `blocked` when API evidence is unavailable. A syntactic link alone never establishes scope.
+4. If this is round `0`, run a full review with two independent axes —
    Standards and Spec — preserving each axis's own order, without reranking or
    merging findings across axes. Within those axes, cover severity-tagged
    findings, a security pass where the diff touches
    auth/input/endpoints/secrets/crypto/infra, spec alignment against the
    issue's acceptance criteria, and coverage gaps.
-4. If this is round `N > 0`, treat the labeled prior blocking set and labeled
+5. If this is round `N > 0`, treat the labeled prior blocking set and labeled
    diff as the primary review material. You may consult the full tree only to
    verify a finding derived from those labeled inputs, never to discover a new
    finding outside them. Within that constraint, review regressions introduced
    by the labeled diff and anything in the binding contract that the labeled
    diff newly violates.
-5. If this is round `N > 0`, compare the current evidence bundle against the
+6. If this is round `N > 0`, compare the current evidence bundle against the
    prior round's evidence bundle. If the test count is unchanged while the new
    bundle claims added coverage, emit `blocked` and name the evidence
    inconsistency.
-6. Classify findings only with the contract dispositions: `fix-now`,
+7. Classify findings only with the contract dispositions: `fix-now`,
    `follow-up-issue`, `defer`, `reject`, `needs-human`.
-7. Post the result as a PR comment in the exact format below. Do not attempt a
+8. Post the result as a PR comment in the exact format below. Do not attempt a
    formal REQUEST_CHANGES review — GitHub blocks that on self-authored PRs; the
    verdict lives in the comment body.
 
@@ -77,6 +78,7 @@ rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 ```
 
 Rules:
+- An issue may be auto-closed only when the complete binding scope is satisfied; never close a parent/epic for a partial slice. Exceptions require independently verified authorization and diff-matched category/evidence; author assertion or filenames alone never exempt a substantive PR. If trusted verification is missing or inaccessible, do not issue `merge-candidate`.
 - The `head-sha`, `review-round`, `reviewed-files`, `blocking-set`, and
   `next-action` lines are mandatory. Emit them exactly in that parser shape.
 - Emit `blocking-set:` on every verdict. For `blocked` or `needs-fix`, list the repo-relative files of every `fix-now` finding, preserving all code findings. It is empty only when there are no `fix-now` findings.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { validatePrBody } from "./check-pr-body";
+import { closingReferences, validateIssueLinkage, validatePrBody, validatePullRequestEvent } from "./check-pr-body";
 
 const sha = "a".repeat(40);
 const valid = `Closes #160
@@ -33,8 +33,28 @@ describe("PR body validation", () => {
     expect(validatePrBody(valid.replace("Closes #160", "Fixes #160"), sha)).toEqual([]);
   });
 
-  test("rejects a missing closing reference", () => {
-    expect(validatePrBody(valid.replace("Closes #160", "Related to #160"), sha)).toContain("missing Fixes/Closes/Resolves issue reference");
+  test("rejects a missing reference and accepts a non-closing draft reference", () => {
+    expect(validatePrBody(valid.replace("Closes #160", "Related to #160"), sha)).toContain("missing Fixes/Closes/Resolves issue reference or standalone Refs #N for a partial draft");
+    expect(validatePrBody(valid.replace("Closes #160", "Refs #160"), sha)).toEqual([]);
+  });
+
+  test("ignores quoted and fenced closing references", () => {
+    expect(closingReferences(["> Closes #1", "", "```", "Closes #2", "```", "Closes #3"].join("\n"), "ptstory/tracer-workflow")).toEqual([{ number: 3, repository: "ptstory/tracer-workflow" }]);
+  });
+
+  test("permits a Refs reference only for a draft PR", async () => {
+    const baseEvent = { repository: { full_name: "ptstory/tracer-workflow" }, pull_request: { body: valid.replace("Closes #160", "Refs #210"), draft: true, head: { sha } } };
+    expect(await validatePullRequestEvent(baseEvent, async () => { throw new Error("lookup should not be needed"); })).toEqual([]);
+    expect(await validatePullRequestEvent({ ...baseEvent, pull_request: { ...baseEvent.pull_request, draft: false } }, async () => ({ state: "open" }))).toContain("expected exactly one closing reference, found 0");
+  });
+
+  test("validates one open same-repository issue and fails closed", async () => {
+    const lookup = async () => ({ state: "open" });
+    expect(await validateIssueLinkage([{ number: 160, repository: "ptstory/tracer-workflow" }], "ptstory/tracer-workflow", lookup)).toEqual([]);
+    expect(await validateIssueLinkage([], "ptstory/tracer-workflow", lookup)).toHaveLength(1);
+    expect(await validateIssueLinkage([{ number: 1, repository: "attacker/repo" }], "ptstory/tracer-workflow", lookup)).toHaveLength(1);
+    expect(await validateIssueLinkage([{ number: 1, repository: "ptstory/tracer-workflow" }], "ptstory/tracer-workflow", async () => ({ state: "closed" }))).toHaveLength(1);
+    expect(await validateIssueLinkage([{ number: 1, repository: "ptstory/tracer-workflow" }], "ptstory/tracer-workflow", async () => { throw new Error("403"); })).toContain("issue lookup for ptstory/tracer-workflow#1 is unverifiable: 403");
   });
 
   test("rejects each missing section, not mentions in prose", () => {
