@@ -40,9 +40,12 @@ Do this:
    by the labeled diff and anything in the binding contract that the labeled
    diff newly violates.
 5. If this is round `N > 0`, compare the current evidence bundle against the
-   prior round's evidence bundle. If the test count is unchanged while the new
-   bundle claims added coverage, emit `blocked` and name the evidence
-   inconsistency.
+   prior round's evidence bundle. When added coverage is claimed, locate the new
+   or changed assertions in the diff since the previously reviewed SHA that
+   exercise the claimed behavior. If they exist and ran green in current-head
+   evidence, record an unchanged test count as a note, not a blocker. Emit
+   `blocked` for evidence inconsistency only when the claimed coverage cannot
+   be located in that diff or did not run at the current head.
 6. Classify findings only with the contract dispositions: `fix-now`,
    `follow-up-issue`, `defer`, `reject`, `needs-human`.
 7. Post the result as a PR comment in the exact format below. Do not attempt a
