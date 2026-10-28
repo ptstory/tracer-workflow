@@ -47,6 +47,14 @@ Acceptance criteria
 - Enter execution when safe.
 `;
 
+export const issueBodyWithoutFilesOrVerification = `## Goal
+Accept ready-for-agent issue bodies as execution input.
+
+## Acceptance criteria
+- Derive files from the repository.
+- Derive verification from repository guidance and required checks.
+`;
+
 export const regressionCases: RegressionCase[] = [
   {
     id: 1,
@@ -220,6 +228,26 @@ export const regressionCases: RegressionCase[] = [
         mustContain: [
           "an ordinary `approve this direction` / design-approval checkpoint does not end the run unless it explicitly names a concrete unresolved blocker that is absent from the issue or brief",
           "explicit durable blocker naming the exact missing prerequisite or decision",
+        ],
+      },
+    ],
+  },
+  {
+    id: 10,
+    name: "ready-for-agent issue body without Files or Verification is execution input",
+    input: {
+      summary: "A ready-for-agent issue has explicit Goal and Acceptance criteria but no Files or Verification sections.",
+      pastedArtifact: issueBodyWithoutFilesOrVerification,
+    },
+    skillMatches: [
+      {
+        heading: "Inputs",
+        mustContain: [
+          "a `ready-for-agent` github issue body with explicit `goal` and `acceptance criteria` is valid execution input on its own",
+          "derive files from the repository",
+          "derive verification from repository `agents.md` / `readme` / ci required checks",
+          "block only when the goal or acceptance criteria are missing, contradictory, or depend on an undecided product choice",
+          "name the exact missing item in the blocker",
         ],
       },
     ],
