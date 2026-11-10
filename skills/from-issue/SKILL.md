@@ -18,6 +18,7 @@ artifact is the execution input.
 ## Inputs
 
 - A GitHub issue URL or number plus its durable `ready-for-agent` brief.
+- A `ready-for-agent` GitHub issue body with explicit `Goal` and `Acceptance criteria` is valid execution input on its own, even when it has no `Files` or `Verification` sections. Derive files from the repository, and derive verification from repository `AGENTS.md` / `README` / CI required checks. Block only when the goal or acceptance criteria are missing, contradictory, or depend on an undecided product choice; name the exact missing item in the blocker.
 - A validated complete pasted implementation handoff for that issue.
 - A validated pasted durable agent brief.
 - Validate a pasted handoff by matching a bounded shape such as `Issue #N

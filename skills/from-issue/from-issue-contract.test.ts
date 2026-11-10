@@ -45,6 +45,17 @@ function recognizePastedHandoff(text: string): boolean {
     && requiredSections.every((section) => new RegExp(`^${section}$`, "im").test(text));
 }
 
+function acceptsReadyIssueBody(text: string): boolean {
+  const sections = text.split(/\r?\n/).map((line) => line.trim().toLowerCase());
+  const issueBodyHeadings = sections.filter((section) => section.startsWith("## "));
+
+  return issueBodyHeadings.includes("## goal")
+    && issueBodyHeadings.includes("## acceptance criteria")
+    && !issueBodyHeadings.includes("## files")
+    && !issueBodyHeadings.includes("## verification")
+    && !/^Issue\s+#\d+\s+handoff/im.test(text);
+}
+
 function assertRegressionCase(regressionCase: RegressionCase): void {
   if (
     regressionCase.input.pastedArtifact !== undefined
@@ -52,6 +63,15 @@ function assertRegressionCase(regressionCase: RegressionCase): void {
   ) {
     expect(recognizePastedHandoff(regressionCase.input.pastedArtifact)).toBe(
       regressionCase.input.shouldRecognizePastedArtifact,
+    );
+  }
+
+  if (
+    regressionCase.input.issueBody !== undefined
+    && regressionCase.input.shouldAcceptIssueBody !== undefined
+  ) {
+    expect(acceptsReadyIssueBody(regressionCase.input.issueBody)).toBe(
+      regressionCase.input.shouldAcceptIssueBody,
     );
   }
 
@@ -72,8 +92,8 @@ describe("from-issue contract", () => {
     expect(recognizePastedHandoff(incompleteHandoff)).toBe(false);
   });
 
-  test("covers all nine issue #20 regression cases", () => {
-    expect(regressionCases).toHaveLength(9);
+  test("covers all nine issue #20 regression cases and the issue-body acceptance case", () => {
+    expect(regressionCases).toHaveLength(10);
   });
 
   test("regression case 1 asserts the execution transition into the documented Steps", () => {
