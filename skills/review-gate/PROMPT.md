@@ -40,12 +40,16 @@ Do this:
    by the labeled diff and anything in the binding contract that the labeled
    diff newly violates.
 5. If this is round `N > 0`, compare the current evidence bundle against the
-   prior round's evidence bundle. When added coverage is claimed, locate the new
-   or changed assertions in the diff since the previously reviewed SHA that
-   exercise the claimed behavior. If they exist and ran green in current-head
-   evidence, record an unchanged test count as a note, not a blocker. Emit
-   `blocked` for evidence inconsistency only when the claimed coverage cannot
-   be located in that diff or did not run at the current head.
+   prior round's evidence bundle. For any claim of added or changed coverage,
+   require new or modified test node IDs in the diff since the previously
+   reviewed SHA, and verify those exact IDs are present in runner-generated
+   output showing they passed at the current head. A changed test ID with a
+   green current-head result is consistent even when the aggregate test count is
+   unchanged, including when an invalid test was replaced. If a coverage claim
+   lacks matching changed test IDs or current-head green runner output, emit it
+   as a `fix-now` finding under `needs-fix`, not `blocked`. Reserve `blocked`
+   for missing or incomplete current-head CI/readiness evidence needed to
+   determine the check-run gate.
 6. Classify findings only with the contract dispositions: `fix-now`,
    `follow-up-issue`, `defer`, `reject`, `needs-human`.
 7. Post the result as a PR comment in the exact format below. Do not attempt a

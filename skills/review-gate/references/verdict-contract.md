@@ -219,7 +219,7 @@ configuration.
 - Branch protection is not required. `getBranch protected: false` is sufficient evidence that no classic required checks exist; `/protection` is not required, and its 403 is not a readiness blocker when `protected: false`. Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`. Try `rules/branches/{branch}` first; when the calling surface rejects it before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`. HTTP 403 with the exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` from either endpoint, with no classic required checks, uses the no-required-check path and records `plan-unavailable`; name the successful evidence call next to the path. Captured bodies: 2026-10-08 rules-for-branch, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}`; 2026-10-10 get-all-repository-rulesets on a private repo under GitHub Free, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-all-repository-rulesets","status":"403"}`. Any other status or message, including HTTP 400 except the described pre-GitHub endpoint rejection, or both rules calls unreachable, is `rules-unverifiable`: record `indeterminate`, name each call and status, and preserve every fix-now file in `blocking-set`. Record `available` when usable configuration is obtained.
 - Merge remains HITL.
 
-On round `N > 0`, the reviewer compares the current evidence bundle against the prior round's. When added coverage is claimed, the reviewer locates the new or changed assertions in the diff since the previously reviewed SHA that exercise the claimed behavior. If they exist and ran green in current-head evidence, an unchanged test count is recorded as a note, not a blocker. The verdict is `blocked` for evidence inconsistency only when the claimed coverage cannot be located in that diff, or did not run at the current head.
+On round `N > 0`, compare the current evidence bundle with the prior round's bundle. For any claim of added or changed coverage, require new or modified test node IDs in the diff since the previously reviewed SHA, and verify those exact IDs are present in runner-generated output showing they passed at the current head. A changed test ID with a green current-head result is consistent even when the aggregate test count is unchanged; this includes replacing an invalid test with a valid one. A claim that lacks matching changed test IDs or current-head green runner output is an evidence inconsistency: report it as a `fix-now` finding under `needs-fix`, not `blocked`. Reserve `blocked` for missing or incomplete current-head CI/readiness evidence needed to determine the check-run gate.
 
 ## What the reader does per state
 
@@ -229,8 +229,9 @@ On round `N > 0`, the reviewer compares the current evidence bundle against the 
   `skills/from-pr-review/references/disposition-rules.md`; any push invalidates this verdict and requires a
   fresh review.
 - `needs-human` → stop. No automatic fix pass may be launched, at any SHA.
-- `blocked` → stop, surface the blocker (for example parse failure,
-  required-check coverage gap, or evidence inconsistency).
+- `blocked` → stop, surface the blocker (for example parse failure or
+  required-check coverage gap). Evidence inconsistencies are `fix-now` findings
+  under `needs-fix`, not `blocked`.
 - SHA stale (any state) → do nothing; wait for a verdict on current head.
 
 `needs-human` is a hard stop for automated actors.
