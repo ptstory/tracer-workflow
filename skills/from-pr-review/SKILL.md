@@ -101,8 +101,11 @@ against actual check-run state, and hand back.
    each change traceable to its ledger row (which thread it answers).
 
 7. **Verify locally.** Run the repo's test/build/lint commands. Capture exact
-   command + output for the evidence bundle. This is evidence, not a readiness
-   claim — see step 9.
+   command + output for the evidence bundle. Generate test counts and test node
+   IDs mechanically from machine-readable runner output, not by manually
+   enumerating tests or inferring results. List only runner-reported IDs
+   exercising changed paths; do not make coverage claims in prose. This is
+   evidence, not a readiness claim — see step 9.
 
 8. **Commit and push.** One commit per coherent group, message referencing the
    thread(s) it resolves. Push to the same head branch. Capture the **new** head
