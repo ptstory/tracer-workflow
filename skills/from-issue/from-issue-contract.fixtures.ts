@@ -5,6 +5,8 @@ export type RegressionCase = {
     summary: string;
     pastedArtifact?: string;
     shouldRecognizePastedArtifact?: boolean;
+    issueBody?: string;
+    shouldAcceptIssueBody?: boolean;
   };
   skillMatches: Array<{
     heading: "Inputs" | "Dirty checkout" | "Contract" | "Steps" | "Do not";
@@ -237,7 +239,8 @@ export const regressionCases: RegressionCase[] = [
     name: "ready-for-agent issue body without Files or Verification is execution input",
     input: {
       summary: "A ready-for-agent issue has explicit Goal and Acceptance criteria but no Files or Verification sections.",
-      pastedArtifact: issueBodyWithoutFilesOrVerification,
+      issueBody: issueBodyWithoutFilesOrVerification,
+      shouldAcceptIssueBody: true,
     },
     skillMatches: [
       {

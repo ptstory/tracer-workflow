@@ -45,6 +45,12 @@ function recognizePastedHandoff(text: string): boolean {
     && requiredSections.every((section) => new RegExp(`^${section}$`, "im").test(text));
 }
 
+function acceptsReadyIssueBody(text: string): boolean {
+  const sections = text.split(/\r?\n/).map((line) => line.trim().toLowerCase());
+
+  return sections.includes("## goal") && sections.includes("## acceptance criteria");
+}
+
 function assertRegressionCase(regressionCase: RegressionCase): void {
   if (
     regressionCase.input.pastedArtifact !== undefined
@@ -52,6 +58,15 @@ function assertRegressionCase(regressionCase: RegressionCase): void {
   ) {
     expect(recognizePastedHandoff(regressionCase.input.pastedArtifact)).toBe(
       regressionCase.input.shouldRecognizePastedArtifact,
+    );
+  }
+
+  if (
+    regressionCase.input.issueBody !== undefined
+    && regressionCase.input.shouldAcceptIssueBody !== undefined
+  ) {
+    expect(acceptsReadyIssueBody(regressionCase.input.issueBody)).toBe(
+      regressionCase.input.shouldAcceptIssueBody,
     );
   }
 
