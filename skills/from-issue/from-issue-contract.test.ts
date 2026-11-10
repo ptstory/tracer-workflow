@@ -47,8 +47,13 @@ function recognizePastedHandoff(text: string): boolean {
 
 function acceptsReadyIssueBody(text: string): boolean {
   const sections = text.split(/\r?\n/).map((line) => line.trim().toLowerCase());
+  const issueBodyHeadings = sections.filter((section) => section.startsWith("## "));
 
-  return sections.includes("## goal") && sections.includes("## acceptance criteria");
+  return issueBodyHeadings.includes("## goal")
+    && issueBodyHeadings.includes("## acceptance criteria")
+    && !issueBodyHeadings.includes("## files")
+    && !issueBodyHeadings.includes("## verification")
+    && !/^Issue\s+#\d+\s+handoff/im.test(text);
 }
 
 function assertRegressionCase(regressionCase: RegressionCase): void {
