@@ -86,13 +86,18 @@ artifact is the execution input.
    `AGENTS.md`, `README.md`, or `.agents/repo-context.md`. Repair missing local
    prerequisites rather than treating them as blockers.
 6. Implement the smallest safe slice.
-7. Verify locally.
+7. Verify locally. Obtain test counts and test node IDs from machine-readable
+   runner output (for example Vitest JSON reporter output or Playwright `--list`),
+   not by manually enumerating tests or inferring results. Include only runner-
+   reported IDs exercising changed paths; never write coverage claims in prose.
 8. In the PR body's Evidence section, copy the SHA from the brief's
    `written-against` line into `Brief written against`, or use `none recorded`
    if the brief has no recorded SHA. If a SHA is recorded, compare the files
    named in the brief against the live default branch since that SHA and list
    any that changed there under Evidence; do not treat this as a parser or
-   automatic blocker. If none changed, state that explicitly.
+   automatic blocker. If none changed, state that explicitly. Generate test
+   counts and node IDs mechanically from runner output; do not author coverage
+   claims in prose.
 9. Commit, push, open or update the PR, and include the evidence bundle. Stop
    there; review, check-run, and merge remain downstream.
    Use `references/pr-body-contract.md` when creating or updating the PR body.
