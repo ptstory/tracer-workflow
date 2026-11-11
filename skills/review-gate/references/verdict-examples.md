@@ -133,7 +133,7 @@ rebaseline: yes
 head-sha: 1023456789abcdef0123456789abcdef01234567
 review-round: 0
 reviewed-files: 3
-blocking-set:
+blocking-set: src/docs-example.md
 next-action: from-pr-review https://github.com/ptstory/tracer-workflow/pull/124
 
 ### Standards
@@ -200,6 +200,31 @@ next-action: from-pr-review https://github.com/ptstory/tracer-workflow/pull/789
 
 ### Post-merge
 - confirm Closes #789 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## blocked (stale head)
+
+```verdict
+## review-gate: blocked
+
+head-sha: 00112233445566778899aabbccddeeff00112233
+review-round: 0
+reviewed-files: 2
+blocking-set:
+next-action: gh pr checks 101
+
+### Standards
+- No blocking findings.
+
+### Spec
+- No blocking findings.
+
+### Merge preconditions
+- only older-head results exist; no current-head evidence counts
+
+### Post-merge
+- confirm Closes #101 closed the issue
 - next eligible ready-for-agent issue
 ```
 

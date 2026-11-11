@@ -117,8 +117,8 @@ describe("verdict examples", () => {
   const blocks = extractVerdictBlocks(verdictExamples);
   const mergeCandidateBlocks = blocks.filter((block) => /^## review-gate:\s*merge-candidate\s*$/m.test(block));
 
-  test("contains ten conforming verdict blocks", () => {
-    expect(blocks).toHaveLength(10);
+  test("contains eleven conforming verdict blocks", () => {
+    expect(blocks).toHaveLength(11);
   });
 
   test("covers verdict precedence for draft, human stops, and blockers", () => {
