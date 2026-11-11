@@ -72,8 +72,8 @@ describe("from-issue contract", () => {
     expect(recognizePastedHandoff(incompleteHandoff)).toBe(false);
   });
 
-  test("covers all nine issue #20 regression cases", () => {
-    expect(regressionCases).toHaveLength(9);
+  test("covers all fourteen issue #20 and #230 regression cases", () => {
+    expect(regressionCases).toHaveLength(14);
   });
 
   test("regression case 1 asserts the execution transition into the documented Steps", () => {
