@@ -127,7 +127,9 @@ Do not post interim comments. Publish at most the final canonical Review Record 
 
 ## Rules from PROMPT.md
 
-- A PR with `Door: one-way` cannot receive a ready (`merge-candidate`) verdict and routes to `needs-human`; the Evidence section is only a pointer to verify, never evidence itself.
+- Apply verdict precedence in order: review cannot be completed → `blocked`; explicit `needs-human` finding or circuit breaker → `needs-human`; any `fix-now` finding → `needs-fix`; otherwise clean `Door: one-way` → `needs-human`; clean with readiness satisfied → `merge-candidate`; otherwise `blocked`. A one-way designation alone does not prevent fixing ordinary findings; escalate once they are cleared. Explicit human-only findings and the circuit breaker take precedence over `fix-now`.
+- Draft status is informational. A clean draft meeting readiness is `merge-candidate`, with `gh pr ready N` as next action; changing draft status alone does not require another verdict at the same SHA.
+- The Evidence section is only a pointer to verify, never evidence itself.
 - Use `skills/from-issue/references/pr-body-contract.md` for the PR body contract. Judge whether the Docs line adequately lists updated documentation or explains why none was needed. If a PR changes behavior and the Docs line is missing or unjustified, emit a `fix-now` finding.
 - Determine the required status-check configuration from getBranch (protection.required_status_checks) and getRulesForBranch. If both show no required checks, apply the no-required-check path. If either call fails, emit `blocked` and name the failed call.
 

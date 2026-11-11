@@ -87,13 +87,13 @@ Rules:
   - `needs-fix`: `next-action: from-pr-review <PR_URL>` (start a new fixer
     session for this round, not the session that implemented the PR).
   - `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
-    for a human to run after rechecking the current head and check-run gate. If
-    draft, record draft status in the Review Record and use
-    `next-action: gh pr ready N`; marking ready at the same SHA requires no fresh
-    verdict because GitHub's native draft lock blocks merging until then.
+    (a human runs this after rechecking current-head checks and authority). For a
+    draft PR, use `next-action: gh pr ready N`; changing draft status alone does
+    not require another verdict at the same SHA.
   - `blocked`: use `next-action: gh pr checks N` when waiting for current-head
-    checks; for another blocker, use one exact command that obtains the missing
-    evidence or repairs the blocker, not a merge or fix invocation.
+    checks; for another blocker, use one exact command
+    that obtains the missing evidence or repairs the blocker, not a merge or fix
+    invocation.
   - `needs-human`: `next-action: gh pr view N --web` for a human to inspect
     and decide the named policy, scope, or circuit-breaker question; never
     launch an automated fix pass.
@@ -140,8 +140,9 @@ Rules:
   - a rerun on an unchanged head, or a merge/rebase whose diff touches none of
     those files, does not increment the breaker
   - after two corrective rounds, the next corrective review yields
-    `needs-human`; regressions stay `fix-now` and are named as the human's
-    blocking set, and everything else becomes `follow-up-issue`
+    `needs-human`; regressions stay `fix-now` and are reported as the human's
+    blocking concerns, and everything else becomes `follow-up-issue`. The
+    verdict's `blocking-set` remains empty for `needs-human`.
 - `merge-candidate` only if zero `fix-now` findings remain and the target branch's
   required status-check configuration satisfies one of these paths:
   Determine required checks from getBranch and rulesets. `getBranch protected: false` establishes there are no classic required checks; do not require `/protection`, and a 403 from that subresource is not a readiness blocker with `protected: false`. Otherwise use getBranch's classic protection.required_status_checks. Try `rules/branches/{branch}` first. If that call is rejected by the calling surface before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`. The exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` on HTTP 403 from either call establishes rulesets are unavailable; with no classic required checks, use the no-required-check path and record `plan-unavailable`, naming which call supplied that evidence next to the readiness evidence path. Captured responses: 2026-10-08 rules-for-branch, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}`; 2026-10-10 get-all-repository-rulesets on a private repo under GitHub Free, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-all-repository-rulesets","status":"403"}`. Do not invent response bodies. Any other status/message, or both calls unreachable, is a readiness blocker named `rules-unverifiable`; record `indeterminate`, name each call and its status (including 400), and retain every fix-now file in blocking-set. A failure never clears code findings.
@@ -149,16 +150,21 @@ Rules:
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head
     exercises the changed paths. This applies when `protected: false` and exact plan-unavailable evidence is obtained from either rules endpoint.
-- Apply verdict precedence: if review cannot credibly be completed, emit
-  `blocked`; otherwise, any `fix-now` finding, including a PR-body contract
-  violation, yields `needs-fix` regardless of draft status or readiness evidence;
-  otherwise, a clean review with either readiness path satisfied yields
-  `merge-candidate`, whether draft or ready. Record draft status informationally
-  in the Review Record and use `gh pr ready N` as next action when draft. Marking
-  ready without changing the head SHA does not require a fresh verdict. If
-  readiness is not met or current-head evidence is absent, emit `blocked`.
+- If neither path is satisfied, or there is no current-head evidence, emit
+  `blocked` rather than green.
+- Draft status is informational and does not change readiness or review
+  requirements. A clean draft that satisfies readiness is `merge-candidate`; use
+  `gh pr ready N` as its next action. Changing draft status alone does not require
+  another verdict at the same SHA.
 - Older-head results never count.
-- A PR with `Door: one-way` cannot receive a ready (`merge-candidate`) verdict and routes to `needs-human`; the Evidence section is only a pointer to verify, never evidence itself.
+- Apply the first matching verdict rule in this order: review cannot be completed
+  → `blocked`; explicit `needs-human` finding or circuit breaker → `needs-human`;
+  any `fix-now` finding → `needs-fix`; otherwise clean `Door: one-way` →
+  `needs-human`; clean with readiness satisfied → `merge-candidate`; otherwise
+  `blocked`. A one-way designation alone does not prevent fixing ordinary
+  findings; escalate once they are cleared. Explicit human-only findings and the
+  circuit breaker take precedence over `fix-now`.
+- The Evidence section is only a pointer to verify, never evidence itself.
 - Use `skills/from-issue/references/pr-body-contract.md` for the PR body contract.
   Judge whether the Docs line adequately lists updated documentation or explains
   why none was needed. If a PR changes behavior and the Docs line is missing or

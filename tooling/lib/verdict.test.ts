@@ -117,22 +117,21 @@ describe("verdict examples", () => {
   const blocks = extractVerdictBlocks(verdictExamples);
   const mergeCandidateBlocks = blocks.filter((block) => /^## review-gate:\s*merge-candidate\s*$/m.test(block));
 
-  test("contains eight conforming verdict blocks", () => {
-    expect(blocks).toHaveLength(8);
+  test("contains ten conforming verdict blocks", () => {
+    expect(blocks).toHaveLength(10);
   });
 
-  test("includes a clean draft merge-candidate and draft needs-fix examples", () => {
-    const draftMergeCandidate = blocks.find((block) => block.includes("next-action: gh pr ready 123"));
-    expect(draftMergeCandidate).toBeDefined();
-    expect(parseGateBody(draftMergeCandidate ?? "")?.verdict).toBe("merge-candidate");
+  test("covers verdict precedence for draft, human stops, and blockers", () => {
+    const draftBlock = blocks.find((block) => block.includes("next-action: gh pr ready 123"));
+    expect(draftBlock).toBeDefined();
+    expect(parseGateBody(draftBlock ?? "")?.verdict).toBe("merge-candidate");
 
-    const draftNeedsFix = blocks.find((block) => block.includes("PR is draft; draft status does not override this needs-fix verdict"));
-    expect(draftNeedsFix).toBeDefined();
-    expect(parseGateBody(draftNeedsFix ?? "")?.verdict).toBe("needs-fix");
-
-    const bodyViolation = blocks.find((block) => block.includes("fix-now PR-body contract violation resolved"));
-    expect(bodyViolation).toBeDefined();
-    expect(parseGateBody(bodyViolation ?? "")?.verdict).toBe("needs-fix");
+    expect(blocks.some((block) => block.includes("review-gate: needs-fix") && block.includes("readiness evidence path: indeterminate"))).toBe(true);
+    expect(blocks.some((block) => block.includes("Door: one-way") && block.includes("review-gate: needs-human"))).toBe(true);
+    expect(blocks.some((block) => block.includes("Door: one-way") && block.includes("review-gate: needs-fix"))).toBe(true);
+    expect(blocks.some((block) => block.includes("circuit breaker triggered after two prior corrective rounds") && block.includes("review-gate: needs-human"))).toBe(true);
+    expect(blocks.some((block) => block.includes("explicit human-only finding takes precedence") && block.includes("review-gate: needs-human"))).toBe(true);
+    expect(blocks.some((block) => block.includes("review-gate: needs-fix") && block.includes("PR-body contract violation") && block.includes("edit the PR description directly"))).toBe(true);
   });
 
   test("documents round continuity from a legacy verdict to the current writer schema", () => {
@@ -146,7 +145,7 @@ describe("verdict examples", () => {
     expect(mergeCandidateBlocks[1]).toContain("next-action: gh pr merge 123");
   });
 
-  test("includes both merge-candidate examples and they parse", () => {
+  test("includes three merge-candidate examples and they parse", () => {
     expect(mergeCandidateBlocks).toHaveLength(3);
 
     expect(
