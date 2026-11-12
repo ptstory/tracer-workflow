@@ -23,9 +23,11 @@ Required fields immediately below the marker:
 - `head-sha:` — full 40-character commit SHA
 - `review-round:` — integer, 0-based
 - `reviewed-files:` — integer
-- `blocking-set:` — comma-separated repo-relative file paths naming every file
-  with a `fix-now` finding; required for `blocked` and `needs-fix` when such
-  findings exist, and empty only when there are no `fix-now` findings
+- `blocking-set:` — comma-separated targets for every `fix-now` finding; use
+  repo-relative file paths for code/document findings and the literal `PR body`
+  for PR-body contract violations, which are fixed in PR metadata rather than a
+  repository file. Required for `blocked` and `needs-fix` when such findings
+  exist, and empty only when there are no `fix-now` findings.
 - `next-action:` — one concrete copy-pasteable command or invocation for the
   verdict state; never empty on newly emitted verdicts. Historical verdicts
   emitted before this field was required remain valid without it for round

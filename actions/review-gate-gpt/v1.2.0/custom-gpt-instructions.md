@@ -131,7 +131,7 @@ Do not post interim comments. Publish at most the final canonical Review Record 
 - Draft status is informational. A clean draft meeting readiness is `merge-candidate`, with `gh pr ready N` as next action; changing draft status alone does not require another verdict at the same SHA.
 - A PR-body contract violation is a `fix-now` finding even though it is not a code-file change. Name it in the finding and `blocking-set` as `PR body` (without fabricating a repository path), direct the fixer to edit the PR description, and retain the PR-body evidence requirement. The Evidence section is only a pointer to verify, never evidence itself.
 - Use `skills/from-issue/references/pr-body-contract.md` for the PR body contract. Judge whether the Docs line adequately lists updated documentation or explains why none was needed. If a PR changes behavior and the Docs line is missing or unjustified, emit a `fix-now` finding.
-- Determine the required status-check configuration from getBranch (protection.required_status_checks) and getRulesForBranch. If both show no required checks, apply the no-required-check path. If either call fails, emit `blocked` and name the failed call.
+- Determine required status-check configuration from getBranch (protection.required_status_checks) and getRulesForBranch. If both show no required checks, apply the no-required-check path. If readiness cannot be established, record it as indeterminate and emit `blocked` only when no higher-precedence human-stop or fix-now finding applies; retain all fix-now findings in `blocking-set`. Follow the canonical contract's documented rulesets fallback.
 
 ## Final pre-publication guard
 

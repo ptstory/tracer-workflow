@@ -130,8 +130,17 @@ describe("verdict examples", () => {
     expect(blocks.some((block) => block.includes("Door: one-way") && block.includes("review-gate: needs-human"))).toBe(true);
     expect(blocks.some((block) => block.includes("Door: one-way") && block.includes("review-gate: needs-fix"))).toBe(true);
     expect(blocks.some((block) => block.includes("circuit breaker triggered after two prior corrective rounds") && block.includes("review-gate: needs-human"))).toBe(true);
-    expect(blocks.some((block) => block.includes("explicit human-only finding takes precedence") && block.includes("review-gate: needs-human"))).toBe(true);
-    expect(blocks.some((block) => block.includes("review-gate: needs-fix") && block.includes("PR-body contract violation") && block.includes("edit the PR description directly"))).toBe(true);
+    const humanStopBlock = blocks.find((block) => block.includes("explicit human-only finding takes precedence"));
+    expect(humanStopBlock).toBeDefined();
+    expect(parseGateBody(humanStopBlock ?? "")?.verdict).toBe("needs-human");
+    expect(humanStopBlock).toMatch(/^blocking-set:\s*$/m);
+    expect(humanStopBlock).toContain("[fix-now]");
+
+    const prBodyBlock = blocks.find((block) => block.includes("PR-body contract violation"));
+    expect(prBodyBlock).toBeDefined();
+    expect(parseGateBody(prBodyBlock ?? "")?.verdict).toBe("needs-fix");
+    expect(prBodyBlock).toContain("blocking-set: PR body");
+    expect(prBodyBlock).toContain("edit the PR description directly");
   });
 
   test("documents round continuity from a legacy verdict to the current writer schema", () => {

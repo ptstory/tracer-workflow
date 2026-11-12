@@ -133,7 +133,7 @@ rebaseline: yes
 head-sha: 1023456789abcdef0123456789abcdef01234567
 review-round: 0
 reviewed-files: 3
-blocking-set: src/docs-example.md
+blocking-set: PR body
 next-action: from-pr-review https://github.com/ptstory/tracer-workflow/pull/124
 
 ### Standards
@@ -265,13 +265,13 @@ blocking-set:
 next-action: gh pr view 101 --web
 
 ### Standards
-- [high] [needs-human] src/integration.ts — approval decision outside agent authority is required.
+- [medium] [fix-now] src/config.ts — invalid default breaks the documented configuration path.
 
 ### Spec
-- No blocking findings.
+- [high] [needs-human] src/integration.ts — approval decision outside agent authority is required.
 
 ### Merge preconditions
-- explicit human-only finding takes precedence over any other disposition
+- explicit human-only finding takes precedence over the simultaneous fix-now finding; blocking-set remains empty
 
 ### Post-merge
 - confirm Closes #101 closed the issue

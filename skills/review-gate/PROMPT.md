@@ -57,7 +57,7 @@ Comment format (post verbatim, filling in):
 head-sha: <full 40-char SHA you reviewed>
 review-round: <0-based integer>
 reviewed-files: <n>
-blocking-set: <comma-separated repo-relative file paths; every fix-now finding's files for blocked or needs-fix, otherwise empty>
+blocking-set: <comma-separated targets; repo-relative paths for code/docs, literal PR body for PR metadata; every fix-now finding for blocked or needs-fix, otherwise empty>
 next-action: <one command or invocation matching the verdict state>
 rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 
@@ -79,7 +79,7 @@ rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 Rules:
 - The `head-sha`, `review-round`, `reviewed-files`, `blocking-set`, and
   `next-action` lines are mandatory. Emit them exactly in that parser shape.
-- Emit `blocking-set:` on every verdict. For `blocked` or `needs-fix`, list the repo-relative files of every `fix-now` finding, preserving all code findings. It is empty only when there are no `fix-now` findings.
+- Emit `blocking-set:` on every verdict. For `blocked` or `needs-fix`, list every `fix-now` target, preserving all code findings as repo-relative paths and representing PR-body contract violations as the literal `PR body`. It is empty only when there are no `fix-now` findings.
 - Emit `rebaseline: yes` only on the fresh round-0 verdict after a late-created
   or materially amended binding issue. Omit it otherwise.
 - Emit `next-action:` on every verdict using exactly one of these state templates,
