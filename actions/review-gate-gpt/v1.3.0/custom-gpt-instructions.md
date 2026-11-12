@@ -71,7 +71,11 @@ Do not post interim comments. Publish at most the final canonical Review Record 
 
 ## Readiness and verdict rules
 
-- A PR with `Door: one-way` cannot receive `merge-candidate` and routes to `needs-human`; Evidence is only a pointer to verify, never evidence itself.
+Apply the first matching verdict rule in this order: review cannot be completed → `blocked`; explicit `needs-human` finding or circuit breaker → `needs-human`; any `fix-now` finding → `needs-fix`; otherwise clean `Door: one-way` → `needs-human`; clean with readiness satisfied → `merge-candidate`; otherwise `blocked`. A one-way designation alone does not prevent fixing ordinary findings; escalate once they are cleared. Explicit human-only findings and the circuit breaker take precedence over `fix-now`.
+
+Draft status is informational and does not change readiness or review requirements. A clean draft that satisfies readiness is `merge-candidate`, with `next-action: gh pr ready N`. Changing draft status alone does not require another verdict at the same SHA.
+
+Evidence is only a pointer to verify, never evidence itself.
 - `getBranch protected: false` proves there are no classic required checks; `/protection` is not required and its 403 is not a blocker in that case. Try getRulesForBranch first; if the calling surface rejects that endpoint before GitHub (including HTTP 400/unsupported endpoint), fall through to rulesets. An HTTP 403 with exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` from either endpoint plus no classic required checks means `plan-unavailable`; record which endpoint supplied the evidence next to that readiness evidence path. The exact message `Upgrade to GitHub Pro or make this repository public to enable this feature.` is the evidence; do not invent response bodies. Other statuses/messages or both rules calls unreachable are `rules-unverifiable`: record `indeterminate`, name each call and status including 400, and retain every fix-now file in blocking-set.
 
 ## Final pre-publication guard
