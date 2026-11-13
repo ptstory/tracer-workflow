@@ -59,7 +59,7 @@ describe("agent brief revision contract", () => {
         ),
       }),
     ).toContain(
-      "Expected: prompts/agent-brief.md: unresolved revisions must prevent ready-for-agent; found: requirement missing; action: restore the missing agent-brief revision contract requirement",
+      "Expected: prompts/agent-brief.md to prevent ready-for-agent when revision is unresolved; found: requirement missing; action: restore the missing agent-brief revision contract requirement",
     );
 
     expect(
@@ -71,7 +71,7 @@ describe("agent brief revision contract", () => {
         ),
       }),
     ).toContain(
-      "Expected: skills/from-issue/SKILL.md: missing default-branch drift comparison rule; found: requirement missing; action: restore the missing agent-brief revision contract requirement",
+      "Expected: skills/from-issue/SKILL.md to compare named files against the live default branch since the brief SHA; found: requirement missing; action: restore the missing agent-brief revision contract requirement",
     );
   });
 });

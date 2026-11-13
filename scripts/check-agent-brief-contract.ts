@@ -56,17 +56,17 @@ export function validateAgentBriefContract(files: AgentBriefContractFiles): stri
   const agentRequirements = [
     {
       ok: agentBrief.includes("written-against: <default-branch>@<full 40-char SHA>"),
-      message: `${contractPaths.agentBrief}: missing canonical written-against line`,
+      expected: `${contractPaths.agentBrief} to contain the canonical written-against line`,
     },
     {
       ok: agentBrief.includes("full 40-character commit SHA at brief time"),
-      message: `${contractPaths.agentBrief}: missing live default-branch SHA requirement`,
+      expected: `${contractPaths.agentBrief} to require the full 40-character default-branch SHA at brief time`,
     },
     {
       ok:
         agentBrief.includes("written-against: unresolved (reason)") &&
         agentBrief.includes("do not mark the issue ready-for-agent"),
-      message: `${contractPaths.agentBrief}: unresolved revisions must prevent ready-for-agent`,
+      expected: `${contractPaths.agentBrief} to prevent ready-for-agent when revision is unresolved`,
     },
   ];
 
@@ -76,20 +76,20 @@ export function validateAgentBriefContract(files: AgentBriefContractFiles): stri
         fromIssue.includes("Brief written against") &&
         fromIssue.includes("written-against") &&
         fromIssue.includes("none recorded"),
-      message: `${contractPaths.fromIssue}: missing brief revision propagation rule`,
+      expected: `${contractPaths.fromIssue} to propagate the brief's written-against revision`,
     },
     {
       ok:
         fromIssue.includes("files named in the brief") &&
         fromIssue.includes("live default branch since that SHA"),
-      message: `${contractPaths.fromIssue}: missing default-branch drift comparison rule`,
+      expected: `${contractPaths.fromIssue} to compare named files against the live default branch since the brief SHA`,
     },
   ];
 
   const prBodyRequirements = [
     {
       ok: prBody.includes("- Brief written against: <SHA from the brief, or 'none recorded'>"),
-      message: `${contractPaths.prBody}: missing Brief written against evidence field`,
+      expected: `${contractPaths.prBody} to include the Brief written against evidence field`,
     },
   ];
 
@@ -98,7 +98,7 @@ export function validateAgentBriefContract(files: AgentBriefContractFiles): stri
     ...fromIssueRequirements,
     ...prBodyRequirements,
   ]) {
-    if (!requirement.ok) errors.push(formatCheckDiagnostic(requirement.message, "requirement missing", "restore the missing agent-brief revision contract requirement"));
+    if (!requirement.ok) errors.push(formatCheckDiagnostic(requirement.expected, "requirement missing", "restore the missing agent-brief revision contract requirement"));
   }
 
   return errors;
