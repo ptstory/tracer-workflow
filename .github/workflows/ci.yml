@@ -3,14 +3,12 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
-  pull_request_target:
-    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
 jobs:
   pr-body:
-    if: github.event_name == 'pull_request_target'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read

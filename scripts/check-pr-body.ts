@@ -73,7 +73,7 @@ export async function fetchPullRequestBody(
 async function main(): Promise<void> {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) {
-    console.error(formatCheckDiagnostic("GITHUB_EVENT_PATH to name a pull request event", "unset", "run this check in a GitHub Actions pull_request_target job with the trusted default-branch validator"));
+    console.error(formatCheckDiagnostic("GITHUB_EVENT_PATH to name a pull request event", "unset", "run this check in a GitHub Actions pull_request job"));
     process.exitCode = 2;
     return;
   }
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
   const token = process.env.GH_TOKEN;
   const apiUrl = process.env.GITHUB_API_URL;
   if (!repository || !token || !apiUrl || !/^https?:\/\//.test(apiUrl) || !/^[\w.-]+\/[\w.-]+$/.test(repository)) {
-    console.error(formatCheckDiagnostic("a valid GITHUB_REPOSITORY, GH_TOKEN, and GITHUB_API_URL", `repository=${repository ? "set" : "unset"}, token=${token ? "set" : "unset"}, API URL=${apiUrl ? "set" : "unset"}`, "configure pull_request_target with the trusted default-branch validator, pull-requests: read, and GH_TOKEN"));
+    console.error(formatCheckDiagnostic("a valid GITHUB_REPOSITORY, GH_TOKEN, and GITHUB_API_URL", `repository=${repository ? "set" : "unset"}, token=${token ? "set" : "unset"}, API URL=${apiUrl ? "set" : "unset"}`, "configure the pull_request job with pull-requests: read and GH_TOKEN"));
     process.exitCode = 2;
     return;
   }
