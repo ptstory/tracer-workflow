@@ -172,10 +172,25 @@ On round `N > 0`, a finding against code that has not changed since round 0 is
 `follow-up-issue`, not `fix-now` — unless it is a correctness or security
 regression, which stays `fix-now` at any round.
 
-Acceptance-criteria carve-out: an unmet acceptance criterion of the binding
-issue stays `fix-now` at any round while the PR still closes that issue. It may
-move to `follow-up-issue` only if the closing linkage changes in that same pass
-so the PR no longer closes the issue. This carve-out resolves a round-1 / round-2 conflict observed in an earlier private-repository review.
+Acceptance-criteria rule: an unmet acceptance criterion of the binding issue is
+`fix-now` at any round while the PR still closes that issue, unless the agent
+cannot carry out its remediation in this repository with its available tools and
+capabilities. In that agent-unremediable case, the finding is `needs-human`, not
+`fix-now`, even when it is an unmet acceptance criterion. Examples include
+required evidence that cannot be attached through the available GitHub interface,
+physical-device or manual interactive verification, and a check for which the
+repository has no capable CI. Do not use this exception for work that is merely
+difficult or has not yet been attempted.
+
+Every agent-unremediable finding must include a manual-verification checklist
+that states what to check, where to check it (for example, the PR's deploy preview
+URL), and the expected result. If the location or environment is unavailable,
+state who must provide it and what must be checked once available. This explicit
+`needs-human` disposition takes precedence over the acceptance-criterion
+`fix-now` rule. For other unmet acceptance criteria, `follow-up-issue` is
+available only if the closing linkage changes in the same pass so the PR no
+longer closes the issue. This carve-out resolves a round-1 / round-2 conflict
+observed in an earlier private-repository review.
 
 Rationale: a gate that can raise pre-existing conditions at any round has no
 termination condition.
@@ -212,8 +227,16 @@ configuration.
   and at least one applicable required check exercises the changed paths.
 - No-required-check path: at least one green CI/check run on the current head
   exercises the changed paths.
-- If neither path is satisfied, or there is no current-head evidence, the verdict
-  is `blocked`.
+- If repository CI/check configuration is known and no configured CI/check can
+  exercise the changed paths, an otherwise-clean review emits a `needs-human`
+  finding, not `blocked`. Include the manual-verification checklist required
+  above; identify the behavior to verify, where to verify it (for example, the
+  PR's deploy preview URL), and the expected result. This applies to both
+  readiness paths when no capable check exists.
+- If a configured check can exercise the changed paths but is pending, failing,
+  or missing at the current head, emit `blocked`. Older-head results do not
+  satisfy readiness. If readiness configuration or current-head evidence cannot
+  be established, emit `blocked` rather than assuming no capable check exists.
 - Draft status is informational and does not change readiness or review
   requirements. A clean draft that satisfies readiness is `merge-candidate`;
   use `gh pr ready N` as its next action. Changing draft status alone does not
@@ -240,7 +263,11 @@ Apply the first matching rule, in this order:
 For one-way-door PRs, the designation alone does not prevent fixing ordinary
 findings. Escalate to a human after those findings are cleared. Explicit
 `needs-human` findings and the circuit breaker always take precedence over
-`fix-now`.
+`fix-now`. Agent-unremediable acceptance-criterion findings are explicitly
+`needs-human`; a no-capable-check readiness gap becomes a `needs-human` finding
+only when the review is otherwise clean. Thus these cases use the existing
+precedence order and still yield exactly one verdict state; other `fix-now`
+findings remain `needs-fix` when no higher-priority rule matches.
 
 ## What the reader does per state
 

@@ -138,9 +138,20 @@ Rules:
     `needs-human` for contract reconciliation
   - round `N > 0` unchanged-since-round-0 findings become `follow-up-issue`
     unless they are correctness or security regressions
-  - an unmet acceptance criterion of the binding issue stays `fix-now` at any
-    round while the PR still closes that issue; `follow-up-issue` is available
-    only if the closing linkage changes in the same pass
+  - an unmet acceptance criterion of the binding issue is `fix-now` at any
+    round while the PR still closes that issue, unless the agent cannot carry
+    out its remediation in this repository with available tools and capabilities;
+    in that agent-unremediable case use `needs-human`, even for an unmet
+    acceptance criterion, not `fix-now` or `follow-up-issue`. Examples include
+    evidence that cannot be uploaded through the available GitHub interface,
+    physical-device or manual interactive verification, or a check the repo has
+    no capable CI to run. Do not use this exception for work that is merely
+    difficult or has not been attempted. Include a manual-verification checklist
+    stating what to check, where (for example the PR deploy preview URL), and the
+    expected result; if the location is unavailable, state who must provide it
+    and what to check once available. Otherwise `follow-up-issue` is available
+    only if the closing linkage changes in the same pass so the PR no longer
+    closes the issue
   - the circuit breaker counts corrective rounds, not total conforming verdicts
   - a corrective round is a review whose diff since the previously reviewed SHA
     touches at least one file named in the prior blocking set
@@ -157,8 +168,15 @@ Rules:
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head
     exercises the changed paths. This applies when `protected: false` and exact plan-unavailable evidence is obtained from either rules endpoint.
-- If neither path is satisfied, or there is no current-head evidence, emit
-  `blocked` rather than green.
+- If repo CI/check configuration is known and no configured CI/check can
+  exercise the changed paths, an otherwise-clean review emits a `needs-human`
+  finding, not `blocked`, for either readiness path. Include a manual-verification
+  checklist with what to check, where (for example the PR deploy preview URL),
+  and the expected result.
+- If a configured check can exercise the changed paths but is pending, failing,
+  or missing at the current head, emit `blocked`. If readiness configuration or
+  current-head evidence cannot be established, emit `blocked` rather than
+  assuming no capable check exists. Older-head results never satisfy readiness.
 - Draft status is informational and does not change readiness or review
   requirements. A clean draft that satisfies readiness is `merge-candidate`; use
   `gh pr ready N` as its next action. Changing draft status alone does not require
@@ -168,9 +186,13 @@ Rules:
   → `blocked`; explicit `needs-human` finding or circuit breaker → `needs-human`;
   any `fix-now` finding → `needs-fix`; otherwise clean `Door: one-way` →
   `needs-human`; clean with readiness satisfied → `merge-candidate`; otherwise
-  `blocked`. A one-way designation alone does not prevent fixing ordinary
-  findings; escalate once they are cleared. Explicit human-only findings and the
-  circuit breaker take precedence over `fix-now`.
+  `blocked`. Agent-unremediable acceptance-criterion findings are explicitly
+  `needs-human`; a no-capable-check readiness gap becomes a `needs-human` finding
+  only when the review is otherwise clean. These are existing `needs-human`
+  findings, so the precedence stays exhaustive and produces exactly one state.
+  A one-way designation alone does not prevent fixing ordinary findings; escalate
+  once they are cleared. Explicit human-only findings and the circuit breaker
+  take precedence over `fix-now`.
 - The Evidence section is only a pointer to verify, never evidence itself.
 - Use `skills/from-issue/references/pr-body-contract.md` for the PR body contract.
   Judge whether the Docs line adequately lists updated documentation or explains
