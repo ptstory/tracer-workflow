@@ -173,13 +173,26 @@ describe("dependency readiness reconciliation", () => {
     }
   });
 
-  test("removes readiness and adds blocked when dependency state cannot be read", () => {
+  test("removes readiness and names an unresolved dependency when its state cannot be read", () => {
     const api = new FixtureApi();
     api.issues.set(45, fixtureIssue(45, "Depends on #46", "open", ["ready-for-agent"]));
 
     expect(() => reconcileIssue(45, api)).toThrow("could not verify dependency #46");
     expect(api.issues.get(45)?.labels.map(({ name }) => name)).toEqual(["blocked"]);
-    expect(api.comments.get(45)).toBeUndefined();
+    expect(api.comments.get(45)?.[0]?.body).toContain("#46");
+  });
+
+  test("isolates an unresolved dependency while restoring eligible issues in a repository scan", () => {
+    const api = new FixtureApi();
+    api.issues.set(50, fixtureIssue(50, "Depends on #51", "open", ["ready-for-agent"]));
+    api.issues.set(52, fixtureIssue(52, "Depends on #53", "open", ["blocked"]));
+    api.issues.set(53, fixtureIssue(53, "", "closed"));
+
+    expect(() => reconcileAllDependencies(api)).toThrow("could not verify dependency #51");
+    expect(api.issues.get(50)?.labels.map(({ name }) => name)).toEqual(["blocked"]);
+    expect(api.comments.get(50)?.[0]?.body).toContain("#51");
+    expect(api.issues.get(52)?.labels.map(({ name }) => name)).toEqual(["ready-for-agent"]);
+    expect(api.comments.get(52)?.[0]?.body).toContain("All dependencies are closed: #53");
   });
 
   test("reconciles from current dependency state after competing events", () => {
@@ -235,12 +248,12 @@ describe("dependency readiness reconciliation", () => {
     expect(api.calls.slice(callCount)).toEqual(["get:40", "get:41", "comments:40"]);
   });
 
-  test("fails before changing readiness when a dependency cannot be resolved", () => {
+  test("fails closed and reports a dependency that cannot be resolved", () => {
     const api = new FixtureApi();
     api.issues.set(50, fixtureIssue(50, "Depends on #51", "open", ["ready-for-agent"]));
 
     expect(() => reconcileIssue(50, api)).toThrow("could not verify dependency #51");
     expect(api.issues.get(50)?.labels.map(({ name }) => name)).toEqual(["blocked"]);
-    expect(api.comments.get(50)).toBeUndefined();
+    expect(api.comments.get(50)?.[0]?.body).toContain("#51");
   });
 });

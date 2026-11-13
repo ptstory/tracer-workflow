@@ -69,48 +69,52 @@ function reconcileTargets(issues: DependencyIssue[], api: DependencyReadinessApi
   );
   if (targets.length === 0) return;
 
-  const dependencyStates = new Map<number, DependencyIssue>();
-  const dependenciesByIssue = new Map<number, number[]>();
-  let plans: Array<{
+  const plans: Array<{
     issue: DependencyIssue;
     dependencies: number[];
     openDependencies: number[];
     comments: IssueComment[];
-  }>;
-  try {
-    for (const issue of targets) {
-      const dependencies = parseDependencies(issue.body);
-      if (dependencies.length === 0) continue;
-      dependenciesByIssue.set(issue.number, dependencies);
+  }> = [];
+  const failures: string[] = [];
+  for (const issue of targets) {
+    const dependencies = parseDependencies(issue.body);
+    const dependencyStates = new Map<number, DependencyIssue>();
+    let unresolvableDependency: number | undefined;
+    try {
       for (const dependencyNumber of dependencies) {
-        if (!dependencyStates.has(dependencyNumber)) {
-          try {
-            dependencyStates.set(dependencyNumber, api.getIssue(dependencyNumber));
-          } catch (error) {
-            const detail = error instanceof Error ? error.message : "GitHub read failed";
-            throw new Error(`could not verify dependency #${dependencyNumber} for issue #${issue.number}: ${detail}`);
-          }
+        try {
+          dependencyStates.set(dependencyNumber, api.getIssue(dependencyNumber));
+        } catch (error) {
+          unresolvableDependency = dependencyNumber;
+          const detail = error instanceof Error ? error.message : "GitHub read failed";
+          throw new Error(`could not verify dependency #${dependencyNumber} for issue #${issue.number}: ${detail}`);
         }
       }
-    }
 
-    plans = targets.flatMap((issue) => {
-      const dependencies = dependenciesByIssue.get(issue.number);
-      if (!dependencies) return [];
       const openDependencies = dependencies.filter((dependencyNumber) =>
         dependencyStates.get(dependencyNumber)?.state === "open"
       );
-      return [{
-        issue,
-        dependencies,
-        openDependencies,
-        comments: api.listIssueComments(issue.number),
-      }];
-    });
-  } catch (error) {
-    failClosedReadiness(targets, api);
-    const detail = error instanceof Error ? error.message : "GitHub state could not be read";
-    throw new Error(`dependency-readiness: ${detail}; readiness changes were withheld where possible`);
+      plans.push({ issue, dependencies, openDependencies, comments: api.listIssueComments(issue.number) });
+    } catch (error) {
+      failClosedReadiness([issue], api);
+      const comment = unresolvableDependency === undefined
+        ? `${COMMENT_MARKER}unresolvable -->\nCould not verify dependency state for issue #${issue.number} (${formatReferences(dependencies)}). This issue remains blocked.`
+        : `${COMMENT_MARKER}unresolvable -->\nCould not verify dependency #${unresolvableDependency}. This issue remains blocked.`;
+      try {
+        const comments = api.listIssueComments(issue.number);
+        const latestManagedComment = [...comments].reverse().find(({ body }) =>
+          body.startsWith(COMMENT_MARKER)
+        );
+        if (latestManagedComment?.body !== comment) api.createIssueComment(issue.number, comment);
+      } catch {
+        try {
+          api.createIssueComment(issue.number, comment);
+        } catch {
+          failures.push(`could not report dependency-readiness failure for issue #${issue.number}`);
+        }
+      }
+      failures.push(error instanceof Error ? error.message : `GitHub state could not be read for issue #${issue.number}`);
+    }
   }
 
   for (const plan of plans) {
@@ -133,6 +137,10 @@ function reconcileTargets(issues: DependencyIssue[], api: DependencyReadinessApi
     if (latestManagedComment?.body !== comment) {
       api.createIssueComment(plan.issue.number, comment);
     }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`${failures.join("; ")}; readiness failures were isolated to affected issues`);
   }
 }
 
