@@ -21,8 +21,9 @@ unbacked-work monitoring.
   coordination artifacts.
 - `project-map.md` — repository orientation map; update only when its contents
   become stale.
-- `docs/` and `docs/adr/` are not present. TODO: add ADR or project-board links
-  if the repository adopts them.
+- `docs/` contains repository reports, diagrams, architecture artifacts, and
+  history. `docs/adr/` is not present. TODO: add ADR or project-board links if
+  the repository adopts them.
 
 ## Standard workflow
 
@@ -168,9 +169,13 @@ lint or build commands here if the repository introduces them.
   to the reviewed head SHA.
 - Prefer draft PRs unless the workflow or maintainer says otherwise.
 - Merge is manual by default; the current check-run gate is authoritative.
-- A GitHub Actions workflow exists at `.github/workflows/ci.yml` and currently
-  runs `bun run typecheck`. TODO: confirm branch protection and required
-  reviewers/checks in GitHub.
+- `.github/workflows/ci.yml` (`CI`) runs the `test`, `typecheck`,
+  `review-gate-contract`, `pr-body`, `gpt-openapi-importer`, `radar`, and
+  `public-disclosure` jobs. `.github/workflows/gate-readiness.yml` evaluates
+  pull-request readiness and can be called by other workflows;
+  `.github/workflows/gate-readiness-reevaluate.yml` reevaluates readiness after
+  CI completes or a review-gate comment is added or edited. TODO: confirm branch
+  protection and required reviewers/checks in GitHub.
 
 ## Evidence requirements
 
