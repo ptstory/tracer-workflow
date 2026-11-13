@@ -94,7 +94,7 @@ const fixture = ${JSON.stringify({
     eventPullRequest: (fixture.eventPayload as { pull_request?: unknown } | undefined)?.pull_request ?? null,
     liveHeadSha: fixture.liveHeadSha ?? null,
     pullJson: fixture.pullJson ?? null,
-    labels: fixture.labels ?? (fixture.pullJson && typeof fixture.pullJson === "object" ? (fixture.pullJson as { labels?: { name: string }[] }).labels : undefined) ?? [],
+    labels: fixture.labels ?? (fixture.pullJson && typeof fixture.pullJson === "object" ? (fixture.pullJson as { labels?: { name: string }[] }).labels : undefined) ?? ((fixture.eventPayload as { pull_request?: { labels?: { name: string }[] } } | undefined)?.pull_request?.labels) ?? [],
     labelCreateFailure: fixture.labelCreateFailure ?? null,
     commentsJson: fixture.commentsJson,
     checkRunsJson: fixture.checkRunsJson,
@@ -272,6 +272,37 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-fix","method":"DELETE"');
     expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-human","method":"DELETE"');
     expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:blocked","method":"DELETE"');
+  });
+
+  test("synchronize after a needs-fix verdict removes every gate label", () => {
+    const headSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const needsFixComment = {
+      ...currentReviewGateComment,
+      body: currentReviewGateComment.body.replace(/merge-candidate/g, "needs-fix").replace(/a{40}/, headSha),
+    };
+    const { result, ghLog } = runWorkflow({
+      eventName: "pull_request",
+      eventPayload: {
+        action: "synchronize",
+        pull_request: {
+          number: 98,
+          head: { sha: headSha },
+          body: "Closes #97",
+          labels: [{ name: "gate:needs-fix" }, { name: "gate:custom-state" }, { name: "gate:ready" }, { name: "triage" }],
+        },
+      },
+      prNumber: 98,
+      commentsJson: [needsFixComment],
+      checkRunsJson: [],
+      statusesJson: [],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    for (const label of ["gate:needs-fix", "gate:custom-state", "gate:ready"]) {
+      expect(ghLog).toContain(`"endpoint":"repos/acme/repo/issues/98/labels/${encodeURIComponent(label)}","method":"DELETE"`);
+    }
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/triage","method":"DELETE"');
+    expect(ghLog).not.toContain('"method":"POST"');
   });
 
   test("does not delete absent verdict labels when no trusted verdict exists", () => {

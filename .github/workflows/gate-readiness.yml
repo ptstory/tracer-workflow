@@ -103,8 +103,10 @@ jobs:
 
           pr_metadata_source="workflow_call gh api"
           gh_token_source="secrets.GITHUB_TOKEN"
+          pull_request_action=""
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             pr_metadata_json="$(cat "${GITHUB_EVENT_PATH:?}")"
+            pull_request_action="$(printf '%s' "$pr_metadata_json" | jq -r '.action // empty')"
             pr_metadata_source="pull_request event payload"
             head_sha="$(printf '%s' "$pr_metadata_json" | jq -r '.pull_request.head.sha')"
             pr_body="$(printf '%s' "$pr_metadata_json" | jq -r '.pull_request.body // ""')"
@@ -117,6 +119,17 @@ jobs:
             head_sha="$(printf '%s' "$pr_metadata_json" | jq -r '.head.sha')"
             pr_body="$(printf '%s' "$pr_metadata_json" | jq -r '.body // ""')"
             has_ready_label="$(printf '%s' "$pr_metadata_json" | jq -r '([(.labels // [])[] | .name] | index("gate:ready")) != null')"
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && [ "$pull_request_action" = "synchronize" ]; then
+            if ! gh_api_capture sync_pr_json "GET repos/$repo/pulls/$pr_number (synchronize label cleanup)" "repos/$repo/pulls/$pr_number"; then
+              exit 1
+            fi
+            while IFS= read -r encoded_label; do
+              [ -n "$encoded_label" ] || continue
+              gh_api "DELETE repos/$repo/issues/$pr_number/labels/$encoded_label" -X DELETE "repos/$repo/issues/$pr_number/labels/$encoded_label" >/dev/null || true
+            done < <(printf '%s' "$sync_pr_json" | jq -r '[.labels // [] | .[] | .name | select(startswith("gate:"))] | .[] | @uri')
+            exit 0
           fi
 
           closing_refs="$(printf '%s' "$pr_body" | jq -Rs -r '
