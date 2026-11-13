@@ -59,6 +59,10 @@ export function reconcileDependents(dependencyNumber: number, api: DependencyRea
   reconcileTargets(dependents, api);
 }
 
+export function reconcileAllDependencies(api: DependencyReadinessApi): void {
+  reconcileTargets(api.listOpenIssues(), api);
+}
+
 function reconcileTargets(issues: DependencyIssue[], api: DependencyReadinessApi): void {
   const targets = issues.filter((issue) =>
     issue.state === "open" && !issue.pull_request && parseDependencies(issue.body).length > 0
@@ -294,11 +298,8 @@ function runFromEvent(): void {
   if (process.env.GITHUB_EVENT_NAME === "issues") {
     const issueNumber = event.issue?.number;
     if (!Number.isInteger(issueNumber)) throw new Error("dependency-readiness: issue number missing from event");
-    if (["opened", "edited", "labeled", "reopened"].includes(event.action ?? "")) {
-      reconcileIssue(issueNumber as number, api);
-    }
-    if (["opened", "closed", "reopened"].includes(event.action ?? "")) {
-      reconcileDependents(issueNumber as number, api);
+    if (["opened", "edited", "labeled", "closed", "reopened"].includes(event.action ?? "")) {
+      reconcileAllDependencies(api);
     }
     return;
   }
@@ -306,7 +307,7 @@ function runFromEvent(): void {
   if (process.env.GITHUB_EVENT_NAME === "pull_request_target" && ["closed", "reopened"].includes(event.action ?? "")) {
     const pullNumber = event.pull_request?.number;
     if (!Number.isInteger(pullNumber)) throw new Error("dependency-readiness: PR number missing from event");
-    reconcileDependents(pullNumber as number, api);
+    reconcileAllDependencies(api);
     return;
   }
 

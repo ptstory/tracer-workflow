@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 import {
   parseDependencies,
+  reconcileAllDependencies,
   reconcileDependents,
   reconcileIssue,
   type DependencyReadinessApi,
@@ -95,6 +96,8 @@ describe("dependency readiness workflow", () => {
   test("reconciles issue edits and label events, plus issue and PR closures", () => {
     expect(workflow).toContain("issues:");
     expect(workflow).toContain("types: [opened, edited, labeled, closed, reopened]");
+    expect(workflow).toContain("group: dependency-readiness-${{ github.repository }}");
+    expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("pull_request_target:");
     expect(workflow).toContain("types: [closed, reopened]");
     expect(workflow).toContain("uses: actions/checkout@v4");
@@ -177,6 +180,24 @@ describe("dependency readiness reconciliation", () => {
     expect(() => reconcileIssue(45, api)).toThrow("could not verify dependency #46");
     expect(api.issues.get(45)?.labels.map(({ name }) => name)).toEqual(["blocked"]);
     expect(api.comments.get(45)).toBeUndefined();
+  });
+
+  test("reconciles from current dependency state after competing events", () => {
+    const api = new FixtureApi();
+    api.issues.set(55, fixtureIssue(55, "Depends on #56", "open", ["blocked"]));
+    api.issues.set(56, fixtureIssue(56, "", "closed"));
+
+    reconcileAllDependencies(api);
+    expect(api.issues.get(55)?.labels.map(({ name }) => name)).toEqual(["ready-for-agent"]);
+
+    api.issues.get(56)!.state = "open";
+    reconcileAllDependencies(api);
+    expect(api.issues.get(55)?.labels.map(({ name }) => name)).toEqual(["blocked"]);
+    expect(api.comments.get(55)?.at(-1)?.body).toContain("#56");
+
+    api.issues.get(56)!.state = "closed";
+    reconcileAllDependencies(api);
+    expect(api.issues.get(55)?.labels.map(({ name }) => name)).toEqual(["ready-for-agent"]);
   });
 
   test("preserves readiness eligibility when dependencies resolve", () => {
