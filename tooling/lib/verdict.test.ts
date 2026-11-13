@@ -20,7 +20,7 @@ describe("parseGateComment", () => {
   test("parses a conforming verdict with its round", () => {
     const comment = parseGateComment([
       {
-        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 3\n",
+        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 3\nblocking-set: src/api.ts\n",
         author: { login: "reviewer" },
         createdAt: "2026-01-01T00:00:00Z",
       },
@@ -43,7 +43,7 @@ describe("parseGateComment", () => {
     const messages: string[] = [];
     console.warn = (message: string) => { messages.push(message); };
     try {
-      const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n";
+      const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\n";
       const comments = [
         { author: { login: "reviewer" }, body, createdAt: "2026-01-01T00:00:00Z" },
         { author: { login: "attacker" }, body, createdAt: "2026-01-02T00:00:00Z" },
@@ -54,6 +54,32 @@ describe("parseGateComment", () => {
     } finally {
       console.warn = warn;
     }
+  });
+
+  test("ignores a newer malformed trusted marker and keeps the latest conforming verdict", () => {
+    const validBody = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\n";
+    const comments = [
+      { author: { login: "reviewer" }, body: validBody, createdAt: "2026-01-01T00:00:00Z" },
+      { author: { login: "reviewer" }, body: validBody.replace("blocking-set: src/api.ts\n", ""), createdAt: "2026-01-02T00:00:00Z" },
+    ];
+
+    expect(parseGateComment(comments)).toEqual({
+      kind: "parsed",
+      verdict: {
+        verdict: "needs-fix",
+        headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        reviewRound: 0,
+        reviewedFiles: 1,
+        commentedAt: "2026-01-01T00:00:00Z",
+      },
+    });
+  });
+
+  test("accepts historical verdicts without next-action before the schema cutoff", () => {
+    const legacyBody = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\n";
+    expect(parseGateComment([
+      { author: { login: "reviewer" }, body: legacyBody, createdAt: "2026-09-26T20:18:25Z" },
+    ]).kind).toBe("parsed");
   });
 
   test("fails closed without an allowlist", () => {
@@ -72,6 +98,20 @@ describe("parseGateComment", () => {
         },
       ]),
     ).toEqual({ kind: "none" });
+  });
+
+  test("rejects a new verdict with a state-inappropriate next action", () => {
+    const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: nonsense\n";
+    expect(parseGateComment([
+      { author: { login: "reviewer" }, body, createdAt: "2026-09-26T20:18:26Z" },
+    ]).kind).toBe("invalid");
+  });
+
+  test("rejects a needs-fix verdict with an empty blocking set", () => {
+    const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set:\nnext-action: from-pr-review https://github.com/acme/repo/pull/98\n";
+    expect(parseGateComment([
+      { author: { login: "reviewer" }, body, createdAt: "2026-09-26T20:18:26Z" },
+    ]).kind).toBe("invalid");
   });
 
   test("treats a verdict missing review-round as invalid", () => {

@@ -11,7 +11,7 @@ const callerTemplate = readFileSync(join(repoRoot, "templates/gate-labels.yml"),
 
 function runScript(): string {
   const lines = workflow.split("\n");
-  const runIndex = lines.findIndex((line) => line.trim() === "run: |");
+  const runIndex = lines.findLastIndex((line) => line.trim() === "run: |");
   if (runIndex < 0) throw new Error("could not locate Evaluate readiness script");
 
   const scriptLines: string[] = [];
@@ -50,8 +50,10 @@ describe(".github/workflows/gate-readiness.yml", () => {
     expect(callerTemplate).toContain("pull-request-action: ${{ github.event.action }}");
     expect(workflow).toContain("${{ inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS }}");
     expect(workflow).toContain("inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS");
-    expect(workflow).not.toContain("actions/checkout");
+    expect(workflow).toContain("Check out the shared Review Gate parser");
     expect(workflow).toContain('gh api "repos/$repo/');
+    expect(workflow).toContain("VERDICT_CLI_PATH: ${{ github.workspace }}/.tracer-workflow/tooling/lib/verdict-cli.ts");
+    expect(workflow).toContain("repository: ptstory/tracer-workflow");
   });
 
   test("caller template only reevaluates for review-gate PR comments", () => {
@@ -69,13 +71,26 @@ describe(".github/workflows/gate-readiness.yml", () => {
     const script = runScript();
     const recheck = script.indexOf('(live head re-check)');
     const synchronizeCleanup = script.indexOf('(live head re-check for synchronize cleanup)');
+    const cleanupIterationRecheck = script.indexOf('(recheck before synchronize label deletion)');
     expect(recheck).toBeGreaterThan(-1);
     expect(synchronizeCleanup).toBeGreaterThan(-1);
+    expect(cleanupIterationRecheck).toBeGreaterThan(synchronizeCleanup);
     for (const write of ['-X PATCH "repos/$repo/issues/comments/', '-X POST "repos/$repo/issues/$pr_number/comments"', '-X POST "repos/$repo/issues/$pr_number/labels"', '-X DELETE "repos/$repo/issues/$pr_number/labels/', '-X POST "repos/$repo/labels"']) {
       const first = script.indexOf(write);
-      const requiredRecheck = write.startsWith('-X DELETE') ? synchronizeCleanup : recheck;
+      const requiredRecheck = write.startsWith('-X DELETE') ? cleanupIterationRecheck : recheck;
       expect(first, write).toBeGreaterThan(requiredRecheck);
     }
+  });
+
+  test("uses the shared verdict parser for label eligibility", () => {
+    const script = runScript();
+    expect(workflow).toContain("tooling/lib/verdict-cli.ts");
+    expect(script).toContain("PR_NUMBER=\"$pr_number\"");
+    expect(script).toContain("verdict_parse_result=");
+    expect(script).toContain("ignored_reviewers=");
+    expect(script).toContain("${VERDICT_CLI_PATH:?}");
+    expect(script).not.toContain('capture("(?m)^blocking-set:');
+    expect(script).not.toContain('capture("(?m)^next-action:');
   });
 
   test("deletes verdict labels only when the PR already has them", () => {

@@ -29,10 +29,20 @@ jobs:
   gate-readiness:
     runs-on: ubuntu-latest
     steps:
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Check out the shared Review Gate parser
+        uses: actions/checkout@v4
+        with:
+          repository: ptstory/tracer-workflow
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'main' }}
+          path: .tracer-workflow
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Evaluate readiness
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERDICT_CLI_PATH: ${{ github.workspace }}/.tracer-workflow/tooling/lib/verdict-cli.ts
           PR_NUMBER: ${{ github.event.pull_request.number }}
           INPUT_PR_NUMBER: ${{ inputs.pr-number }}
           INPUT_PULL_REQUEST_ACTION: ${{ inputs.pull-request-action }}
@@ -131,10 +141,18 @@ jobs:
               exit 1
             fi
             if [ "$(printf '%s' "$sync_pr_json" | jq -r '.head.sha // empty')" = "$head_sha" ]; then
+              sync_gate_labels="$(printf '%s' "$sync_pr_json" | jq -r '[.labels // [] | .[] | .name | select(startswith("gate:"))] | .[] | @uri')"
               while IFS= read -r encoded_label; do
                 [ -n "$encoded_label" ] || continue
+                if ! gh_api_capture sync_pr_json "GET repos/$repo/pulls/$pr_number (recheck before synchronize label deletion)" "repos/$repo/pulls/$pr_number"; then
+                  exit 1
+                fi
+                if [ "$(printf '%s' "$sync_pr_json" | jq -r '.head.sha // empty')" != "$head_sha" ]; then
+                  printf 'gate-readiness: PR head moved during synchronize cleanup from %s; stopping label deletion\n' "$head_sha" >&2
+                  break
+                fi
                 gh_api "DELETE repos/$repo/issues/$pr_number/labels/$encoded_label" -X DELETE "repos/$repo/issues/$pr_number/labels/$encoded_label" >/dev/null
-              done < <(printf '%s' "$sync_pr_json" | jq -r '[.labels // [] | .[] | .name | select(startswith("gate:"))] | .[] | @uri')
+              done <<< "$sync_gate_labels"
             fi
             exit 0
           fi
@@ -153,46 +171,13 @@ jobs:
           fi
           comments_json="$(printf '%s' "$comments_json_raw" | jq -s 'add // []')"
 
-          trusted_reviewers_json="$(printf '%s' "$TRACER_REVIEWER_LOGINS" | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$"; "") | ascii_downcase | select(length > 0))')"
-          ignored_reviewers="$(printf '%s' "$comments_json" | jq -r --argjson reviewers "$trusted_reviewers_json" '
-            [.[] | select(.body | startswith("## review-gate:")) | select((.user.login // "" | ascii_downcase) as $login | $reviewers | index($login) == null) | (.user.login // "unknown")] | unique | join(", ")
-          ')"
-          latest_review_gate_json="$(printf '%s' "$comments_json" | jq -c --argjson reviewers "$trusted_reviewers_json" '
-            map(select(.body | startswith("## review-gate:")) | select((.user.login // "" | ascii_downcase) as $login | $reviewers | index($login) != null))
-            | sort_by(.created_at)
-            | last // null
-          ')"
+          verdict_parse_result="$(printf '%s' "$comments_json" | PR_NUMBER="$pr_number" TRACER_REVIEWER_LOGINS="$TRACER_REVIEWER_LOGINS" bun "${VERDICT_CLI_PATH:?}")"
+          ignored_reviewers="$(printf '%s' "$verdict_parse_result" | jq -r '(.ignoredAuthors // []) | join(", ")')"
           if [ -n "$ignored_reviewers" ]; then
             printf 'gate-readiness: ignored review-gate comments from non-allowlisted authors: %s\n' "$ignored_reviewers" >&2
           fi
-          review_gate_details="null"
-
-          if [ "$latest_review_gate_json" = "null" ]; then
-            marker_parse_status="none"
-          else
-            # Contract-mandatory fields are all required: blocking-set may be empty, next-action may not,
-            # and the verdict must be one of the four contract states. Anything else parses as invalid.
-            # `capture` emits nothing (not an error) when a field is missing, so `// null` is what turns
-            # an incomplete body into an explicit null instead of an empty string.
-            review_gate_details="$(printf '%s' "$latest_review_gate_json" | jq -c '
-              (try (
-                {
-                  verdict: (.body | capture("^## review-gate:\\s*(?<verdict>\\S+)").verdict),
-                  head_sha: (.body | capture("(?m)^head-sha:\\s*(?<head_sha>[0-9a-f]{40})\\s*$").head_sha),
-                  review_round: (.body | capture("(?m)^review-round:\\s*(?<review_round>\\d+)\\s*$").review_round | tonumber),
-                  reviewed_files: (.body | capture("(?m)^reviewed-files:\\s*(?<reviewed_files>\\d+)\\s*$").reviewed_files | tonumber),
-                  blocking_set: (.body | capture("(?m)^blocking-set:(?<blocking_set>[^\\n]*)$").blocking_set),
-                  next_action: (.body | capture("(?m)^next-action:[ \\t]*(?<next_action>\\S[^\\n]*)$").next_action)
-                }
-                | if (.verdict | IN("merge-candidate", "needs-fix", "needs-human", "blocked")) then . else error("unknown verdict") end
-              ) catch null) // null
-            ')"
-            if [ "$review_gate_details" = "null" ]; then
-              marker_parse_status="invalid"
-            else
-              marker_parse_status="valid"
-            fi
-          fi
+          marker_parse_status="$(printf '%s' "$verdict_parse_result" | jq -r '.status')"
+          review_gate_details="$(printf '%s' "$verdict_parse_result" | jq -c '.details // null')"
 
           review_gate_state="ungated"
           review_gate_verdict="none"
