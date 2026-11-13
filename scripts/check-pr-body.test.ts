@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { validatePrBody } from "./check-pr-body";
+import { fetchPullRequestBody, validatePrBody } from "./check-pr-body";
+
+type PullRequestEvent = {
+  pull_request?: { number?: number; head?: { sha?: string } };
+};
 
 const sha = "a".repeat(40);
 const valid = `Closes #160
@@ -34,18 +38,84 @@ describe("PR body validation", () => {
   });
 
   test("rejects a missing closing reference", () => {
-    expect(validatePrBody(valid.replace("Closes #160", "Related to #160"), sha)).toContain("missing Fixes/Closes/Resolves issue reference");
+    expect(validatePrBody(valid.replace("Closes #160", "Related to #160"), sha)[0]).toContain("Expected: a Fixes/Closes/Resolves issue reference; found: none; action:");
   });
 
   test("rejects each missing section, not mentions in prose", () => {
     for (const section of ["Summary", "Evidence", "Merge Danger", "Docs"]) {
-      expect(validatePrBody(valid.replace(`## ${section}`, `Note: ${section}`), sha)).toContain(`missing ## ${section} section`);
+      expect(validatePrBody(valid.replace(`## ${section}`, `Note: ${section}`), sha).join("\n")).toContain(`Expected: a ## ${section} section; found: section missing; action:`);
     }
   });
 
   test("rejects a stale, malformed, or misplaced SHA", () => {
-    expect(validatePrBody(valid, "b".repeat(40))).toContain("Evidence Head SHA does not match the current PR head SHA");
-    expect(validatePrBody(valid.replace(sha, "a".repeat(39)), sha)).toContain("Evidence Head SHA does not match the current PR head SHA");
-    expect(validatePrBody(valid.replace(`- Head SHA: ${sha}`, "No head SHA"), sha)).toContain("Evidence Head SHA does not match the current PR head SHA");
+    expect(validatePrBody(valid, "b".repeat(40))[0]).toContain(`Expected: Evidence Head SHA ${"b".repeat(40)}; found: ${sha}; action:`);
+    expect(validatePrBody(valid.replace(sha, "a".repeat(39)), sha)[0]).toContain(`Expected: Evidence Head SHA ${sha}; found: missing or malformed; action:`);
+    expect(validatePrBody(valid.replace(`- Head SHA: ${sha}`, "No head SHA"), sha)[0]).toContain(`Expected: Evidence Head SHA ${sha}; found: missing or malformed; action:`);
+  });
+
+  test("reports expected, found, and action for each contract error", () => {
+    const errors = validatePrBody("unstructured body", sha);
+    expect(errors).toHaveLength(5);
+    expect(errors.every((error) => error.startsWith("Expected: "))).toBe(true);
+    expect(errors.every((error) => error.includes("; found: "))).toBe(true);
+    expect(errors.every((error) => error.includes("; action: "))).toBe(true);
+  });
+});
+
+describe("pull request event shape", () => {
+  test("has only the PR number and head for live-body validation", () => {
+    const event: PullRequestEvent = { pull_request: { number: 241, head: { sha } } };
+    expect(event.pull_request?.number).toBe(241);
+    expect(event.pull_request?.head?.sha).toBe(sha);
+  });
+
+  test("validates body against the event head SHA", () => {
+    const bodyWithStaleSha = valid.replace(`- Head SHA: ${sha}`, `- Head SHA: ${"b".repeat(40)}`);
+    expect(validatePrBody(bodyWithStaleSha, sha)[0]).toBe(`Expected: Evidence Head SHA ${sha}; found: ${"b".repeat(40)}; action: regenerate evidence for this head and update the PR body`);
+  });
+});
+
+describe("live PR body retrieval", () => {
+  test("fetches the edited body from GitHub with the provided token", async () => {
+    let requestUrl = "";
+    let requestHeaders: HeadersInit | undefined;
+    const body = await fetchPullRequestBody(241, "ptstory/tracer-workflow", "test-token", "https://api.github.test", async (input, init) => {
+      requestUrl = String(input);
+      requestHeaders = init?.headers;
+      return new Response(JSON.stringify({ body: valid }), { status: 200 });
+    });
+
+    expect(requestUrl).toBe("https://api.github.test/repos/ptstory/tracer-workflow/pulls/241");
+    expect(new Headers(requestHeaders).get("Authorization")).toBe("Bearer test-token");
+    expect(new Headers(requestHeaders).get("Accept")).toBe("application/vnd.github+json");
+    expect(new Headers(requestHeaders).get("X-GitHub-Api-Version")).toBe("2022-11-28");
+    expect(body).toBe(valid);
+    expect(validatePrBody(body ?? "", sha)).toEqual([]);
+    expect(validatePrBody(valid.replace(`- Head SHA: ${sha}`, `- Head SHA: ${"b".repeat(40)}`), sha)[0])
+      .toContain(`Expected: Evidence Head SHA ${sha}; found: ${"b".repeat(40)}; action:`);
+  });
+
+  test("reports non-success responses with expected, found, and action", async () => {
+    await expect(fetchPullRequestBody(241, "ptstory/tracer-workflow", "test-token", "https://api.github.test", async () =>
+      new Response("not found", { status: 404 }),
+    )).rejects.toThrow("Expected: HTTP 200 with the live PR body; found: HTTP 404; action:");
+  });
+
+  test("rejects malformed and invalid PR body responses", async () => {
+    await expect(fetchPullRequestBody(241, "ptstory/tracer-workflow", "test-token", "https://api.github.test", async () =>
+      new Response("not json", { status: 200 }),
+    )).rejects.toThrow("found: response body is invalid JSON");
+    await expect(fetchPullRequestBody(241, "ptstory/tracer-workflow", "test-token", "https://api.github.test", async () =>
+      new Response(JSON.stringify({ body: 42 }), { status: 200 }),
+    )).rejects.toThrow("found: body is missing or has an invalid type");
+    await expect(fetchPullRequestBody(241, "ptstory/tracer-workflow", "test-token", "https://api.github.test", async () =>
+      new Response(JSON.stringify({ number: 241 }), { status: 200 }),
+    )).rejects.toThrow("found: body is missing or has an invalid type");
+  });
+
+  test("reports request failures", async () => {
+    await expect(fetchPullRequestBody(241, "ptstory/tracer-workflow", "test-token", "https://api.github.test", async () => {
+      throw new Error("network unavailable");
+    })).rejects.toThrow("Expected: a successful GitHub API response; found: request failed; action:");
   });
 });
