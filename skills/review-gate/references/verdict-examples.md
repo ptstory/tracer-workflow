@@ -22,6 +22,7 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 - readiness evidence path: available
 - all applicable required checks are green on the current head
 - at least one applicable required check exercises the changed paths
+- changed files are not all in the docs-only allowlist; ordinary path coverage applies
 
 ### Post-merge
 - confirm Closes #123 closed the issue
@@ -65,9 +66,40 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 - readiness evidence path: plan-unavailable (rulesets fall-through; getRulesForBranch returned connector HTTP 400 unsupported endpoint, then getRulesets returned the exact captured plan HTTP 403; getBranch `protected: false`)
 - no required checks are configured on the target branch
 - at least one green CI/check run on the current head exercises the changed paths
+- changed files are not all in the docs-only allowlist; ordinary path coverage applies
 
 ### Post-merge
 - confirm Closes #123 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## merge-candidate (docs-only allowlist, draft PR)
+
+```verdict
+## review-gate: merge-candidate
+
+head-sha: 2123456789abcdef0123456789abcdef01234567
+review-round: 0
+reviewed-files: 2
+blocking-set:
+next-action: gh pr ready 203
+
+### Standards
+- No blocking findings.
+
+### Spec
+- No blocking findings.
+
+### Merge preconditions
+- head is still 2123456789abcdef0123456789abcdef01234567
+- every changed path matches the canonical docs-only allowlist
+- readiness evidence path: available
+- all applicable required checks are green at the current head
+- `pr-body` check is successful at the current head
+- clean Review Gate content review is bound to the same head
+
+### Post-merge
+- confirm Closes #203 closed the issue
 - next eligible ready-for-agent issue
 ```
 

@@ -35,7 +35,7 @@
     {"id": "review_gate", "lane": "planning", "col": 5, "type": "security", "label": "Fresh review-gate", "sublabel": "requesting-code-review + dispositions", "tag": "fresh context"},
     {"id": "verdict", "lane": "github", "col": 5, "type": "messagebus", "label": "Verdict Comment", "sublabel": "state + review-round + exact head-sha", "tag": "append-only / SHA-bound"},
     {"id": "from_pr_review", "lane": "execution", "col": 5, "type": "backend", "label": "from-pr-review", "sublabel": "receiving-code-review → fix-now batch → push", "tag": "needs-fix only"},
-    {"id": "check_gate", "lane": "verification", "col": 5, "type": "security", "label": "Check-Run Gate", "sublabel": "actual current-head checks + changed-path coverage", "tag": "observed state"},
+    {"id": "check_gate", "lane": "verification", "col": 5, "type": "security", "label": "Check-Run Gate", "sublabel": "current-head checks + docs-only exception or path coverage", "tag": "observed state"},
     {"id": "merge", "lane": "human", "col": 5, "type": "external", "label": "Land / Merge", "sublabel": "AFK autonomous · HITL human", "tag": "authority fixed at issue creation"}
   ],
   "edges": [

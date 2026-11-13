@@ -48,14 +48,18 @@ nothing when its verdict targets an older head.
 
 ## Check-run gate
 
-Merge readiness comes from the current head's required status-check
-configuration. If required checks are configured, all applicable required checks
-must be green at the current head and at least one applicable required check
-must exercise the changed paths. If no required checks are configured, at least
-one green CI/check run on the current head must exercise the changed paths.
-Older-head results never count. Review-gate findings that can block that merge
-decision are limited by the binding scope in the verdict contract: the issue
-body plus brief clarifications explicitly marked as derived from it.
+Merge readiness follows the current head's required status-check configuration.
+The docs-only exception and canonical path allowlist are defined in
+`skills/review-gate/references/verdict-contract.md`: all applicable configured
+required checks must be green at the current head (when configured), `pr-body`
+must pass at the current head, and Review Gate content review must be clean at
+that same head. Any non-allowlisted or mixed change retains ordinary changed-path
+coverage. Older-head results never count. Review-gate findings that can block
+that merge decision are limited by the binding scope in the verdict contract:
+the issue body plus brief clarifications explicitly marked as derived from it.
+
+The docs-only exception is not a blanket markdown rule. Its exact canonical
+allowlist is in `skills/review-gate/references/verdict-contract.md`.
 
 ## Slice contract
 
