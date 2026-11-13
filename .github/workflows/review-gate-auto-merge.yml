@@ -50,6 +50,7 @@ jobs:
           repo="${REPOSITORY:?}"
           pr_number=""
           source_head_sha=""
+          gate_event_source=""
           event_comment_login=""
           event_created_at=""
           workflow_name=""
@@ -65,6 +66,7 @@ jobs:
             fi
             source_head_sha="$(printf '%s' "$event_json" | jq -r '.workflow_run.head_sha // empty')"
             event_created_at="$(printf '%s' "$event_json" | jq -r '.workflow_run.updated_at // .workflow_run.completed_at // empty')"
+            gate_event_source="$(printf '%s' "$event_json" | jq -r '.workflow_run.name // empty')"
             pr_number="$(printf '%s' "$event_json" | jq -r '[.workflow_run.pull_requests[]?.number] | if length == 1 then .[0] else empty end')"
           elif [ "$GITHUB_EVENT_NAME" = "check_run" ]; then
             source_head_sha="$(printf '%s' "$event_json" | jq -r '.check_run.head_sha // empty')"
@@ -199,7 +201,7 @@ jobs:
           }
 
           refresh_pr_state
-          if [ "$GITHUB_EVENT_NAME" != "issue_comment" ] && [ "$has_merge_candidate_label" != "true" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "$gate_event_source" = "CI" ] && [ "$has_merge_candidate_label" != "true" ]; then
             exit 0
           fi
           if [ -n "$event_comment_login" ] && ! printf '%s' "$reviewer_logins_json" | jq -e --arg login "$event_comment_login" 'index($login) != null' >/dev/null; then
