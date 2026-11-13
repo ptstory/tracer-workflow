@@ -12,6 +12,10 @@ on:
         description: Comma-separated trusted review-gate GitHub logins; defaults to the caller repository variable.
         required: false
         type: string
+      pull-request-action:
+        description: Original pull_request action when invoked through a caller workflow.
+        required: false
+        type: string
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -31,6 +35,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+          INPUT_PULL_REQUEST_ACTION: ${{ inputs.pull-request-action }}
           REPOSITORY: ${{ github.repository }}
           TRACER_REVIEWER_LOGINS: ${{ inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS }}
         run: |
@@ -103,7 +108,7 @@ jobs:
 
           pr_metadata_source="workflow_call gh api"
           gh_token_source="secrets.GITHUB_TOKEN"
-          pull_request_action=""
+          pull_request_action="${INPUT_PULL_REQUEST_ACTION:-}"
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             pr_metadata_json="$(cat "${GITHUB_EVENT_PATH:?}")"
             pull_request_action="$(printf '%s' "$pr_metadata_json" | jq -r '.action // empty')"
@@ -121,8 +126,8 @@ jobs:
             has_ready_label="$(printf '%s' "$pr_metadata_json" | jq -r '([(.labels // [])[] | .name] | index("gate:ready")) != null')"
           fi
 
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && [ "$pull_request_action" = "synchronize" ]; then
-            if ! gh_api_capture sync_pr_json "GET repos/$repo/pulls/$pr_number (synchronize label cleanup)" "repos/$repo/pulls/$pr_number"; then
+          if [ "$pull_request_action" = "synchronize" ]; then
+            if ! gh_api_capture sync_pr_json "GET repos/$repo/pulls/$pr_number (live head re-check for synchronize cleanup)" "repos/$repo/pulls/$pr_number"; then
               exit 1
             fi
             while IFS= read -r encoded_label; do

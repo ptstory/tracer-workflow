@@ -46,6 +46,8 @@ describe(".github/workflows/gate-readiness.yml", () => {
 
   test("is self-contained and accepts trusted reviewer logins from the caller", () => {
     expect(workflow).toContain("reviewer-logins:");
+    expect(workflow).toContain("pull-request-action:");
+    expect(callerTemplate).toContain("pull-request-action: ${{ github.event.action }}");
     expect(workflow).toContain("${{ inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS }}");
     expect(workflow).toContain("inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS");
     expect(workflow).not.toContain("actions/checkout");
@@ -65,11 +67,14 @@ describe(".github/workflows/gate-readiness.yml", () => {
 
   test("re-reads the live PR head before every comment and label write", () => {
     const script = runScript();
-    const recheck = script.indexOf("(live head re-check)");
+    const recheck = script.indexOf('(live head re-check)');
+    const synchronizeCleanup = script.indexOf('(live head re-check for synchronize cleanup)');
     expect(recheck).toBeGreaterThan(-1);
+    expect(synchronizeCleanup).toBeGreaterThan(-1);
     for (const write of ['-X PATCH "repos/$repo/issues/comments/', '-X POST "repos/$repo/issues/$pr_number/comments"', '-X POST "repos/$repo/issues/$pr_number/labels"', '-X DELETE "repos/$repo/issues/$pr_number/labels/', '-X POST "repos/$repo/labels"']) {
       const first = script.indexOf(write);
-      expect(first, write).toBeGreaterThan(recheck);
+      const requiredRecheck = write.startsWith('-X DELETE') ? synchronizeCleanup : recheck;
+      expect(first, write).toBeGreaterThan(requiredRecheck);
     }
   });
 

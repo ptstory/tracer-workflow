@@ -49,6 +49,7 @@ jobs:
     uses: ptstory/tracer-workflow/.github/workflows/gate-readiness.yml@main
     with:
       pr-number: ${{ github.event.pull_request.number }}
+      pull-request-action: ${{ github.event.action }}
     secrets: inherit
 
   from-comment:
