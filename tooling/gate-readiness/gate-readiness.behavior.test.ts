@@ -20,7 +20,7 @@ type Harness = {
 };
 
 type WorkflowFixture = {
-  eventName: "pull_request" | "workflow_call";
+  eventName: "pull_request_target" | "workflow_call";
   eventPayload?: unknown;
   prNumber: number;
   pullJson?: unknown;
@@ -34,6 +34,7 @@ type WorkflowFixture = {
   liveHeadSha?: string;
   liveHeadSequence?: string[];
   reviewerLogins?: string;
+  pullRequestAction?: string;
   failure?: {
     endpointIncludes: string;
     method?: string;
@@ -135,19 +136,17 @@ if (body && (endpoint.includes("/issues/") || endpoint.includes("/labels"))) {
 }
 
 if (endpoint.includes("/pulls/")) {
-  if (fixture.blockPulls) {
-    process.stderr.write("GET /pulls/98 blocked\\n");
-    process.exit(42);
-  }
-  // workflow_call evaluates from the first pulls read, so the live re-check is the second;
-  // pull_request evaluates from the event payload, so its only pulls read is the re-check.
   const countPath = logPath + ".pulls";
   const calls = (fs.existsSync(countPath) ? Number(fs.readFileSync(countPath, "utf8")) : 0) + 1;
   fs.writeFileSync(countPath, String(calls));
+  if (fixture.blockPulls && calls >= 2) {
+    process.stderr.write("GET /pulls/98 blocked\\n");
+    process.exit(42);
+  }
   const base = fixture.pullJson ?? fixture.eventPullRequest ?? {};
-  const isRecheck = calls >= (fixture.eventName === "workflow_call" ? 2 : 1);
+  const isRecheck = calls >= 2;
   const head = isRecheck && fixture.liveHeadSequence?.length
-    ? { sha: fixture.liveHeadSequence[Math.min(calls - (fixture.eventName === "workflow_call" ? 2 : 1), fixture.liveHeadSequence.length - 1)] }
+    ? { sha: fixture.liveHeadSequence[Math.min(calls - 2, fixture.liveHeadSequence.length - 1)] }
     : isRecheck && fixture.liveHeadSha ? { sha: fixture.liveHeadSha } : base.head;
   process.stdout.write(JSON.stringify({ ...base, head, labels: fixture.labels ?? base.labels ?? [] }));
   process.exit(0);
@@ -190,11 +189,11 @@ function runWorkflow(fixture: WorkflowFixture) {
       GITHUB_EVENT_NAME: fixture.eventName,
       GITHUB_EVENT_PATH: harness.eventPath,
       GITHUB_TOKEN: "token",
-      VERDICT_CLI_PATH: join(repoRoot, "tooling/lib/verdict-cli.ts"),
       PR_NUMBER: String(fixture.prNumber),
       REPOSITORY: "acme/repo",
       TRACER_REVIEWER_LOGINS: fixture.reviewerLogins ?? "reviewer",
-      INPUT_PR_NUMBER: String(fixture.prNumber),
+      INPUT_PR_NUMBER: fixture.eventName === "workflow_call" ? String(fixture.prNumber) : "",
+      INPUT_PULL_REQUEST_ACTION: fixture.pullRequestAction ?? (fixture.eventPayload as { action?: string } | undefined)?.action ?? "",
     },
     encoding: "utf8",
   });
@@ -294,7 +293,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
   test("stops synchronize cleanup after the head moves between label deletions", () => {
     const headSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const { result, ghLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "pull_request_target",
       eventPayload: {
         action: "synchronize",
         pull_request: {
@@ -324,7 +323,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
       body: currentReviewGateComment.body.replace(/merge-candidate/g, "needs-fix").replace(/a{40}/, headSha),
     };
     const { result, ghLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "pull_request_target",
       eventPayload: {
         action: "synchronize",
         pull_request: {
@@ -351,7 +350,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
   test("a superseded synchronize event does not clear labels from a newer head", () => {
     const eventHeadSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const { result, ghLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "pull_request_target",
       eventPayload: {
         action: "synchronize",
         pull_request: {
@@ -416,9 +415,9 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:ready","method":"DELETE"');
   });
 
-  test("pull_request evaluates from the event payload and reads pulls only for the live head re-check", () => {
+  test("pull_request_target reads PR metadata only through the API and rechecks the live head", () => {
     const { result, ghLog, commentLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "pull_request_target",
       eventPayload: {
         pull_request: {
           number: 98,
@@ -435,14 +434,14 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
     expect(result.status, result.stderr).toBe(0);
     const pullsReads = ghLog.split("\n").filter((line) => line.includes('"endpoint":"repos/acme/repo/pulls/98"'));
-    expect(pullsReads).toHaveLength(1);
-    expect(commentLog).toContain("- PR metadata source: pull_request event payload");
+    expect(pullsReads).toHaveLength(2);
+    expect(commentLog).toContain("- PR metadata source: GitHub API");
     expect(commentLog).toContain("- auth path: GH_TOKEN -> secrets.GITHUB_TOKEN");
   });
 
   test("a failed live head re-check fails the run before any write", () => {
     const { result, ghLog, commentLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "pull_request_target",
       eventPayload: {
         pull_request: { number: 98, head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Fixes #97", labels: [] },
       },
@@ -460,13 +459,13 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(ghLog).not.toContain('"method":"PATCH"');
   });
 
-  test.each(["pull_request", "workflow_call"] as const)(
+  test.each(["pull_request_target", "workflow_call"] as const)(
     "%s: a head that moved during evaluation skips every comment and label write",
     (eventName) => {
       const pr = { number: 98, head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Fixes #97", labels: [{ name: "gate:needs-fix" }] };
       const { result, ghLog, commentLog } = runWorkflow({
         eventName,
-        eventPayload: eventName === "pull_request" ? { pull_request: pr } : undefined,
+        eventPayload: eventName === "pull_request_target" ? { action: "opened", pull_request: pr } : undefined,
         pullJson: eventName === "workflow_call" ? pr : undefined,
         prNumber: 98,
         liveHeadSha: "cccccccccccccccccccccccccccccccccccccccc",
@@ -589,7 +588,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
   test("a superseded failed rerun cannot override a newer success", () => {
     const { result, commentLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "pull_request_target",
       eventPayload: {
         pull_request: {
           number: 98,
@@ -648,7 +647,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
   test("same-name check runs from distinct apps stay separate", () => {
     const { result, commentLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "pull_request_target",
       eventPayload: {
         pull_request: {
           number: 98,

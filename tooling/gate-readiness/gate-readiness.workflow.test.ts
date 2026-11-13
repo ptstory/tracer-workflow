@@ -38,24 +38,32 @@ describe(".github/workflows/gate-readiness.yml", () => {
     expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
   });
 
-  test("requests write access for issue comment writeback and PR comment writeback while keeping metadata lookup separated", () => {
+  test("requests write access only for GitHub API comments and labels", () => {
     expect(workflow).toContain("issues: write # issue comments + labels");
-    expect(workflow).toContain("pull-requests: write # PR comment writeback; workflow_call metadata lookup stays read-only via gh api");
+    expect(workflow).toContain("pull-requests: write # PR comment writeback; PR metadata is read-only via gh api");
     expect(workflow).toContain("issue comments + labels");
     expect(workflow).toContain("PR comment writeback");
-    expect(workflow).toContain("workflow_call metadata lookup stays read-only via gh api");
+    expect(workflow).toContain("PR metadata is read-only via gh api");
   });
 
-  test("is self-contained and accepts trusted reviewer logins from the caller", () => {
+  test("uses a trusted pull_request_target event without checking out PR code", () => {
+    expect(workflow).toContain("pull_request_target:");
+    expect(workflow).not.toContain("\n  pull_request:");
+    expect(workflow).not.toContain("actions/checkout");
+    expect(workflow).not.toContain("github.event.pull_request.head.sha");
+  });
+
+  test("is self-contained, accepts trusted reviewer logins, and reads PR data through the API", () => {
+    const script = runScript("Evaluate readiness");
     expect(workflow).toContain("reviewer-logins:");
     expect(workflow).toContain("pull-request-action:");
     expect(callerTemplate).toContain("pull-request-action: ${{ github.event.action }}");
     expect(workflow).toContain("${{ inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS }}");
     expect(workflow).toContain("inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS");
-    expect(workflow).toContain("Check out the shared Review Gate parser");
     expect(workflow).toContain('gh api "repos/$repo/');
-    expect(workflow).toContain("VERDICT_CLI_PATH: ${{ github.workspace }}/.tracer-workflow/tooling/lib/verdict-cli.ts");
-    expect(workflow).toContain("repository: ptstory/tracer-workflow");
+    expect(script).toContain('gh_api_capture pr_metadata_json "GET repos/$repo/pulls/$pr_number"');
+    expect(script).not.toContain('cat "${GITHUB_EVENT_PATH:?}"');
+    expect(script).toContain('pr_metadata_source="GitHub API"');
   });
 
   test("caller template only reevaluates for review-gate PR comments", () => {
@@ -84,15 +92,14 @@ describe(".github/workflows/gate-readiness.yml", () => {
     }
   });
 
-  test("uses the shared verdict parser for label eligibility", () => {
+  test("parses trusted verdicts in the workflow without executing PR-controlled code", () => {
     const script = runScript("Evaluate readiness");
-    expect(workflow).toContain("tooling/lib/verdict-cli.ts");
-    expect(script).toContain("PR_NUMBER=\"$pr_number\"");
     expect(script).toContain("verdict_parse_result=");
     expect(script).toContain("ignored_reviewers=");
-    expect(script).toContain("${VERDICT_CLI_PATH:?}");
-    expect(script).not.toContain('capture("(?m)^blocking-set:');
-    expect(script).not.toContain('capture("(?m)^next-action:');
+    expect(script).toContain("valid_next_action");
+    expect(script).toContain("latest");
+    expect(script).not.toContain("bun ");
+    expect(script).not.toContain("VERDICT_CLI_PATH");
   });
 
   test("deletes verdict labels only when the PR already has them", () => {
