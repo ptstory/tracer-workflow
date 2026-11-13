@@ -370,6 +370,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(ghLog).not.toContain('"method":"DELETE"');
+    expect(result.stderr).toContain("PR head moved before synchronize cleanup");
   });
 
   test("does not delete absent verdict labels when no trusted verdict exists", () => {

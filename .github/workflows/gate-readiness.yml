@@ -153,6 +153,8 @@ jobs:
                 fi
                 gh_api "DELETE repos/$repo/issues/$pr_number/labels/$encoded_label" -X DELETE "repos/$repo/issues/$pr_number/labels/$encoded_label" >/dev/null
               done <<< "$sync_gate_labels"
+            else
+              printf 'gate-readiness: PR head moved before synchronize cleanup; skipping label deletion\n' >&2
             fi
             exit 0
           fi
