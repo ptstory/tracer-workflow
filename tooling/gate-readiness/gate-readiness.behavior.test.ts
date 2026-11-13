@@ -277,6 +277,20 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(ghLog).toContain("gate:merge-candidate");
   });
 
+  test("normalizes uppercase verdict head SHAs before comparing with GitHub metadata", () => {
+    const body = currentReviewGateComment.body.replace(/a{40}/, "A".repeat(40));
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "a".repeat(40) }, body: "Closes #97", labels: [] },
+      commentsJson: [{ ...currentReviewGateComment, body }],
+      checkRunsJson: [], statusesJson: [],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- review gate state: current");
+    expect(ghLog).toContain("labels[]=gate:merge-candidate");
+  });
+
   test("removes an existing stale verdict label without deleting absent labels", () => {
     const { result, ghLog } = runWorkflow({
       eventName: "workflow_call", prNumber: 98,

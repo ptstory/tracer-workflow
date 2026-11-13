@@ -177,7 +177,7 @@ jobs:
               | $comment.created_at as $created_at
               | try (
                   ($body | capture("^## review-gate:\\s*(?<verdict>\\S+)").verdict) as $verdict
-                  | ($body | capture("(?m)^head-sha:[ \\t]*(?<head_sha>[0-9a-f]{40})[ \\t]*$").head_sha | ascii_downcase) as $head_sha
+                  | ($body | capture("(?m)^head-sha:[ \\t]*(?<head_sha>[0-9a-fA-F]{40})[ \\t]*$").head_sha | ascii_downcase) as $head_sha
                   | ($body | capture("(?m)^review-round:[ \\t]*(?<review_round>[0-9]+)[ \\t]*$").review_round | tonumber) as $review_round
                   | ($body | capture("(?m)^reviewed-files:[ \\t]*(?<reviewed_files>[0-9]+)[ \\t]*$").reviewed_files | tonumber) as $reviewed_files
                   | field_values($body; "blocking-set") as $blocking_fields
