@@ -38,19 +38,19 @@ describe("PR body validation", () => {
   });
 
   test("rejects a missing closing reference", () => {
-    expect(validatePrBody(valid.replace("Closes #160", "Related to #160"), sha)[0]).toContain("Expected: a Fixes/Closes/Resolves issue reference; found: none; action:");
+    expect(validatePrBody(valid.replace("Closes #160", "Related to #160"), sha)[0]).toBe("Expected: a Fixes/Closes/Resolves issue reference; found: none; action: add the governing issue reference");
   });
 
   test("rejects each missing section, not mentions in prose", () => {
     for (const section of ["Summary", "Evidence", "Merge Danger", "Docs"]) {
-      expect(validatePrBody(valid.replace(`## ${section}`, `Note: ${section}`), sha).join("\n")).toContain(`Expected: a ## ${section} section; found: section missing; action:`);
+      expect(validatePrBody(valid.replace(`## ${section}`, `Note: ${section}`), sha).join("\n")).toContain(`Expected: a ## ${section} section; found: section missing; action: add the required ${section} section`);
     }
   });
 
   test("rejects a stale, malformed, or misplaced SHA", () => {
-    expect(validatePrBody(valid, "b".repeat(40))[0]).toContain(`Expected: Evidence Head SHA ${"b".repeat(40)}; found: ${sha}; action:`);
-    expect(validatePrBody(valid.replace(sha, "a".repeat(39)), sha)[0]).toContain(`Expected: Evidence Head SHA ${sha}; found: missing or malformed; action:`);
-    expect(validatePrBody(valid.replace(`- Head SHA: ${sha}`, "No head SHA"), sha)[0]).toContain(`Expected: Evidence Head SHA ${sha}; found: missing or malformed; action:`);
+    expect(validatePrBody(valid, "b".repeat(40))[0]).toBe(`Expected: Evidence Head SHA ${"b".repeat(40)}; found: ${sha}; action: regenerate evidence for this head and update the PR body`);
+    expect(validatePrBody(valid.replace(sha, "a".repeat(39)), sha)[0]).toBe(`Expected: Evidence Head SHA ${sha}; found: missing or malformed; action: regenerate evidence for this head and update the PR body`);
+    expect(validatePrBody(valid.replace(`- Head SHA: ${sha}`, "No head SHA"), sha)[0]).toBe(`Expected: Evidence Head SHA ${sha}; found: missing or malformed; action: regenerate evidence for this head and update the PR body`);
   });
 
   test("reports expected, found, and action for each contract error", () => {
@@ -92,7 +92,7 @@ describe("live PR body retrieval", () => {
     expect(body).toBe(valid);
     expect(validatePrBody(body ?? "", sha)).toEqual([]);
     expect(validatePrBody(valid.replace(`- Head SHA: ${sha}`, `- Head SHA: ${"b".repeat(40)}`), sha)[0])
-      .toContain(`Expected: Evidence Head SHA ${sha}; found: ${"b".repeat(40)}; action:`);
+      .toBe(`Expected: Evidence Head SHA ${sha}; found: ${"b".repeat(40)}; action: regenerate evidence for this head and update the PR body`);
   });
 
   test("reports non-success responses with expected, found, and action", async () => {
@@ -104,13 +104,13 @@ describe("live PR body retrieval", () => {
   test("rejects malformed and invalid PR body responses", async () => {
     await expect(fetchPullRequestBody(241, "ptstory/tracer-workflow", "test-token", "https://api.github.test", async () =>
       new Response("not json", { status: 200 }),
-    )).rejects.toThrow("found: response body is invalid JSON");
+    )).rejects.toThrow("Expected: a valid GitHub PR response; found: response body is invalid JSON; action: verify the GitHub API response and retry");
     await expect(fetchPullRequestBody(241, "ptstory/tracer-workflow", "test-token", "https://api.github.test", async () =>
       new Response(JSON.stringify({ body: 42 }), { status: 200 }),
-    )).rejects.toThrow("found: body is missing or has an invalid type");
+    )).rejects.toThrow("Expected: a string or null PR body; found: body is missing or has an invalid type; action: verify the GitHub API response and retry");
     await expect(fetchPullRequestBody(241, "ptstory/tracer-workflow", "test-token", "https://api.github.test", async () =>
       new Response(JSON.stringify({ number: 241 }), { status: 200 }),
-    )).rejects.toThrow("found: body is missing or has an invalid type");
+    )).rejects.toThrow("Expected: a string or null PR body; found: body is missing or has an invalid type; action: verify the GitHub API response and retry");
   });
 
   test("reports request failures", async () => {

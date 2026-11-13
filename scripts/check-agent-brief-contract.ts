@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { formatCheckDiagnostic } from "./check-diagnostic";
+
 export type AgentBriefContractFiles = {
   agentBrief: string;
   fromIssue: string;
@@ -47,7 +49,7 @@ export function validateAgentBriefContract(files: AgentBriefContractFiles): stri
 
   for (const [surface, present] of Object.entries(hasRevisionMarker)) {
     if (!present) {
-      errors.push(`${contractPaths[surface as keyof typeof contractPaths]}: missing written-against revision contract`);
+      errors.push(formatCheckDiagnostic(`${contractPaths[surface as keyof typeof contractPaths]} to contain the written-against revision contract`, "contract missing", "restore the required revision guidance"));
     }
   }
 
@@ -96,7 +98,7 @@ export function validateAgentBriefContract(files: AgentBriefContractFiles): stri
     ...fromIssueRequirements,
     ...prBodyRequirements,
   ]) {
-    if (!requirement.ok) errors.push(requirement.message);
+    if (!requirement.ok) errors.push(formatCheckDiagnostic(requirement.message, "requirement missing", "restore the missing agent-brief revision contract requirement"));
   }
 
   return errors;
