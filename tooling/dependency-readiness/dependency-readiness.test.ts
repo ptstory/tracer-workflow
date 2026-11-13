@@ -113,14 +113,14 @@ describe("dependency reference parsing", () => {
     expect(parseDependencies("Depends on #12 #13, #14")).toEqual([12, 13, 14]);
   });
 
-  test("ignores a self-reference without changing readiness", () => {
+  test("blocks readiness for an open self-reference", () => {
     const api = new FixtureApi();
     api.issues.set(17, fixtureIssue(17, "Depends on #17", "open", ["ready-for-agent"]));
 
     reconcileIssue(17, api);
 
-    expect(api.issues.get(17)?.labels.map(({ name }) => name)).toEqual(["ready-for-agent"]);
-    expect(api.comments.get(17)).toBeUndefined();
+    expect(api.issues.get(17)?.labels.map(({ name }) => name)).toEqual(["blocked"]);
+    expect(api.comments.get(17)?.[0]?.body).toContain("#17");
   });
 
   test("parses a PR reference as a same-repository number", () => {

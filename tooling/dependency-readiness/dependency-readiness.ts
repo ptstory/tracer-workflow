@@ -75,7 +75,7 @@ function reconcileTargets(issues: DependencyIssue[], api: DependencyReadinessApi
   }>;
   try {
     for (const issue of targets) {
-      const dependencies = parseDependencies(issue.body).filter((dependencyNumber) => dependencyNumber !== issue.number);
+      const dependencies = parseDependencies(issue.body);
       if (dependencies.length === 0) continue;
       dependenciesByIssue.set(issue.number, dependencies);
       for (const dependencyNumber of dependencies) {
