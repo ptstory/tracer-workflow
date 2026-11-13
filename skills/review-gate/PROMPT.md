@@ -40,9 +40,16 @@ Do this:
    by the labeled diff and anything in the binding contract that the labeled
    diff newly violates.
 5. If this is round `N > 0`, compare the current evidence bundle against the
-   prior round's evidence bundle. If the test count is unchanged while the new
-   bundle claims added coverage, emit `blocked` and name the evidence
-   inconsistency.
+   prior round's evidence bundle. For any claim of added or changed coverage,
+   require new or modified test node IDs in the diff since the previously
+   reviewed SHA, and verify those exact IDs are present in runner-generated
+   output showing they passed at the current head. A changed test ID with a
+   green current-head result is consistent even when the aggregate test count is
+   unchanged, including when an invalid test was replaced. If a coverage claim
+   lacks matching changed test IDs or current-head green runner output, emit it
+   as a `fix-now` finding under `needs-fix`, not `blocked`. Reserve `blocked`
+   for missing or incomplete current-head CI/readiness evidence needed to
+   determine the check-run gate.
 6. Classify findings only with the contract dispositions: `fix-now`,
    `follow-up-issue`, `defer`, `reject`, `needs-human`.
 7. Post the result as a PR comment in the exact format below. Do not attempt a
@@ -57,7 +64,7 @@ Comment format (post verbatim, filling in):
 head-sha: <full 40-char SHA you reviewed>
 review-round: <0-based integer>
 reviewed-files: <n>
-blocking-set: <comma-separated repo-relative file paths; every fix-now finding's files for blocked or needs-fix, otherwise empty>
+blocking-set: <comma-separated targets; repo-relative paths for code/docs, literal PR body for PR metadata; every fix-now finding for blocked or needs-fix, otherwise empty>
 next-action: <one command or invocation matching the verdict state>
 rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 
@@ -79,7 +86,7 @@ rebaseline: <yes on the fresh round-0 rebaseline; omit otherwise>
 Rules:
 - The `head-sha`, `review-round`, `reviewed-files`, `blocking-set`, and
   `next-action` lines are mandatory. Emit them exactly in that parser shape.
-- Emit `blocking-set:` on every verdict. For `blocked` or `needs-fix`, list the repo-relative files of every `fix-now` finding, preserving all code findings. It is empty only when there are no `fix-now` findings.
+- Emit `blocking-set:` on every verdict. For `blocked` or `needs-fix`, list every `fix-now` target, preserving all code findings as repo-relative paths and representing PR-body contract violations as the literal `PR body`. It is empty only when there are no `fix-now` findings.
 - Emit `rebaseline: yes` only on the fresh round-0 verdict after a late-created
   or materially amended binding issue. Omit it otherwise.
 - Emit `next-action:` on every verdict using exactly one of these state templates,
@@ -87,12 +94,11 @@ Rules:
   - `needs-fix`: `next-action: from-pr-review <PR_URL>` (start a new fixer
     session for this round, not the session that implemented the PR).
   - `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
-    (only for a non-draft PR; a human runs this after rechecking the current
-    head and check-run gate).
-  - `blocked`: `next-action: gh pr ready N` for a draft PR that otherwise meets
-    merge-candidate criteria (human-run; request a fresh review-gate verdict
-    after marking ready, before merging). Use `next-action: gh pr checks N` when
-    waiting for current-head checks; for another blocker, use one exact command
+    (a human runs this after rechecking current-head checks and authority). For a
+    draft PR, use `next-action: gh pr ready N`; changing draft status alone does
+    not require another verdict at the same SHA.
+  - `blocked`: use `next-action: gh pr checks N` when waiting for current-head
+    checks; for another blocker, use one exact command
     that obtains the missing evidence or repairs the blocker, not a merge or fix
     invocation.
   - `needs-human`: `next-action: gh pr view N --web` for a human to inspect
@@ -132,31 +138,71 @@ Rules:
     `needs-human` for contract reconciliation
   - round `N > 0` unchanged-since-round-0 findings become `follow-up-issue`
     unless they are correctness or security regressions
-  - an unmet acceptance criterion of the binding issue stays `fix-now` at any
-    round while the PR still closes that issue; `follow-up-issue` is available
-    only if the closing linkage changes in the same pass
+  - an unmet acceptance criterion of the binding issue is `fix-now` at any
+    round while the PR still closes that issue, unless the agent cannot carry
+    out its remediation in this repository with available tools and capabilities;
+    in that agent-unremediable case use `needs-human`, even for an unmet
+    acceptance criterion, not `fix-now` or `follow-up-issue`. Examples include
+    evidence that cannot be uploaded through the available GitHub interface,
+    physical-device or manual interactive verification, or a check the repo has
+    no capable CI to run. Do not use this exception for work that is merely
+    difficult or has not been attempted. Include a manual-verification checklist
+    stating what to check, where (for example the PR deploy preview URL), and the
+    expected result; if the location is unavailable, state who must provide it
+    and what to check once available. Otherwise `follow-up-issue` is available
+    only if the closing linkage changes in the same pass so the PR no longer
+    closes the issue
   - the circuit breaker counts corrective rounds, not total conforming verdicts
   - a corrective round is a review whose diff since the previously reviewed SHA
     touches at least one file named in the prior blocking set
   - a rerun on an unchanged head, or a merge/rebase whose diff touches none of
     those files, does not increment the breaker
   - after two corrective rounds, the next corrective review yields
-    `needs-human`; regressions stay `fix-now` and are named as the human's
-    blocking set, and everything else becomes `follow-up-issue`
+    `needs-human`; regressions stay `fix-now` and are reported as the human's
+    blocking concerns, and everything else becomes `follow-up-issue`. The
+    verdict's `blocking-set` remains empty for `needs-human`.
 - `merge-candidate` only if zero `fix-now` findings remain and the target branch's
-  required status-check configuration satisfies one of these paths:
+  required status-check configuration satisfies a readiness path in the uploaded
+  verdict contract. Apply its docs-only readiness exception exactly as defined
+  there: every changed path must match that canonical allowlist, all applicable
+  configured required checks must be green at the current head (when configured),
+  `pr-body` must pass at the current head even if it is not branch-required, and
+  Review Gate content review must be clean at that same head. A mixed PR uses
+  ordinary changed-path coverage.
   Determine required checks from getBranch and rulesets. `getBranch protected: false` establishes there are no classic required checks; do not require `/protection`, and a 403 from that subresource is not a readiness blocker with `protected: false`. Otherwise use getBranch's classic protection.required_status_checks. Try `rules/branches/{branch}` first. If that call is rejected by the calling surface before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`. The exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` on HTTP 403 from either call establishes rulesets are unavailable; with no classic required checks, use the no-required-check path and record `plan-unavailable`, naming which call supplied that evidence next to the readiness evidence path. Captured responses: 2026-10-08 rules-for-branch, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}`; 2026-10-10 get-all-repository-rulesets on a private repo under GitHub Free, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-all-repository-rulesets","status":"403"}`. Do not invent response bodies. Any other status/message, or both calls unreachable, is a readiness blocker named `rules-unverifiable`; record `indeterminate`, name each call and its status (including 400), and retain every fix-now file in blocking-set. A failure never clears code findings.
   - configured path: all applicable required checks are green at the current
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head
     exercises the changed paths. This applies when `protected: false` and exact plan-unavailable evidence is obtained from either rules endpoint.
-- If neither path is satisfied, or there is no current-head evidence, emit
-  `blocked` rather than green.
-- If the PR is draft, emit `blocked` even when checks satisfy a readiness path.
-  Name draft status as the blocker and direct a human to mark it ready; after
-  that transition, require a fresh verdict on the current head before merging.
+- A no-capable-check escalation applies only outside the docs-only allowlist. It is
+  allowed only when repo CI/check configuration is known, every configured
+  required check has a successful result at the current head, and none can
+  exercise the changed paths. If any required check is failing, pending, or
+  missing from current-head check evidence, emit `blocked`. When all required
+  checks are green but none can exercise the changed paths, an otherwise-clean
+  review emits a `needs-human` finding, not `blocked`, for either readiness path.
+  Include a manual-verification checklist with what to check, where (for example
+  the PR deploy preview URL), and the expected result.
+- If readiness configuration or current-head evidence cannot be established, emit
+  `blocked` rather than assuming no capable check exists. Older-head results
+  never satisfy readiness.
+- Draft status is informational and does not change readiness or review
+  requirements. A clean draft that satisfies readiness is `merge-candidate`; use
+  `gh pr ready N` as its next action. Changing draft status alone does not require
+  another verdict at the same SHA.
 - Older-head results never count.
-- A PR with `Door: one-way` cannot receive a ready (`merge-candidate`) verdict and routes to `needs-human`; the Evidence section is only a pointer to verify, never evidence itself.
+- Apply the first matching verdict rule in this order: review cannot be completed
+  → `blocked`; explicit `needs-human` finding or circuit breaker → `needs-human`;
+  any `fix-now` finding → `needs-fix`; otherwise clean `Door: one-way` →
+  `needs-human`; clean with readiness satisfied → `merge-candidate`; otherwise
+  `blocked`. Agent-unremediable acceptance-criterion findings are explicitly
+  `needs-human`; a no-capable-check readiness gap becomes a `needs-human` finding
+  only when the review is otherwise clean. These are existing `needs-human`
+  findings, so the precedence stays exhaustive and produces exactly one state.
+  A one-way designation alone does not prevent fixing ordinary findings; escalate
+  once they are cleared. Explicit human-only findings and the circuit breaker
+  take precedence over `fix-now`.
+- The Evidence section is only a pointer to verify, never evidence itself.
 - Use `skills/from-issue/references/pr-body-contract.md` for the PR body contract.
   Judge whether the Docs line adequately lists updated documentation or explains
   why none was needed. If a PR changes behavior and the Docs line is missing or

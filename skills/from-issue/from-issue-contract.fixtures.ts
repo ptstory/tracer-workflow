@@ -224,4 +224,95 @@ export const regressionCases: RegressionCase[] = [
       },
     ],
   },
+  {
+    id: 10,
+    name: "issue comment brief is found even without a body heading",
+    input: {
+      summary: "The issue body has no Agent Brief heading, but a comment contains the complete brief.",
+    },
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "load the body and comments with `gh issue view <n> --comments`",
+          "treat an `## agent brief` comment as the durable brief when present",
+          "do not block for a missing `agent brief` heading",
+        ],
+      },
+    ],
+  },
+  {
+    id: 14,
+    name: "later owner decision comment is applied to the brief",
+    input: {
+      summary: "An owner decision comment follows the issue's Agent Brief comment.",
+    },
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "apply later owner decision comments to it",
+        ],
+      },
+    ],
+  },
+  {
+    id: 11,
+    name: "missing dependencies run documented setup instead of blocking",
+    input: {
+      summary: "Dependencies are missing in the issue worktree.",
+    },
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "missing dependencies, generated files, local services, or web-fetch 404s on private repositories are recoverable environment gaps, not blockers",
+        ],
+      },
+      {
+        heading: "Steps",
+        mustContain: [
+          "run repository-documented setup before implementation: dependency installation",
+          "repair missing local prerequisites rather than treating them as blockers",
+        ],
+      },
+    ],
+  },
+  {
+    id: 12,
+    name: "pending HITL issue with a stated default does not block",
+    input: {
+      summary: "The brief references a pending human decision but provides a default and marks the choice out of scope.",
+    },
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "provides a default, marks the decision out of scope, or a later owner comment records the decision",
+          "may block execution",
+        ],
+      },
+    ],
+  },
+  {
+    id: 13,
+    name: "genuinely missing required decision may block",
+    input: {
+      summary: "The brief has no default and no owner decision for a required product choice.",
+    },
+    skillMatches: [
+      {
+        heading: "Contract",
+        mustContain: [
+          "a genuinely missing required decision with no default may block execution",
+        ],
+      },
+      {
+        heading: "Steps",
+        mustContain: [
+          "the recovery attempted, why it failed, and the next required recovery contract",
+        ],
+      },
+    ],
+  },
 ];

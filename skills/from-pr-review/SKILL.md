@@ -50,6 +50,7 @@ against actual check-run state, and hand back.
   is within this skill's own steps, perform that step instead of reporting it as
   blocked. If an external prerequisite cannot be satisfied, report the exact
   blocker without claiming the pass is complete.
+- Invoking this skill authorizes committing and pushing to the PR's existing head branch. Never ask the user for push authorization and never use the question tool to confirm a push. Force-push, pushing to any other branch, and merging still require explicit user instruction.
 
 ## Steps
 
@@ -101,8 +102,11 @@ against actual check-run state, and hand back.
    each change traceable to its ledger row (which thread it answers).
 
 7. **Verify locally.** Run the repo's test/build/lint commands. Capture exact
-   command + output for the evidence bundle. This is evidence, not a readiness
-   claim — see step 9.
+   command + output for the evidence bundle. Generate test counts and test node
+   IDs mechanically from machine-readable runner output, not by manually
+   enumerating tests or inferring results. List only runner-reported IDs
+   exercising changed paths; do not make coverage claims in prose. This is
+   evidence, not a readiness claim — see step 9.
 
 8. **Commit and push.** One commit per coherent group, message referencing the
    thread(s) it resolves. Push to the same head branch. Capture the **new** head
@@ -111,13 +115,13 @@ against actual check-run state, and hand back.
 9. **Verify against real check-runs (the gate).** For the new head SHA, poll
    actual check-run state — `gh pr checks <N>` or the GitHub checks API — until
    checks settle (not pending). Record per-check conclusion. Readiness follows
-   the current head's required status-check configuration: if required checks
-   are configured, all applicable required checks must be green at the current
-   head and at least one applicable required check must exercise the changed
-   paths; if no required checks are configured, at least one green CI/check run
-   on the current head must exercise the changed paths. Older-head results never
-   count. A green local run in step 7 does not satisfy this; a reported "tests
-   pass" never does. See `WORKFLOW.md` → check-run gate.
+   `WORKFLOW.md` and the canonical docs-only exception in
+   `skills/review-gate/references/verdict-contract.md`. For a docs-only PR, every
+   changed path must be allowlisted, applicable configured required checks (if
+   any) and `pr-body` must pass at the current head, and Review Gate review must
+   be clean at that head. Any mixed PR retains changed-path coverage. Older-head
+   results never count. A green local run in step 7 does not satisfy this; a
+   reported "tests pass" never does.
 
 10. **Reply to review threads.** For each ledger row, post a threaded reply that
     states what was done (commit SHA) or the returned disposition and its issue

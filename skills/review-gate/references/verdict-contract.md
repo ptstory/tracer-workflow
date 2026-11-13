@@ -23,9 +23,11 @@ Required fields immediately below the marker:
 - `head-sha:` — full 40-character commit SHA
 - `review-round:` — integer, 0-based
 - `reviewed-files:` — integer
-- `blocking-set:` — comma-separated repo-relative file paths naming every file
-  with a `fix-now` finding; required for `blocked` and `needs-fix` when such
-  findings exist, and empty only when there are no `fix-now` findings
+- `blocking-set:` — comma-separated targets for every `fix-now` finding; use
+  repo-relative file paths for code/document findings and the literal `PR body`
+  for PR-body contract violations, which are fixed in PR metadata rather than a
+  repository file. Required for `blocked` and `needs-fix` when such findings
+  exist, and empty only when there are no `fix-now` findings.
 - `next-action:` — one concrete copy-pasteable command or invocation for the
   verdict state; never empty on newly emitted verdicts. Historical verdicts
   emitted before this field was required remain valid without it for round
@@ -56,11 +58,10 @@ references and the reviewed SHA substituted:
 - `needs-fix`: `next-action: from-pr-review <PR_URL>` in a new fixer session
   for this round, never the implementing session.
 - `merge-candidate`: `next-action: gh pr merge N --squash --match-head-commit <sha>`
-  only for a non-draft PR, for a human to run after confirming current-head
-  checks and authority.
-- `blocked`: `next-action: gh pr ready N` for a draft PR that otherwise meets
-  merge-candidate criteria. A human runs it, then requests a fresh review-gate
-  verdict on the current head before merging. Use `next-action: gh pr checks N`
+  for a human to run after confirming current-head checks and authority. If the PR
+  is draft, `next-action: gh pr ready N` instead; changing draft status alone does
+  not require another verdict at the same SHA.
+- `blocked`: `next-action: gh pr checks N`
   if current-head checks are pending; otherwise use one exact command to
   inspect or resolve the named blocker.
 - `needs-human`: `next-action: gh pr view N --web` so a human can make the
@@ -171,10 +172,25 @@ On round `N > 0`, a finding against code that has not changed since round 0 is
 `follow-up-issue`, not `fix-now` — unless it is a correctness or security
 regression, which stays `fix-now` at any round.
 
-Acceptance-criteria carve-out: an unmet acceptance criterion of the binding
-issue stays `fix-now` at any round while the PR still closes that issue. It may
-move to `follow-up-issue` only if the closing linkage changes in that same pass
-so the PR no longer closes the issue. This carve-out resolves a round-1 / round-2 conflict observed in an earlier private-repository review.
+Acceptance-criteria rule: an unmet acceptance criterion of the binding issue is
+`fix-now` at any round while the PR still closes that issue, unless the agent
+cannot carry out its remediation in this repository with its available tools and
+capabilities. In that agent-unremediable case, the finding is `needs-human`, not
+`fix-now`, even when it is an unmet acceptance criterion. Examples include
+required evidence that cannot be attached through the available GitHub interface,
+physical-device or manual interactive verification, and a check for which the
+repository has no capable CI. Do not use this exception for work that is merely
+difficult or has not yet been attempted.
+
+Every agent-unremediable finding must include a manual-verification checklist
+that states what to check, where to check it (for example, the PR's deploy preview
+URL), and the expected result. If the location or environment is unavailable,
+state who must provide it and what must be checked once available. This explicit
+`needs-human` disposition takes precedence over the acceptance-criterion
+`fix-now` rule. For other unmet acceptance criteria, `follow-up-issue` is
+available only if the closing linkage changes in the same pass so the PR no
+longer closes the issue. This carve-out resolves a round-1 / round-2 conflict
+observed in an earlier private-repository review.
 
 Rationale: a gate that can raise pre-existing conditions at any round has no
 termination condition.
@@ -194,7 +210,8 @@ After two corrective rounds, any later corrective review yields `needs-human`.
 In that same verdict the reviewer records a disposition for every surviving
 finding:
 
-- regressions stay `fix-now` and are named as the human's blocking set;
+- regressions stay `fix-now` and are named as human blocking concerns; the
+  `blocking-set` remains empty for `needs-human`;
 - everything else becomes `follow-up-issue` with a one-line summary suitable
   for filing.
 
@@ -206,22 +223,69 @@ itself.
 `merge-candidate` is determined by the target branch's required status-check
 configuration.
 
+- Docs-only allowlist: `README.md`, `RUNTIME.md`, `STACK.md`, and `docs/**`.
+  `RADAR.md` is excluded because its append-only contract is checked separately.
+  `CONTEXT.md`, `WORKFLOW.md`, `AGENTS.md`, `.agents/repo-context.md` (delegated
+  operational and safety policy), `skills/**`, `actions/**`, `prompts/**`, workflow
+  and Review Gate contract files, and all other paths are not allowlisted. File
+  extensions do not grant an exception.
+- Docs-only path: when every changed path matches the docs-only allowlist, replace
+  changed-path exercise with all applicable required checks green at the current
+  head (when configured), a passing `pr-body` check at the current head, and a
+  clean Review Gate content review at that same head. The `pr-body` check must
+  pass even when it is not a branch-required check. Missing, pending, or failing
+  configured required checks or `pr-body` evidence emits `blocked`; older-head
+  results never count. Any non-allowlisted path, including a mixed PR, uses the
+  ordinary path-coverage rules below.
 - Configured path: all applicable required checks are green at the current head,
   and at least one applicable required check exercises the changed paths.
 - No-required-check path: at least one green CI/check run on the current head
   exercises the changed paths.
-- If neither path is satisfied, or there is no current-head evidence, the verdict
-  is `blocked`.
-- A draft PR is `blocked` even if its checks satisfy a readiness path. Name
-  draft status as the blocker; a human marks it ready and requests a fresh
-  verdict on the current head before merging.
+- For changes outside the docs-only allowlist, a no-capable-check escalation is
+  allowed only when repository CI/check configuration is known, every configured
+  required check has a successful result at the current head, and none can
+  exercise the changed paths. If any required check is failing, pending, or
+  missing from current-head check evidence, emit `blocked` regardless of whether
+  it can exercise the changed paths. When all required checks are green but none
+  can exercise the changed paths, an otherwise-clean review emits a `needs-human`
+  finding, not `blocked`. Include the manual-verification checklist required
+  above; identify the behavior to verify, where to verify it (for example, the
+  PR's deploy preview URL), and the expected result. This applies to both
+  readiness paths when no capable check exists.
+- If readiness configuration or current-head evidence cannot be established,
+  emit `blocked` rather than assuming no capable check exists. Older-head results
+  do not satisfy readiness.
+- Draft status is informational and does not change readiness or review
+  requirements. A clean draft that satisfies readiness is `merge-candidate`;
+  use `gh pr ready N` as its next action. Changing draft status alone does not
+  require another verdict at the same SHA.
 - Older-head results never count.
 - Branch protection is not required. `getBranch protected: false` is sufficient evidence that no classic required checks exist; `/protection` is not required, and its 403 is not a readiness blocker when `protected: false`. Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`. Try `rules/branches/{branch}` first; when the calling surface rejects it before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`. HTTP 403 with the exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` from either endpoint, with no classic required checks, uses the no-required-check path and records `plan-unavailable`; name the successful evidence call next to the path. Captured bodies: 2026-10-08 rules-for-branch, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}`; 2026-10-10 get-all-repository-rulesets on a private repo under GitHub Free, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-all-repository-rulesets","status":"403"}`. Any other status or message, including HTTP 400 except the described pre-GitHub endpoint rejection, or both rules calls unreachable, is `rules-unverifiable`: record `indeterminate`, name each call and status, and preserve every fix-now file in `blocking-set`. Record `available` when usable configuration is obtained.
 - Merge remains HITL.
 
-On round `N > 0`, the reviewer compares the current evidence bundle against the
-prior round's evidence bundle. An unchanged test count alongside a claim of
-added coverage is an evidence inconsistency and must be reported as `blocked`.
+On round `N > 0`, compare the current evidence bundle with the prior round's bundle. For any claim of added or changed coverage, require new or modified test node IDs in the diff since the previously reviewed SHA, and verify those exact IDs are present in runner-generated output showing they passed at the current head. A changed test ID with a green current-head result is consistent even when the aggregate test count is unchanged; this includes replacing an invalid test with a valid one. A claim that lacks matching changed test IDs or current-head green runner output is an evidence inconsistency: report it as a `fix-now` finding under `needs-fix`, not `blocked`. Reserve `blocked` for missing or incomplete current-head CI/readiness evidence needed to determine the check-run gate.
+
+## Verdict precedence
+
+Apply the first matching rule, in this order:
+
+1. If a credible review cannot be completed, emit `blocked`.
+2. If any finding has disposition `needs-human`, or the circuit breaker is
+   triggered, emit `needs-human`.
+3. If any `fix-now` findings remain, emit `needs-fix`, regardless of draft status
+   or one-way-door designation.
+4. If the review is otherwise clean and `Door: one-way`, emit `needs-human`.
+5. If the review is clean and readiness is satisfied, emit `merge-candidate`.
+6. Otherwise emit `blocked`.
+
+For one-way-door PRs, the designation alone does not prevent fixing ordinary
+findings. Escalate to a human after those findings are cleared. Explicit
+`needs-human` findings and the circuit breaker always take precedence over
+`fix-now`. Agent-unremediable acceptance-criterion findings are explicitly
+`needs-human`; a no-capable-check readiness gap becomes a `needs-human` finding
+only when the review is otherwise clean. Thus these cases use the existing
+precedence order and still yield exactly one verdict state; other `fix-now`
+findings remain `needs-fix` when no higher-priority rule matches.
 
 ## What the reader does per state
 
@@ -231,8 +295,9 @@ added coverage is an evidence inconsistency and must be reported as `blocked`.
   `skills/from-pr-review/references/disposition-rules.md`; any push invalidates this verdict and requires a
   fresh review.
 - `needs-human` → stop. No automatic fix pass may be launched, at any SHA.
-- `blocked` → stop, surface the blocker (for example parse failure,
-  required-check coverage gap, or evidence inconsistency).
+- `blocked` → stop, surface the blocker (for example parse failure or
+  required-check coverage gap). Evidence inconsistencies are `fix-now` findings
+  under `needs-fix`, not `blocked`.
 - SHA stale (any state) → do nothing; wait for a verdict on current head.
 
 `needs-human` is a hard stop for automated actors.

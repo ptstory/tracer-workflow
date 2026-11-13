@@ -21,8 +21,9 @@ unbacked-work monitoring.
   coordination artifacts.
 - `project-map.md` — repository orientation map; update only when its contents
   become stale.
-- `docs/` and `docs/adr/` are not present. TODO: add ADR or project-board links
-  if the repository adopts them.
+- `docs/` contains repository reports, diagrams, architecture artifacts, and
+  history. `docs/adr/` is not present. TODO: add ADR or project-board links if
+  the repository adopts them.
 
 ## Standard workflow
 
@@ -135,10 +136,9 @@ lint or build commands here if the repository introduces them.
 - **Evidence bundle** — exact local commands and outputs anchored to a PR head
   SHA; prose alone is insufficient.
 - **Check-run gate** — merge readiness follows the current head's required
-  status-check configuration: if required checks are configured, they must all be
-  green at the current head with path coverage; if no required checks are
-  configured, at least one green CI/check run on the current head must exercise
-  the changed paths. Older-head results never count.
+  status-check configuration. The docs-only exception and canonical allowlist are
+  defined in `skills/review-gate/references/verdict-contract.md`; mixed changes
+  retain ordinary changed-path coverage. Older-head results never count.
 - **Slice contract** — a downstream issue may start only when its blocker
   supplies the exact data/API/behavior/file contract it consumes.
 - **HITL / AFK** — human-in-the-loop versus pre-authorized autonomous work.
@@ -156,8 +156,9 @@ lint or build commands here if the repository introduces them.
 - launchd runs with minimal `PATH`; documented jobs use absolute paths and pinned
   environment values.
 - `gh` must be authenticated for the review-gate poller and GitHub mutations.
-- `bun test` currently runs only locally; a green check-run gate does not mean
-  the repository's 35-test Bun suite passed.
+- `bun test` runs in CI's `test` job as well as locally. Verify that the
+  `test` job passed on the exact current head before claiming the Bun suite
+  passed; checks from older heads do not count.
 
 ## Branch and PR expectations
 
@@ -168,9 +169,13 @@ lint or build commands here if the repository introduces them.
   to the reviewed head SHA.
 - Prefer draft PRs unless the workflow or maintainer says otherwise.
 - Merge is manual by default; the current check-run gate is authoritative.
-- A GitHub Actions workflow exists at `.github/workflows/ci.yml` and currently
-  runs `bun run typecheck`. TODO: confirm branch protection and required
-  reviewers/checks in GitHub.
+- `.github/workflows/ci.yml` (`CI`) runs the `test`, `typecheck`,
+  `review-gate-contract`, `pr-body`, `gpt-openapi-importer`, `radar`, and
+  `public-disclosure` jobs. `.github/workflows/gate-readiness.yml` evaluates
+  pull-request readiness and can be called by other workflows;
+  `.github/workflows/gate-readiness-reevaluate.yml` reevaluates readiness after
+  CI completes or a review-gate comment is added or edited. TODO: confirm branch
+  protection and required reviewers/checks in GitHub.
 
 ## Evidence requirements
 

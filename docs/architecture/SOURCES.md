@@ -15,7 +15,7 @@ The two checked-in SVGs are reader-facing static projections for GitHub README r
 
 - `README.md` — core thesis, end-to-end loop, review-gate poller, unbacked-work monitor.
 - `WORKFLOW.md` — planes, stage chain, evidence-bundle contract, check-run gate, resumability, HITL/AFK.
-- `CONTEXT.md` — authoritative vocabulary for durable briefs, verdict values, SHA-staleness, and the check-run gate.
+- `CONTEXT.md` — authoritative vocabulary for durable briefs, verdict values, SHA-staleness, and the check-run gate. Its docs-only readiness exception uses the canonical allowlist in `skills/review-gate/references/verdict-contract.md`.
 - `skills/from-issue/SKILL.md` — execution boundary, worktree handling, and PR/evidence terminal outcome.
 - `skills/review-gate/PROMPT.md` — fresh-context reviewer, exact verdict shape, and current-head requirements.
 - `skills/review-gate/references/verdict-contract.md` — append-only verdict protocol and SHA-staleness rule.

@@ -22,6 +22,7 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 - readiness evidence path: available
 - all applicable required checks are green on the current head
 - at least one applicable required check exercises the changed paths
+- changed files are not all in the docs-only allowlist; ordinary path coverage applies
 
 ### Post-merge
 - confirm Closes #123 closed the issue
@@ -65,16 +66,47 @@ next-action: gh pr merge 123 --squash --match-head-commit 0123456789abcdef012345
 - readiness evidence path: plan-unavailable (rulesets fall-through; getRulesForBranch returned connector HTTP 400 unsupported endpoint, then getRulesets returned the exact captured plan HTTP 403; getBranch `protected: false`)
 - no required checks are configured on the target branch
 - at least one green CI/check run on the current head exercises the changed paths
+- changed files are not all in the docs-only allowlist; ordinary path coverage applies
 
 ### Post-merge
 - confirm Closes #123 closed the issue
 - next eligible ready-for-agent issue
 ```
 
-## blocked (draft PR with green checks)
+## merge-candidate (docs-only allowlist, draft PR)
 
 ```verdict
-## review-gate: blocked
+## review-gate: merge-candidate
+
+head-sha: 2123456789abcdef0123456789abcdef01234567
+review-round: 0
+reviewed-files: 2
+blocking-set:
+next-action: gh pr ready 203
+
+### Standards
+- No blocking findings.
+
+### Spec
+- No blocking findings.
+
+### Merge preconditions
+- head is still 2123456789abcdef0123456789abcdef01234567
+- every changed path matches the canonical docs-only allowlist
+- readiness evidence path: available
+- all applicable required checks are green at the current head
+- `pr-body` check is successful at the current head
+- clean Review Gate content review is bound to the same head
+
+### Post-merge
+- confirm Closes #203 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## merge-candidate (clean draft PR with green checks)
+
+```verdict
+## review-gate: merge-candidate
 
 head-sha: 0123456789abcdef0123456789abcdef01234567
 review-round: 0
@@ -90,8 +122,8 @@ next-action: gh pr ready 123
 
 ### Merge preconditions
 - head is still 0123456789abcdef0123456789abcdef01234567
-- checks satisfy the current-head readiness path, but the PR is draft
-- a human marks the PR ready and requests a fresh verdict before merging
+- checks satisfy the current-head readiness path
+- draft status is informational; changing it alone does not require another verdict at this SHA
 
 ### Post-merge
 - confirm Closes #123 closed the issue
@@ -125,54 +157,81 @@ rebaseline: yes
 - next eligible ready-for-agent issue
 ```
 
-## needs-human
+## needs-fix (draft PR with PR-body contract violation)
+
+```verdict
+## review-gate: needs-fix
+
+head-sha: 1023456789abcdef0123456789abcdef01234567
+review-round: 0
+reviewed-files: 3
+blocking-set: PR body
+next-action: from-pr-review https://github.com/ptstory/tracer-workflow/pull/124
+
+### Standards
+- No blocking findings.
+
+### Spec
+- [medium] [fix-now] PR body — missing required Docs explanation violates the PR-body contract; edit the PR description directly.
+
+### Merge preconditions
+- head is still 1023456789abcdef0123456789abcdef01234567
+- fix-now PR-body contract violation resolved in PR metadata
+
+### Post-merge
+- confirm Closes #123 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## needs-human (one-way door, otherwise clean)
 
 ```verdict
 ## review-gate: needs-human
 
 head-sha: fedcba9876543210fedcba9876543210fedcba98
-review-round: 3
+review-round: 0
 reviewed-files: 9
 blocking-set:
 next-action: gh pr view 789 --web
 
 ### Standards
-- [high] [fix-now] src/api.ts — regression in the write path remains the human's blocking set.
+- No blocking findings.
 
 ### Spec
-- [medium] [follow-up-issue] docs/spec.md — defer the new example to a separate issue.
+- No blocking findings.
 
 ### Merge preconditions
-- head is still fedcba9876543210fedcba9876543210fedcba98
-- human guidance recorded for the policy call
+- Door: one-way
+- human review required after ordinary findings are cleared
 
 ### Post-merge
 - confirm Closes #789 closed the issue
 - next eligible ready-for-agent issue
 ```
 
-## blocked (fix-now findings plus indeterminate readiness)
+## needs-fix (one-way door with fix-now finding)
 
 ```verdict
-## review-gate: blocked
+## review-gate: needs-fix
 
-head-sha: 00112233445566778899aabbccddeeff00112233
+head-sha: fedcba9876543210fedcba9876543210fedcba98
 review-round: 0
-reviewed-files: 2
-blocking-set: src/auth.ts
-next-action: gh api repos/example/project/rulesets
+reviewed-files: 9
+blocking-set: src/api.ts
+next-action: from-pr-review https://github.com/ptstory/tracer-workflow/pull/789
 
 ### Standards
-- [high] [fix-now] src/auth.ts — missing authorization guard.
+- [high] [fix-now] src/api.ts — ordinary regression on a one-way-door PR must be fixed before human escalation.
 
 ### Spec
 - No blocking findings.
 
 ### Merge preconditions
-- readiness evidence path: indeterminate (getRulesForBranch HTTP 400 unsupported endpoint; getRulesets HTTP 403 with a non-plan message)
+- Door: one-way
+- ordinary fix-now finding takes precedence; human escalation follows after it is cleared
 
 ### Post-merge
-- confirm Closes #123 closed the issue
+- confirm Closes #789 closed the issue
 - next eligible ready-for-agent issue
 ```
 
@@ -188,17 +247,149 @@ blocking-set:
 next-action: gh pr checks 101
 
 ### Standards
-- [high] [needs-human] src/integration.ts — the blocker is external and cannot be resolved here.
+- No blocking findings.
 
 ### Spec
-- [low] [defer] docs/notes.md — record the downstream follow-up after the blocker clears.
+- No blocking findings.
 
 ### Merge preconditions
-- head is still 00112233445566778899aabbccddeeff00112233
 - only older-head results exist; no current-head evidence counts
-- blocker resolved outside this review
 
 ### Post-merge
 - confirm Closes #101 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## needs-human (circuit breaker with surviving regression)
+
+```verdict
+## review-gate: needs-human
+
+head-sha: 00112233445566778899aabbccddeeff00112233
+review-round: 3
+reviewed-files: 2
+blocking-set:
+next-action: gh pr view 101 --web
+
+### Standards
+- [high] [fix-now] src/auth.ts — regression remains a human blocking concern after two corrective rounds.
+
+### Spec
+- No blocking findings.
+
+### Merge preconditions
+- circuit breaker triggered after two prior corrective rounds; human guidance required before further fixes
+
+### Post-merge
+- confirm Closes #101 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## needs-human (explicit human-only finding)
+
+```verdict
+## review-gate: needs-human
+
+head-sha: 00112233445566778899aabbccddeeff00112233
+review-round: 0
+reviewed-files: 2
+blocking-set:
+next-action: gh pr view 101 --web
+
+### Standards
+- [medium] [fix-now] src/config.ts — invalid default breaks the documented configuration path.
+
+### Spec
+- [high] [needs-human] src/integration.ts — approval decision outside agent authority is required.
+
+### Merge preconditions
+- explicit human-only finding takes precedence over the simultaneous fix-now finding; blocking-set remains empty
+
+### Post-merge
+- confirm Closes #101 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## needs-fix (fix-now findings plus indeterminate readiness)
+
+```verdict
+## review-gate: needs-fix
+
+head-sha: 00112233445566778899aabbccddeeff00112233
+review-round: 0
+reviewed-files: 2
+blocking-set: src/auth.ts
+next-action: from-pr-review https://github.com/ptstory/tracer-workflow/pull/101
+
+### Standards
+- [high] [fix-now] src/auth.ts — missing authorization guard.
+
+### Spec
+- No blocking findings.
+
+### Merge preconditions
+- readiness evidence path: indeterminate (getRulesForBranch HTTP 400 unsupported endpoint; getRulesets HTTP 403 with a non-plan message)
+- fix-now finding must be resolved before merge
+
+### Post-merge
+- confirm Closes #101 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## needs-human (agent-unremediable browser evidence)
+
+```verdict
+## review-gate: needs-human
+
+head-sha: 0123456789abcdef0123456789abcdef01234567
+review-round: 1
+reviewed-files: 1
+blocking-set:
+next-action: gh pr view 21 --web
+
+### Standards
+- No blocking findings.
+
+### Spec
+- [medium] [needs-human] PR browser evidence — The binding acceptance criterion requires current-head browser evidence, but this reviewer cannot upload PR attachments through its GitHub interface. Manual verification checklist:
+  - Check: inspect the updated CSS rendering at desktop and mobile widths.
+  - Where: open the Netlify deploy preview linked from PR #21.
+  - Expected result: the +/-1 CSS change matches the intended layout without overlap; a human attaches screenshots to the PR through GitHub.
+
+### Merge preconditions
+- head is still 0123456789abcdef0123456789abcdef01234567
+- human must complete the browser-evidence checklist before merge
+
+### Post-merge
+- confirm Closes #21 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## needs-human (no capable check for changed CSS)
+
+```verdict
+## review-gate: needs-human
+
+head-sha: 1123456789abcdef0123456789abcdef01234567
+review-round: 0
+reviewed-files: 1
+blocking-set:
+next-action: gh pr view 21 --web
+
+### Standards
+- No blocking findings.
+
+### Spec
+- [medium] [needs-human] CSS readiness — The repository has no configured CI/check capable of exercising the changed CSS paths; its Netlify checks report deployment only. Manual verification checklist:
+  - Check: inspect the changed CSS behavior in the deployed page at desktop and mobile widths.
+  - Where: open the Netlify deploy preview linked from PR #21's checks.
+  - Expected result: the +/-1 CSS change renders as intended with no visual regression.
+
+### Merge preconditions
+- head is still 1123456789abcdef0123456789abcdef01234567
+- no configured CI/check exercises the changed CSS; human must complete the preview checklist
+
+### Post-merge
+- confirm Closes #21 closed the issue
 - next eligible ready-for-agent issue
 ```

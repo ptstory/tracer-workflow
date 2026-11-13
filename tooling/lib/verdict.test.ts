@@ -117,14 +117,30 @@ describe("verdict examples", () => {
   const blocks = extractVerdictBlocks(verdictExamples);
   const mergeCandidateBlocks = blocks.filter((block) => /^## review-gate:\s*merge-candidate\s*$/m.test(block));
 
-  test("contains seven conforming verdict blocks", () => {
-    expect(blocks).toHaveLength(7);
+  test("contains fourteen conforming verdict blocks", () => {
+    expect(blocks).toHaveLength(14);
   });
 
-  test("includes a draft-safe blocked verdict", () => {
+  test("covers verdict precedence for draft, human stops, and blockers", () => {
     const draftBlock = blocks.find((block) => block.includes("next-action: gh pr ready 123"));
     expect(draftBlock).toBeDefined();
-    expect(parseGateBody(draftBlock ?? "")?.verdict).toBe("blocked");
+    expect(parseGateBody(draftBlock ?? "")?.verdict).toBe("merge-candidate");
+
+    expect(blocks.some((block) => block.includes("review-gate: needs-fix") && block.includes("readiness evidence path: indeterminate"))).toBe(true);
+    expect(blocks.some((block) => block.includes("Door: one-way") && block.includes("review-gate: needs-human"))).toBe(true);
+    expect(blocks.some((block) => block.includes("Door: one-way") && block.includes("review-gate: needs-fix"))).toBe(true);
+    expect(blocks.some((block) => block.includes("circuit breaker triggered after two prior corrective rounds") && block.includes("review-gate: needs-human"))).toBe(true);
+    const humanStopBlock = blocks.find((block) => block.includes("explicit human-only finding takes precedence"));
+    expect(humanStopBlock).toBeDefined();
+    expect(parseGateBody(humanStopBlock ?? "")?.verdict).toBe("needs-human");
+    expect(humanStopBlock).toMatch(/^blocking-set:\s*$/m);
+    expect(humanStopBlock).toContain("[fix-now]");
+
+    const prBodyBlock = blocks.find((block) => block.includes("PR-body contract violation"));
+    expect(prBodyBlock).toBeDefined();
+    expect(parseGateBody(prBodyBlock ?? "")?.verdict).toBe("needs-fix");
+    expect(prBodyBlock).toContain("blocking-set: PR body");
+    expect(prBodyBlock).toContain("edit the PR description directly");
   });
 
   test("documents round continuity from a legacy verdict to the current writer schema", () => {
@@ -138,8 +154,8 @@ describe("verdict examples", () => {
     expect(mergeCandidateBlocks[1]).toContain("next-action: gh pr merge 123");
   });
 
-  test("includes both merge-candidate examples and they parse", () => {
-    expect(mergeCandidateBlocks).toHaveLength(2);
+  test("includes four merge-candidate examples and they parse", () => {
+    expect(mergeCandidateBlocks).toHaveLength(4);
 
     expect(
       mergeCandidateBlocks.map((block) => {
@@ -148,7 +164,7 @@ describe("verdict examples", () => {
         expect(parsed.verdict).toBe("merge-candidate");
         return parsed.reviewRound;
       }),
-    ).toEqual([0, 1]);
+    ).toEqual([0, 1, 0, 0]);
   });
 
   for (const [index, block] of blocks.entries()) {
