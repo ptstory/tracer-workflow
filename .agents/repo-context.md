@@ -157,8 +157,9 @@ lint or build commands here if the repository introduces them.
 - launchd runs with minimal `PATH`; documented jobs use absolute paths and pinned
   environment values.
 - `gh` must be authenticated for the review-gate poller and GitHub mutations.
-- `bun test` currently runs only locally; a green check-run gate does not mean
-  the repository's 35-test Bun suite passed.
+- `bun test` runs in CI's `test` job as well as locally. Verify that the
+  `test` job passed on the exact current head before claiming the Bun suite
+  passed; checks from older heads do not count.
 
 ## Branch and PR expectations
 
