@@ -168,15 +168,18 @@ Rules:
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head
     exercises the changed paths. This applies when `protected: false` and exact plan-unavailable evidence is obtained from either rules endpoint.
-- If repo CI/check configuration is known and no configured CI/check can
-  exercise the changed paths, an otherwise-clean review emits a `needs-human`
-  finding, not `blocked`, for either readiness path. Include a manual-verification
-  checklist with what to check, where (for example the PR deploy preview URL),
-  and the expected result.
-- If a configured check can exercise the changed paths but is pending, failing,
-  or missing at the current head, emit `blocked`. If readiness configuration or
-  current-head evidence cannot be established, emit `blocked` rather than
-  assuming no capable check exists. Older-head results never satisfy readiness.
+- A no-capable-check escalation is allowed only when repo CI/check configuration
+  is known, every configured required check has a successful result at the current
+  head, and none can exercise the changed paths. If any required check is failing,
+  pending, or missing from current-head check evidence, emit `blocked` regardless
+  of whether it can exercise the changed paths. When all required checks are green
+  but none can exercise the changed paths, an otherwise-clean review emits a
+  `needs-human` finding, not `blocked`, for either readiness path. Include a
+  manual-verification checklist with what to check, where (for example the PR
+  deploy preview URL), and the expected result.
+- If readiness configuration or current-head evidence cannot be established, emit
+  `blocked` rather than assuming no capable check exists. Older-head results
+  never satisfy readiness.
 - Draft status is informational and does not change readiness or review
   requirements. A clean draft that satisfies readiness is `merge-candidate`; use
   `gh pr ready N` as its next action. Changing draft status alone does not require
