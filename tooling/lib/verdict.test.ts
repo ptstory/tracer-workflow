@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import { latestConformingGateComment, parseGateBody, parseGateComment } from "./verdict";
+import type { Comment } from "./verdict";
 import type { Verdict } from "./verdict";
 
 const verdictExamples = readFileSync(
@@ -57,10 +58,11 @@ describe("parseGateComment", () => {
   });
 
   test("ignores a newer malformed trusted marker and keeps the latest conforming verdict", () => {
+    process.env.TRACER_REVIEWER_LOGINS = "reviewer";
     const validBody = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\n";
     const comments = [
       { author: { login: "reviewer" }, body: validBody, createdAt: "2026-01-01T00:00:00Z" },
-      { author: { login: "reviewer" }, body: validBody.replace("blocking-set: src/api.ts\n", ""), createdAt: "2026-01-02T00:00:00Z" },
+      { author: { login: "reviewer" }, body: validBody.replace("review-round: 0\n", "review-round: zero\n"), createdAt: "2026-08-01T00:00:00Z" },
     ];
 
     expect(parseGateComment(comments)).toEqual({
@@ -75,11 +77,22 @@ describe("parseGateComment", () => {
     });
   });
 
-  test("accepts historical verdicts without next-action before the schema cutoff", () => {
-    const legacyBody = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\n";
+  test("accepts historical verdicts without blocking-set or next-action before their schema cutoffs", () => {
+    const legacyBody = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n";
     expect(parseGateComment([
-      { author: { login: "reviewer" }, body: legacyBody, createdAt: "2026-09-26T20:18:25Z" },
-    ]).kind).toBe("parsed");
+      { author: { login: "reviewer" }, body: legacyBody, createdAt: "2026-09-01T11:00:00Z" },
+    ], { pullRequestNumber: 98 }).kind).toBe("parsed");
+  });
+
+  test("validates present next-action and blocking-set rules and checks the target PR", () => {
+    const legacyBody = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n";
+    const legacyComment = { author: { login: "reviewer" }, body: legacyBody, createdAt: "2026-09-01T11:00:00Z" };
+    expect(parseGateComment([legacyComment], { pullRequestNumber: 98 }).kind).toBe("parsed");
+
+    const currentBody = `${legacyBody}blocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/98\n`;
+    const currentComment: Comment = { ...legacyComment, body: currentBody };
+    expect(parseGateComment([currentComment], { pullRequestNumber: 98 }).kind).toBe("parsed");
+    expect(parseGateComment([currentComment], { pullRequestNumber: 99 }).kind).toBe("invalid");
   });
 
   test("fails closed without an allowlist", () => {
@@ -104,14 +117,14 @@ describe("parseGateComment", () => {
     const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: nonsense\n";
     expect(parseGateComment([
       { author: { login: "reviewer" }, body, createdAt: "2026-09-26T20:18:26Z" },
-    ]).kind).toBe("invalid");
+    ], { pullRequestNumber: 98 }).kind).toBe("invalid");
   });
 
   test("rejects a needs-fix verdict with an empty blocking set", () => {
     const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set:\nnext-action: from-pr-review https://github.com/acme/repo/pull/98\n";
     expect(parseGateComment([
       { author: { login: "reviewer" }, body, createdAt: "2026-09-26T20:18:26Z" },
-    ]).kind).toBe("invalid");
+    ], { pullRequestNumber: 98 }).kind).toBe("invalid");
   });
 
   test("treats a verdict missing review-round as invalid", () => {

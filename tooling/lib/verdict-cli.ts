@@ -13,8 +13,7 @@ const parsed = parseGateComment(comments.map((comment): Comment => ({
   author: comment.user,
   body: comment.body,
   createdAt: comment.created_at,
-  pullRequestNumber,
-})));
+})), { pullRequestNumber });
 const logins = reviewerLogins();
 const ignoredAuthors = comments
   .filter((comment) => comment.body.startsWith("## review-gate:") && (!comment.user?.login || !logins.has(comment.user.login.toLowerCase())))

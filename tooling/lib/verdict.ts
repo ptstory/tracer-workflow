@@ -8,7 +8,8 @@ type GateComment = {
   commentedAt: string;
 };
 
-type Comment = { author: { login: string } | null; body: string; createdAt: string; pullRequestNumber?: number };
+type Comment = { author: { login: string } | null; body: string; createdAt: string };
+type ParseGateOptions = { pullRequestNumber?: number };
 
 function reviewerLogins(): Set<string> {
   const logins = new Set((process.env.TRACER_REVIEWER_LOGINS ?? "").split(",").map((login) => login.trim().toLowerCase()).filter(Boolean));
@@ -27,6 +28,7 @@ function trustedComments(comments: Comment[]): Comment[] {
 }
 
 const VALID_VERDICTS = new Set<Verdict>(["needs-fix", "merge-candidate", "needs-human", "blocked"]);
+const BLOCKING_SET_REQUIRED_SINCE = "2026-09-01T12:23:47Z";
 const NEXT_ACTION_REQUIRED_SINCE = "2026-09-26T20:18:26Z";
 
 type ParseGateCommentResult =
@@ -61,7 +63,7 @@ function validNextAction(verdict: Verdict, nextAction: string, headSha: string, 
     /^gh (?:api \S+|pr view \d+(?: --web)?|run view \d+(?: --log)?|variable get \S+(?: -R \S+)?)$/.test(nextAction);
 }
 
-function parseGateBody(body: string, commentedAt?: string, pullRequestNumber?: number): Omit<GateComment, "commentedAt"> | null {
+function parseGateBody(body: string, commentedAt?: string, options: ParseGateOptions = {}): Omit<GateComment, "commentedAt"> | null {
   if (!body.startsWith("## review-gate:")) return null;
 
   const verdictMatch = body.match(/^## review-gate:\s*(\S+)/);
@@ -80,30 +82,34 @@ function parseGateBody(body: string, commentedAt?: string, pullRequestNumber?: n
   if (reviewedFiles === null) return null;
 
   const blockingSetMatches = [...body.matchAll(/^blocking-set:[ \t]*(.*?)\s*$/gm)];
-  if (blockingSetMatches.length !== 1) return null;
-  const blockingSet = blockingSetMatches[0][1].trim();
-  const blockingTargets = blockingSet === "" ? [] : blockingSet.split(",").map((target) => target.trim());
-  if (blockingTargets.some((target) => target.length === 0)) return null;
-  if (verdict === "needs-fix" && blockingTargets.length === 0) return null;
-  if ((verdict === "merge-candidate" || verdict === "needs-human") && blockingTargets.length > 0) return null;
+  if (blockingSetMatches.length > 1) return null;
+  if (blockingSetMatches.length === 0) {
+    if (!commentedAt || !Number.isFinite(Date.parse(commentedAt)) || Date.parse(commentedAt) >= Date.parse(BLOCKING_SET_REQUIRED_SINCE)) return null;
+  } else {
+    const blockingSet = blockingSetMatches[0][1].trim();
+    const blockingTargets = blockingSet === "" ? [] : blockingSet.split(",").map((target) => target.trim());
+    if (blockingTargets.some((target) => target.length === 0)) return null;
+    if (verdict === "needs-fix" && blockingTargets.length === 0) return null;
+    if ((verdict === "merge-candidate" || verdict === "needs-human") && blockingTargets.length > 0) return null;
+  }
 
   const nextActionMatches = [...body.matchAll(/^next-action:[ \t]*(.*?)\s*$/gm)];
   if (nextActionMatches.length > 1) return null;
   if (nextActionMatches.length === 0) {
     if (!commentedAt || !Number.isFinite(Date.parse(commentedAt)) || Date.parse(commentedAt) >= Date.parse(NEXT_ACTION_REQUIRED_SINCE)) return null;
-  } else if (!validNextAction(verdict, nextActionMatches[0][1].trim(), headShaMatch[1], pullRequestNumber)) {
+  } else if (!validNextAction(verdict, nextActionMatches[0][1].trim(), headShaMatch[1], options.pullRequestNumber)) {
     return null;
   }
 
   return { verdict, headSha: headShaMatch[1], reviewRound, reviewedFiles };
 }
 
-function parseGateComment(comments: Comment[]): ParseGateCommentResult {
+function parseGateComment(comments: Comment[], options: ParseGateOptions = {}): ParseGateCommentResult {
   const trusted = trustedComments(comments);
   let latestConforming: GateComment | null = null;
 
   for (const comment of trusted) {
-    const parsed = parseGateBody(comment.body, comment.createdAt, comment.pullRequestNumber);
+    const parsed = parseGateBody(comment.body, comment.createdAt, options);
     if (!parsed) continue;
 
     if (!latestConforming || comment.createdAt >= latestConforming.commentedAt) {
@@ -121,12 +127,12 @@ function parseGateComment(comments: Comment[]): ParseGateCommentResult {
   return { kind: "invalid", comment: latestMarked };
 }
 
-function latestConformingGateComment(comments: Comment[]): GateComment | null {
+function latestConformingGateComment(comments: Comment[], options: ParseGateOptions = {}): GateComment | null {
   let latest: GateComment | null = null;
 
   for (const comment of trustedComments(comments)) {
 
-    const parsed = parseGateBody(comment.body, comment.createdAt, comment.pullRequestNumber);
+    const parsed = parseGateBody(comment.body, comment.createdAt, options);
     if (!parsed) continue;
 
     if (!latest || comment.createdAt >= latest.commentedAt) {
@@ -137,5 +143,5 @@ function latestConformingGateComment(comments: Comment[]): GateComment | null {
   return latest;
 }
 
-export type { Verdict, GateComment, Comment };
+export type { Verdict, GateComment, Comment, ParseGateOptions };
 export { latestConformingGateComment, parseGateBody, parseGateComment, reviewerLogins };

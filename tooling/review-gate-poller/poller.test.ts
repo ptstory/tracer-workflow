@@ -165,7 +165,7 @@ describe("tooling/review-gate-poller/poller.ts", () => {
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/11\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -219,7 +219,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-human\nhead-sha: cccccccccccccccccccccccccccccccccccccccc\nreview-round: 1\nreviewed-files: 2\n",
+            body: "## review-gate: needs-human\nhead-sha: cccccccccccccccccccccccccccccccccccccccc\nreview-round: 1\nreviewed-files: 2\nblocking-set:\nnext-action: gh pr view 13 --web\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -244,7 +244,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/12\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -268,7 +268,7 @@ esac
     });
   });
 
-  test("stops on an unparseable verdict instead of defaulting review-round to zero", () => {
+  test("ignores a malformed newer verdict and handles the older conforming needs-fix verdict", () => {
     writeGhStub(
       harness,
       JSON.stringify([{ number: 14, headRefOid: "dddddddddddddddddddddddddddddddddddddddd" }]),
@@ -276,26 +276,32 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/14\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreviewed-files: 1\n",
-            createdAt: "2026-01-02T00:00:00Z",
+            body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
+            createdAt: "2026-08-01T00:00:00Z",
           },
         ],
       }),
     );
 
-    writeOpencodeStub(harness, `printf 'unexpected relaunch\n' >&2`, 91);
+    writeOpencodeStub(harness, `:`, 0);
 
     const result = runPoller(harness);
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("unparseable");
-    expect(readFileSync(harness.opencodeLog, "utf8")).toBe("");
-    expect(existsSync(harness.statePath)).toBe(false);
+    expect(result.stderr).toBe("");
+    expect(readFileSync(harness.opencodeLog, "utf8")).not.toBe("");
+    expect(readState(harness.statePath)).toEqual({
+      14: expect.objectContaining({
+        headSha: "dddddddddddddddddddddddddddddddddddddddd",
+        status: "completed",
+        attempts: 1,
+      }),
+    });
   });
 
   test("sanitizes noisy stderr to a single line", () => {
@@ -306,7 +312,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: ffffffffffffffffffffffffffffffffffffffff\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: ffffffffffffffffffffffffffffffffffffffff\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/16\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -338,7 +344,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 1111111111111111111111111111111111111111\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: 1111111111111111111111111111111111111111\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/17\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -373,7 +379,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 3333333333333333333333333333333333333333\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: 3333333333333333333333333333333333333333\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/18\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -381,7 +387,7 @@ esac
     );
 
     writeFileSync(harness.statePath, JSON.stringify({ 18: "3333333333333333333333333333333333333333" }, null, 2));
-    writeOpencodeStub(harness, `printf 'unexpected relaunch\n' >&2`, 91);
+    writeOpencodeStub(harness, `:`, 0);
 
     const result = runPoller(harness);
 
@@ -405,7 +411,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 4444444444444444444444444444444444444444\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: 4444444444444444444444444444444444444444\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/19\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -472,6 +478,7 @@ esac
         2,
       ),
     );
+    writeOpencodeStub(harness, `:`, 0);
 
     const staleResult = runPoller(harness, {
       RG_NOW_MS: "1800001",
@@ -500,7 +507,7 @@ esac
           comments: [
             {
               author: { login: "review-bot" },
-              body: "## review-gate: needs-fix\nhead-sha: 8888888888888888888888888888888888888888\nreview-round: 0\nreviewed-files: 1\n",
+              body: "## review-gate: needs-fix\nhead-sha: 8888888888888888888888888888888888888888\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/22\n",
               createdAt: "2026-01-01T00:00:00Z",
             },
           ],
@@ -541,7 +548,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/23\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -578,7 +585,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: cccccccccccccccccccccccccccccccccccccccc\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: cccccccccccccccccccccccccccccccccccccccc\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/24\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -615,7 +622,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 6666666666666666666666666666666666666666\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: 6666666666666666666666666666666666666666\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/20\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -662,7 +669,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 7777777777777777777777777777777777777777\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: 7777777777777777777777777777777777777777\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/21\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],
@@ -727,7 +734,7 @@ esac
         comments: [
           {
             author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreview-round: 0\nreviewed-files: 1\n",
+            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/15\n",
             createdAt: "2026-01-01T00:00:00Z",
           },
         ],

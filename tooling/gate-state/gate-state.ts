@@ -72,7 +72,7 @@ function listOpenPRs(repo: string): OpenPR[] {
 }
 
 function classifyGateState(repo: string, pr: OpenPR): GateState {
-  const gate: GateComment | null = latestConformingGateComment(pr.comments);
+  const gate: GateComment | null = latestConformingGateComment(pr.comments, { pullRequestNumber: pr.number });
   if (!gate) {
     return {
       repo,
