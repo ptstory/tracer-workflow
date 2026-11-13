@@ -303,3 +303,61 @@ next-action: from-pr-review https://github.com/ptstory/tracer-workflow/pull/101
 - confirm Closes #101 closed the issue
 - next eligible ready-for-agent issue
 ```
+
+## needs-human (agent-unremediable browser evidence)
+
+```verdict
+## review-gate: needs-human
+
+head-sha: 0123456789abcdef0123456789abcdef01234567
+review-round: 1
+reviewed-files: 1
+blocking-set:
+next-action: gh pr view 21 --web
+
+### Standards
+- No blocking findings.
+
+### Spec
+- [medium] [needs-human] PR browser evidence — The binding acceptance criterion requires current-head browser evidence, but this reviewer cannot upload PR attachments through its GitHub interface. Manual verification checklist:
+  - Check: inspect the updated CSS rendering at desktop and mobile widths.
+  - Where: open the Netlify deploy preview linked from PR #21.
+  - Expected result: the +/-1 CSS change matches the intended layout without overlap; a human attaches screenshots to the PR through GitHub.
+
+### Merge preconditions
+- head is still 0123456789abcdef0123456789abcdef01234567
+- human must complete the browser-evidence checklist before merge
+
+### Post-merge
+- confirm Closes #21 closed the issue
+- next eligible ready-for-agent issue
+```
+
+## needs-human (no capable check for changed CSS)
+
+```verdict
+## review-gate: needs-human
+
+head-sha: 1123456789abcdef0123456789abcdef01234567
+review-round: 0
+reviewed-files: 1
+blocking-set:
+next-action: gh pr view 21 --web
+
+### Standards
+- No blocking findings.
+
+### Spec
+- [medium] [needs-human] CSS readiness — The repository has no configured CI/check capable of exercising the changed CSS paths; its Netlify checks report deployment only. Manual verification checklist:
+  - Check: inspect the changed CSS behavior in the deployed page at desktop and mobile widths.
+  - Where: open the Netlify deploy preview linked from PR #21's checks.
+  - Expected result: the +/-1 CSS change renders as intended with no visual regression.
+
+### Merge preconditions
+- head is still 1123456789abcdef0123456789abcdef01234567
+- no configured CI/check exercises the changed CSS; human must complete the preview checklist
+
+### Post-merge
+- confirm Closes #21 closed the issue
+- next eligible ready-for-agent issue
+```
