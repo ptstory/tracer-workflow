@@ -130,10 +130,12 @@ jobs:
             if ! gh_api_capture sync_pr_json "GET repos/$repo/pulls/$pr_number (live head re-check for synchronize cleanup)" "repos/$repo/pulls/$pr_number"; then
               exit 1
             fi
-            while IFS= read -r encoded_label; do
-              [ -n "$encoded_label" ] || continue
-              gh_api "DELETE repos/$repo/issues/$pr_number/labels/$encoded_label" -X DELETE "repos/$repo/issues/$pr_number/labels/$encoded_label" >/dev/null || true
-            done < <(printf '%s' "$sync_pr_json" | jq -r '[.labels // [] | .[] | .name | select(startswith("gate:"))] | .[] | @uri')
+            if [ "$(printf '%s' "$sync_pr_json" | jq -r '.head.sha // empty')" = "$head_sha" ]; then
+              while IFS= read -r encoded_label; do
+                [ -n "$encoded_label" ] || continue
+                gh_api "DELETE repos/$repo/issues/$pr_number/labels/$encoded_label" -X DELETE "repos/$repo/issues/$pr_number/labels/$encoded_label" >/dev/null
+              done < <(printf '%s' "$sync_pr_json" | jq -r '[.labels // [] | .[] | .name | select(startswith("gate:"))] | .[] | @uri')
+            fi
             exit 0
           fi
 

@@ -305,6 +305,30 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(ghLog).not.toContain('"method":"POST"');
   });
 
+  test("a superseded synchronize event does not clear labels from a newer head", () => {
+    const eventHeadSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const { result, ghLog } = runWorkflow({
+      eventName: "pull_request",
+      eventPayload: {
+        action: "synchronize",
+        pull_request: {
+          number: 98,
+          head: { sha: eventHeadSha },
+          body: "Closes #97",
+          labels: [{ name: "gate:needs-human" }],
+        },
+      },
+      prNumber: 98,
+      liveHeadSha: "cccccccccccccccccccccccccccccccccccccccc",
+      commentsJson: [],
+      checkRunsJson: [],
+      statusesJson: [],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).not.toContain('"method":"DELETE"');
+  });
+
   test("does not delete absent verdict labels when no trusted verdict exists", () => {
     const { result, ghLog } = runWorkflow({
       eventName: "workflow_call", prNumber: 98,

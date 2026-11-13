@@ -44,15 +44,15 @@ Configure matching sections in `gh-dash` (`~/.config/gh-dash/config.yml`):
 
 ```yaml
 prSections:
-  - title: Agent action: needs-fix
+  - title: "Agent action: needs-fix"
     filters: is:open label:"gate:needs-fix"
-  - title: Agent action: ungated
+  - title: "Agent action: ungated"
     filters: is:open -label:"gate:merge-candidate" -label:"gate:needs-fix" -label:"gate:needs-human" -label:"gate:blocked"
-  - title: Owner action: needs-human
+  - title: "Owner action: needs-human"
     filters: is:open label:"gate:needs-human"
-  - title: Owner action: blocked
+  - title: "Owner action: blocked"
     filters: is:open label:"gate:blocked"
-  - title: Owner review: merge-candidate
+  - title: "Owner review: merge-candidate"
     filters: is:open label:"gate:merge-candidate"
 ```
 
