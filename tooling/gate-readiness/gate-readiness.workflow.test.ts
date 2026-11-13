@@ -9,10 +9,12 @@ const workflowPath = join(repoRoot, ".github/workflows/gate-readiness.yml");
 const workflow = readFileSync(workflowPath, "utf8");
 const callerTemplate = readFileSync(join(repoRoot, "templates/gate-labels.yml"), "utf8");
 
-function runScript(): string {
+function runScript(label: string): string {
   const lines = workflow.split("\n");
-  const runIndex = lines.findLastIndex((line) => line.trim() === "run: |");
-  if (runIndex < 0) throw new Error("could not locate Evaluate readiness script");
+  const stepIndex = lines.findIndex((line) => line.trim() === `- name: ${label}`);
+  if (stepIndex < 0) throw new Error(`could not locate ${label} step`);
+  const runIndex = lines.slice(stepIndex).findIndex((line) => line.trim() === "run: |") + stepIndex;
+  if (runIndex < stepIndex) throw new Error(`could not locate ${label} script`);
 
   const scriptLines: string[] = [];
   const indent = lines.slice(runIndex + 1).find((line) => line.trim().length > 0)?.match(/^ */)?.[0].length ?? 0;
@@ -62,13 +64,13 @@ describe(".github/workflows/gate-readiness.yml", () => {
   });
 
   test("tolerates a concurrent already_exists response while creating labels", () => {
-    const script = runScript();
+    const script = runScript("Evaluate readiness");
     expect(script).toContain('"already_exists"');
     expect(script).toContain('"HTTP 422"');
   });
 
   test("re-reads the live PR head before every comment and label write", () => {
-    const script = runScript();
+    const script = runScript("Evaluate readiness");
     const recheck = script.indexOf('(live head re-check)');
     const synchronizeCleanup = script.indexOf('(live head re-check for synchronize cleanup)');
     const cleanupIterationRecheck = script.indexOf('(recheck before synchronize label deletion)');
@@ -83,7 +85,7 @@ describe(".github/workflows/gate-readiness.yml", () => {
   });
 
   test("uses the shared verdict parser for label eligibility", () => {
-    const script = runScript();
+    const script = runScript("Evaluate readiness");
     expect(workflow).toContain("tooling/lib/verdict-cli.ts");
     expect(script).toContain("PR_NUMBER=\"$pr_number\"");
     expect(script).toContain("verdict_parse_result=");
@@ -94,14 +96,14 @@ describe(".github/workflows/gate-readiness.yml", () => {
   });
 
   test("deletes verdict labels only when the PR already has them", () => {
-    const script = runScript();
+    const script = runScript("Evaluate readiness");
     expect(script).toContain('pr_label_json="$(printf \'%s\' "$live_pr_json" | jq -c \'[.labels // [] | .[] | .name]\')"');
     expect(script).toContain('existing_verdict_labels="$pr_label_json"');
     expect(script).toContain('elif printf \'%s\' "$existing_verdict_labels" | jq -e --arg label "$label" \'index($label) != null\' >/dev/null; then');
   });
 
   test("evaluates only the current relevant check/status instance before readiness decisions", () => {
-    const script = runScript();
+    const script = runScript("Evaluate readiness");
 
     expect(script).toContain("gh_api() {");
     expect(script).toContain("gate-readiness: gh api");
