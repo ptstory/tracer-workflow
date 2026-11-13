@@ -98,9 +98,11 @@ artifact is the execution input.
    automatic blocker. If none changed, state that explicitly. Generate test
    counts and node IDs mechanically from runner output; do not author coverage
    claims in prose.
-9. Commit, push, open or update the PR, and include the evidence bundle. Stop
-   there; review, check-run, and merge remain downstream.
-   Use `references/pr-body-contract.md` when creating or updating the PR body.
+9. Commit and push the implementation, capture the new head SHA, regenerate the
+   complete Evidence bundle for that SHA, and update the PR body before checking
+   readiness. Create or update the draft PR with the closing issue reference.
+   Stop there; review, check-run, and merge remain downstream. Use
+   `references/pr-body-contract.md` when creating or updating the PR body.
 10. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the recovery attempted, why it failed, and the next required recovery contract.
 
 ## Do not
