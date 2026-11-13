@@ -296,10 +296,34 @@ function validateReadinessExamples(blocks: string[], contractText: string, promp
   if (!normalizedContract.includes("Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`.")) {
     issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "readiness evidence path", message: "missing indeterminate evidence-path rule" });
   }
+  const docsOnlyAllowlistLines = contractText.split("\n").filter((line) => line.startsWith("- Docs-only allowlist:"));
+  if (docsOnlyAllowlistLines.length !== 1) {
+    issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "docs-only readiness", message: "expected exactly one canonical docs-only allowlist" });
+  } else {
+    const listText = docsOnlyAllowlistLines[0].slice("- Docs-only allowlist:".length).trim();
+    const entries = listText.endsWith(".") ? listText.slice(0, -1).replace(/,\s+and\s+/, ", ").split(/,\s*/) : [];
+    const paths: string[] = [];
+    for (const entry of entries) {
+      if (!/^`[^`]+`$/.test(entry)) {
+        issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "docs-only readiness", message: `invalid canonical allowlist entry ${JSON.stringify(entry)}` });
+        continue;
+      }
+      const path = entry.slice(1, -1);
+      if (!isRepoRelativePath(path)) {
+        issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "docs-only readiness", message: `invalid canonical allowlist path ${JSON.stringify(path)}` });
+      }
+      paths.push(path);
+    }
+    if (paths.length === 0) {
+      issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "docs-only readiness", message: "canonical docs-only allowlist must contain at least one path" });
+    }
+    if (new Set(paths).size !== paths.length) {
+      issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "docs-only readiness", message: "canonical docs-only allowlist must not contain duplicate paths" });
+    }
+  }
   const docsOnlyContractSnippets = [
-    "Docs-only allowlist: `README.md`, `RUNTIME.md`, `STACK.md`, `.agents/repo-context.md`, and `docs/**`.",
     "`RADAR.md` is excluded because its append-only contract is checked separately.",
-    "`CONTEXT.md`, `WORKFLOW.md`, `AGENTS.md`, `skills/**`, `actions/**`, `prompts/**`, workflow and Review Gate contract files, and all other paths are not allowlisted.",
+    "`CONTEXT.md`, `WORKFLOW.md`, `AGENTS.md`, `.agents/repo-context.md` (delegated operational and safety policy), `skills/**`, `actions/**`, `prompts/**`, workflow and Review Gate contract files, and all other paths are not allowlisted.",
     "Any non-allowlisted path, including a mixed PR, uses the ordinary path-coverage rules below.",
     "The `pr-body` check must pass even when it is not a branch-required check.",
   ];

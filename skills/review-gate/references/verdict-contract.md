@@ -223,12 +223,12 @@ itself.
 `merge-candidate` is determined by the target branch's required status-check
 configuration.
 
-- Docs-only allowlist: `README.md`, `RUNTIME.md`, `STACK.md`,
-  `.agents/repo-context.md`, and `docs/**`. `RADAR.md` is excluded because its
-  append-only contract is checked separately. `CONTEXT.md`, `WORKFLOW.md`,
-  `AGENTS.md`, `skills/**`, `actions/**`, `prompts/**`, workflow and Review Gate
-  contract files, and all other paths are not allowlisted. File extensions do not
-  grant an exception.
+- Docs-only allowlist: `README.md`, `RUNTIME.md`, `STACK.md`, and `docs/**`.
+  `RADAR.md` is excluded because its append-only contract is checked separately.
+  `CONTEXT.md`, `WORKFLOW.md`, `AGENTS.md`, `.agents/repo-context.md` (delegated
+  operational and safety policy), `skills/**`, `actions/**`, `prompts/**`, workflow
+  and Review Gate contract files, and all other paths are not allowlisted. File
+  extensions do not grant an exception.
 - Docs-only path: when every changed path matches the docs-only allowlist, replace
   changed-path exercise with all applicable required checks green at the current
   head (when configured), a passing `pr-body` check at the current head, and a
