@@ -95,12 +95,17 @@ as "tests pass" only index the evidence. `requesting-code-review` audits the
 bundle itself.
 
 **2. Check-run gate.** Merge readiness comes from the current head's required
-status-check configuration: if required checks are configured, all applicable
-required checks must be green at the current head and at least one applicable
-required check must exercise the changed paths; if no required checks are
-configured, at least one green CI/check run on the current head must exercise
-the changed paths. Older-head results never count. Readiness comes from actual
-check-run state (`gh pr checks` / GitHub API).
+status-check configuration. For a PR whose every changed path is in the docs-only
+allowlist in `skills/review-gate/references/verdict-contract.md`, replace
+changed-path exercise with all applicable configured required checks green at
+the current head (when configured), a passing `pr-body` check at the current
+head, and a clean Review Gate content review at that head. Otherwise, including
+any mixed PR, if required checks are configured, all applicable required checks
+must be green at the current head and at least one applicable required check
+must exercise the changed paths; if no required checks are configured, at least
+one green CI/check run on the current head must exercise the changed paths.
+Older-head results never count. Readiness comes from actual check-run state
+(`gh pr checks` / GitHub API).
 
 **3. Slice-contract rule.** A downstream issue may start only when the upstream
 blocker supplies the exact data, API, behavior, or file contract it consumes. A

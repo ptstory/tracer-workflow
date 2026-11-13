@@ -257,7 +257,7 @@ function validateVerdictBlock(block: string, index: number, requiredFields: stri
   return issues;
 }
 
-function validateReadinessExamples(blocks: string[], contractText: string): Issue[] {
+function validateReadinessExamples(blocks: string[], contractText: string, promptText: string): Issue[] {
   const issues: Issue[] = [];
   const file = "skills/review-gate/references/verdict-examples.md";
   const mergeCandidateBlocks = blocks.filter((block) => block.startsWith("## review-gate: merge-candidate"));
@@ -296,6 +296,31 @@ function validateReadinessExamples(blocks: string[], contractText: string): Issu
   if (!normalizedContract.includes("Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`.")) {
     issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "readiness evidence path", message: "missing indeterminate evidence-path rule" });
   }
+  const docsOnlyContractSnippets = [
+    "Docs-only allowlist: `README.md`, `RUNTIME.md`, `STACK.md`, `.agents/repo-context.md`, and `docs/**`.",
+    "`RADAR.md` is excluded because its append-only contract is checked separately.",
+    "`CONTEXT.md`, `WORKFLOW.md`, `AGENTS.md`, `skills/**`, `actions/**`, `prompts/**`, workflow and Review Gate contract files, and all other paths are not allowlisted.",
+    "Any non-allowlisted path, including a mixed PR, uses the ordinary path-coverage rules below.",
+    "The `pr-body` check must pass even when it is not a branch-required check.",
+  ];
+  for (const snippet of docsOnlyContractSnippets) {
+    if (!normalizedContract.includes(normalizeWhitespace(snippet))) {
+      issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "docs-only readiness", message: `missing canonical rule: ${snippet}` });
+    }
+  }
+  const docsOnlyExample = mergeCandidateBlocks.some((block) => {
+    const normalizedBlock = normalizeWhitespace(block);
+    return normalizedBlock.includes("every changed path matches the canonical docs-only allowlist")
+      && normalizedBlock.includes("`pr-body` check is successful at the current head")
+      && normalizedBlock.includes("clean Review Gate content review is bound to the same head");
+  });
+  if (!docsOnlyExample) {
+    issues.push({ file, field: "merge-candidate (docs-only allowlist)", message: "missing docs-only readiness example" });
+  }
+  if (!normalizeWhitespace(promptText).includes("docs-only readiness exception")) {
+    issues.push({ file: "skills/review-gate/PROMPT.md", field: "docs-only readiness", message: "missing canonical docs-only readiness reference" });
+  }
+
   if (!normalizedContract.includes("`getBranch protected: false` is sufficient evidence that no classic required checks exist")) {
     issues.push({ file: "skills/review-gate/references/verdict-contract.md", field: "classic protection", message: "missing protected:false readiness rule" });
   }
@@ -411,7 +436,7 @@ function main(): void {
     issues.push(...validateVerdictBlock(block, index, requiredFields));
   });
 
-  issues.push(...validateReadinessExamples(blocks, contractText));
+  issues.push(...validateReadinessExamples(blocks, contractText, promptText));
 
   if (issues.length > 0) {
     report(issues);

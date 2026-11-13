@@ -162,21 +162,27 @@ Rules:
     blocking concerns, and everything else becomes `follow-up-issue`. The
     verdict's `blocking-set` remains empty for `needs-human`.
 - `merge-candidate` only if zero `fix-now` findings remain and the target branch's
-  required status-check configuration satisfies one of these paths:
+  required status-check configuration satisfies a readiness path in the uploaded
+  verdict contract. Apply its docs-only readiness exception exactly as defined
+  there: every changed path must match that canonical allowlist, all applicable
+  configured required checks must be green at the current head (when configured),
+  `pr-body` must pass at the current head even if it is not branch-required, and
+  Review Gate content review must be clean at that same head. A mixed PR uses
+  ordinary changed-path coverage.
   Determine required checks from getBranch and rulesets. `getBranch protected: false` establishes there are no classic required checks; do not require `/protection`, and a 403 from that subresource is not a readiness blocker with `protected: false`. Otherwise use getBranch's classic protection.required_status_checks. Try `rules/branches/{branch}` first. If that call is rejected by the calling surface before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`. The exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` on HTTP 403 from either call establishes rulesets are unavailable; with no classic required checks, use the no-required-check path and record `plan-unavailable`, naming which call supplied that evidence next to the readiness evidence path. Captured responses: 2026-10-08 rules-for-branch, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}`; 2026-10-10 get-all-repository-rulesets on a private repo under GitHub Free, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-all-repository-rulesets","status":"403"}`. Do not invent response bodies. Any other status/message, or both calls unreachable, is a readiness blocker named `rules-unverifiable`; record `indeterminate`, name each call and its status (including 400), and retain every fix-now file in blocking-set. A failure never clears code findings.
   - configured path: all applicable required checks are green at the current
     head, and at least one applicable required check exercises the changed paths
   - no-required-check path: at least one green CI/check run on the current head
     exercises the changed paths. This applies when `protected: false` and exact plan-unavailable evidence is obtained from either rules endpoint.
-- A no-capable-check escalation is allowed only when repo CI/check configuration
-  is known, every configured required check has a successful result at the current
-  head, and none can exercise the changed paths. If any required check is failing,
-  pending, or missing from current-head check evidence, emit `blocked` regardless
-  of whether it can exercise the changed paths. When all required checks are green
-  but none can exercise the changed paths, an otherwise-clean review emits a
-  `needs-human` finding, not `blocked`, for either readiness path. Include a
-  manual-verification checklist with what to check, where (for example the PR
-  deploy preview URL), and the expected result.
+- A no-capable-check escalation applies only outside the docs-only allowlist. It is
+  allowed only when repo CI/check configuration is known, every configured
+  required check has a successful result at the current head, and none can
+  exercise the changed paths. If any required check is failing, pending, or
+  missing from current-head check evidence, emit `blocked`. When all required
+  checks are green but none can exercise the changed paths, an otherwise-clean
+  review emits a `needs-human` finding, not `blocked`, for either readiness path.
+  Include a manual-verification checklist with what to check, where (for example
+  the PR deploy preview URL), and the expected result.
 - If readiness configuration or current-head evidence cannot be established, emit
   `blocked` rather than assuming no capable check exists. Older-head results
   never satisfy readiness.

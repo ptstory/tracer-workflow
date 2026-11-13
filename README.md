@@ -81,11 +81,12 @@ circuit runs again. `needs-human` and `blocked` are hard stops. Once a current-h
 `merge-candidate` verdict and the check-run gate agree, landing authority follows
 the issue's autonomy tag: AFK work may land autonomously; HITL work stops for the
 human merge button. The gate follows the current head's required status-check
-configuration: if required checks are configured, all applicable required checks
-must be green at the current head and at least one applicable required check must
-exercise the changed paths; if no required checks are configured, at least one
-green CI/check run on the current head must exercise the changed paths.
-Older-head results never count.
+configuration. The docs-only exception and canonical path allowlist are defined in
+[`verdict-contract.md`](./skills/review-gate/references/verdict-contract.md):
+applicable configured required checks must be green (when configured), `pr-body`
+must pass on the current head, and Review Gate content review must be clean at
+that head. Non-allowlisted and mixed changes retain ordinary changed-path
+coverage. Older-head results never count.
 
 ### Reader-facing diagrams
 

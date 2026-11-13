@@ -18,6 +18,9 @@ Builder fields: `../v1.2.0/builder.md`.
 
 ## Changes from v1.2.0
 
+- Docs-only path coverage readiness is defined by the uploaded canonical
+  `skills/review-gate/references/verdict-contract.md`; re-upload that file as
+  Knowledge whenever it changes on `main`.
 - `getBranch protected: false` is sufficient evidence that there are no classic required checks; `/protection` is not required.
 - If `rules/branches/{branch}` is rejected by the connector with HTTP 400 before reaching GitHub, fall through to `rulesets`.
 - The exact plan-upgrade message is accepted from either rules endpoint; other responses remain `indeterminate` blockers.

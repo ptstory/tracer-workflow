@@ -117,8 +117,8 @@ describe("verdict examples", () => {
   const blocks = extractVerdictBlocks(verdictExamples);
   const mergeCandidateBlocks = blocks.filter((block) => /^## review-gate:\s*merge-candidate\s*$/m.test(block));
 
-  test("contains thirteen conforming verdict blocks", () => {
-    expect(blocks).toHaveLength(13);
+  test("contains fourteen conforming verdict blocks", () => {
+    expect(blocks).toHaveLength(14);
   });
 
   test("covers verdict precedence for draft, human stops, and blockers", () => {
@@ -154,8 +154,8 @@ describe("verdict examples", () => {
     expect(mergeCandidateBlocks[1]).toContain("next-action: gh pr merge 123");
   });
 
-  test("includes three merge-candidate examples and they parse", () => {
-    expect(mergeCandidateBlocks).toHaveLength(3);
+  test("includes four merge-candidate examples and they parse", () => {
+    expect(mergeCandidateBlocks).toHaveLength(4);
 
     expect(
       mergeCandidateBlocks.map((block) => {
@@ -164,7 +164,7 @@ describe("verdict examples", () => {
         expect(parsed.verdict).toBe("merge-candidate");
         return parsed.reviewRound;
       }),
-    ).toEqual([0, 1, 0]);
+    ).toEqual([0, 1, 0, 0]);
   });
 
   for (const [index, block] of blocks.entries()) {
