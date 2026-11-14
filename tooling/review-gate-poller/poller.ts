@@ -155,15 +155,17 @@ function correctiveReviewHistory(comments: Comment[], pullRequestNumber: number,
   return history;
 }
 
-function blockingFindingsForVerdict(comments: Comment[], verdict: GateComment, pullRequestNumber: number, trustedLogins: readonly string[]): BlockingFinding[] {
+function blockingFindingsForVerdict(comments: Comment[], verdict: GateComment, pullRequestNumber: number, trustedLogins: readonly string[]): BlockingFinding[] | null {
   const matches = comments.flatMap((comment) => {
     if (!comment.author?.login || !trustedLogins.some((login) => login.trim().toLowerCase() === comment.author?.login.toLowerCase())) return [];
     const parsed = parseGateComment([comment], { pullRequestNumber, trustedReviewerLogins: trustedLogins });
     const metadata = parseGateReviewMetadata(comment.body);
     if (parsed.kind !== "parsed" || !metadata || parsed.verdict.headSha !== verdict.headSha || parsed.verdict.verdict !== "needs-fix") return [];
-    return [{ commentedAt: parsed.verdict.commentedAt, blockingFindings: metadata.blockingFindings }];
+    return [{ commentedAt: parsed.verdict.commentedAt, blockingFindings: metadata.blockingFindings, blockingFindingsComplete: metadata.blockingFindingsComplete }];
   }).sort((left, right) => left.commentedAt.localeCompare(right.commentedAt));
-  return matches.at(-1)?.blockingFindings ?? [];
+  const latest = matches.at(-1);
+  if (!latest || !latest.blockingFindingsComplete) return null;
+  return latest.blockingFindings;
 }
 
 function authenticatedLogin(): string {
@@ -401,14 +403,15 @@ function main(): void {
         ? null
         : compareCommits(decision.verdict.headSha, resultingSha);
       const verifiedPrProgress = progressComparison?.status === "ahead" && progressComparison.ahead_by > 0;
-      const durableDispositionRecorded = hasNewDurableDisposition(previousComments, updatedComments, {
+      const blockingFindings = blockingFindingsForVerdict(comments, decision.verdict, pr.number, (process.env.TRACER_REVIEWER_LOGINS ?? "").split(","));
+      const durableDispositionRecorded = blockingFindings !== null && hasNewDurableDisposition(previousComments, updatedComments, {
         repository: repo,
         pullRequestNumber: pr.number,
         authorLogin: actingLogin,
         headSha: decision.verdict.headSha,
         resultingHeadSha: resultingSha,
         changedFilesSinceHead: progressComparison?.files.map((file) => file.filename) ?? [],
-        blockingFindings: blockingFindingsForVerdict(comments, decision.verdict, pr.number, (process.env.TRACER_REVIEWER_LOGINS ?? "").split(",")),
+        blockingFindings,
       });
       const completion = evaluateFixPassCompletion({ exitCode: 0, verifiedPrProgress, durableDispositionRecorded });
       if (completion.kind === "failed") {

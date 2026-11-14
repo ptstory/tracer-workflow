@@ -114,7 +114,7 @@ function parseGateBody(body: string, commentedAt?: string, options: ParseGateOpt
   return { verdict, headSha: headShaMatch[1], reviewRound, reviewedFiles, ...(nextAction === undefined ? {} : { nextAction }) };
 }
 
-function parseGateReviewMetadata(body: string): { blockingTargets: string[] | null; blockingFindings: ReviewFinding[]; rebaseline: boolean } | null {
+function parseGateReviewMetadata(body: string): { blockingTargets: string[] | null; blockingFindings: ReviewFinding[]; blockingFindingsComplete: boolean; rebaseline: boolean } | null {
   const blockingSetMatches = [...body.matchAll(/^blocking-set:[ \t]*(.*?)\s*$/gm)];
   const rebaselineMatches = [...body.matchAll(/^rebaseline:[ \t]*(.*?)\s*$/gm)];
   const reviewRound = body.match(/^review-round:[ \t]*(\d+)\s*$/m)?.[1];
@@ -122,30 +122,41 @@ function parseGateReviewMetadata(body: string): { blockingTargets: string[] | nu
     (rebaselineMatches.length === 1 && (rebaselineMatches[0][1] !== "yes" || reviewRound !== "0"))) return null;
   const blockingSet = blockingSetMatches[0]?.[1].trim();
   const blockingTargets = blockingSet === undefined ? null : blockingSet === "" ? [] : blockingSet.split(",").map((target) => target.trim());
+  const parsedFindings = parseBlockingFindings(body, blockingTargets);
   return {
     blockingTargets,
-    blockingFindings: parseBlockingFindings(body, blockingTargets),
+    blockingFindings: parsedFindings.findings,
+    blockingFindingsComplete: parsedFindings.complete,
     rebaseline: rebaselineMatches.length === 1,
   };
 }
 
-function parseBlockingFindings(body: string, blockingTargets: string[] | null): ReviewFinding[] {
+function parseBlockingFindings(body: string, blockingTargets: string[] | null): { findings: ReviewFinding[]; complete: boolean } {
   const standardsHeadings = [...body.matchAll(/^### (?:Standards|Spec)\s*$/gm)].map((match) => match.index ?? -1);
   const laterHeadings = [...body.matchAll(/^### /gm)].map((match) => match.index ?? -1);
   const findings: ReviewFinding[] = [];
+  let fixNowRowCount = 0;
+  let parsedFixNowRowCount = 0;
+  let unmatchedFixNowRowCount = 0;
   for (const headingIndex of standardsHeadings) {
     const nextHeading = laterHeadings.find((index) => index > headingIndex) ?? body.length;
     const section = body.slice(headingIndex, nextHeading);
-    for (const match of section.matchAll(/^[-*] (?:\*\*)?\[([^\]]+)\] \[fix-now\] (.+?)(?:\*\*)?\s+—\s+(.+?)\s*$/gm)) {
+    fixNowRowCount += [...section.matchAll(/^[-*].*\[fix-now\].*$/gm)].length;
+    const matches = [...section.matchAll(/^[-*] (?:\*\*)?\[([^\]]+)\] \[fix-now\] (.+?)(?:\*\*)?\s+—\s+(.+?)\s*$/gm)];
+    parsedFixNowRowCount += matches.length;
+    for (const match of matches) {
       const severity = match[1].trim();
       const location = match[2].replace(/`/g, "").trim();
       const finding = match[3].trim();
       if (!severity || !location || !finding || !blockingTargets) continue;
       const targets = blockingTargets.filter((target) => location.includes(target));
+      if (targets.length === 0) unmatchedFixNowRowCount += 1;
       for (const target of targets) findings.push({ target, severity, finding });
     }
   }
-  return findings;
+  const complete = blockingTargets !== null && fixNowRowCount === parsedFixNowRowCount && unmatchedFixNowRowCount === 0 &&
+    blockingTargets.every((target) => findings.some((finding) => finding.target === target));
+  return { findings, complete };
 }
 
 function parseGateComment(comments: Comment[], options: ParseGateOptions = {}, onUntrustedComment?: (login: string) => void): ParseGateCommentResult {

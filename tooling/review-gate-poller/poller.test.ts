@@ -452,6 +452,48 @@ Next action: review-gate https://github.com/acme/repo/pull/28`)} }))'`, 0, false
     });
   });
 
+  test.each([
+    {
+      name: "an unparseable finding on another blocking path",
+      blockingSet: "src/api.ts, src/db.ts",
+      findings: "- **[high] [fix-now] `src/api.ts` (input validation)** — Reject invalid values.\n- **[high] [fix-now] `src/db.ts` (authentication): Require an authenticated caller.\n  Additional context for the finding.",
+      ledger: "thread 1 | src/api.ts | finding: Reject invalid values. | severity: high | disposition: defer | reasoning: tracked | left open: tracked",
+    },
+    {
+      name: "an unparseable second finding on the same path",
+      blockingSet: "src/api.ts",
+      findings: "- **[high] [fix-now] `src/api.ts` (input validation)** — Reject invalid values.\n- **[high] [fix-now] `src/api.ts` (authentication): Require an authenticated caller.\n  Additional context for the finding.",
+      ledger: "thread 1 | src/api.ts | finding: Reject invalid values. | severity: high | disposition: defer | reasoning: tracked | left open: tracked",
+    },
+  ])("fails closed with no-progress for $name", ({ blockingSet, findings, ledger }) => {
+    const headSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    writeGhStub(
+      harness,
+      JSON.stringify([{ number: 29, headRefOid: headSha }]),
+      JSON.stringify({ comments: [{
+        author: { login: "review-bot" },
+        body: `## review-gate: needs-fix\nhead-sha: ${headSha}\nreview-round: 0\nreviewed-files: 1\nblocking-set: ${blockingSet}\nnext-action: from-pr-review https://github.com/acme/repo/pull/29\n\n### Standards\n${findings}\n`,
+        createdAt: "2026-01-01T00:00:00Z",
+      }] }),
+    );
+    writeOpencodeStub(harness, `node -e 'const fs=require("node:fs");fs.writeFileSync("${harness.workdir}/disposition.json", JSON.stringify({author:{login:"ptstory"},createdAt:"2026-01-02T00:00:00Z",body:${JSON.stringify(`PR: acme/repo#29\nhead SHA (before → after): ${headSha} → ${headSha}\n\nDisposition ledger:\n${ledger}\n\nNext action: review-gate https://github.com/acme/repo/pull/29`)} }))'`, 0, false);
+
+    const result = runPoller(harness, { RG_NOW_MS: "100000" });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(readState(harness.statePath)).toEqual({
+      29: expect.objectContaining({
+        headSha,
+        status: "failed",
+        attempts: 1,
+        exitCode: 0,
+        error: "no-progress",
+        nextRetryAt: 160000,
+      }),
+    });
+  });
+
   test("does not infer verified PR progress from an unmerged or incomparable target head", () => {
     writeGhStub(
       harness,

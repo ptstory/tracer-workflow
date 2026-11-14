@@ -22,17 +22,53 @@ describe("parseGateReviewMetadata", () => {
     expect(parseGateReviewMetadata("review-round: 0\nblocking-set: src/api.ts, tooling/poller.ts\nrebaseline: yes\n")).toEqual({
       blockingTargets: ["src/api.ts", "tooling/poller.ts"],
       blockingFindings: [],
+      blockingFindingsComplete: false,
       rebaseline: true,
     });
   });
 
   test("extracts each fix-now finding with its target, severity, and full wording", () => {
     const metadata = parseGateReviewMetadata("blocking-set: tooling/lib/review-gate-eligibility.ts\n\n### Standards\n- **[high] [fix-now] `tooling/lib/review-gate-eligibility.ts` (`hasNewDurableDisposition`)** — Bind durable evidence to each actual finding.\n");
-    expect(metadata?.blockingFindings).toEqual([{
-      target: "tooling/lib/review-gate-eligibility.ts",
+    expect(metadata).toEqual({
+      blockingTargets: ["tooling/lib/review-gate-eligibility.ts"],
+      blockingFindings: [{
+        target: "tooling/lib/review-gate-eligibility.ts",
+        severity: "high",
+        finding: "Bind durable evidence to each actual finding.",
+      }],
+      blockingFindingsComplete: true,
+      rebaseline: false,
+    });
+  });
+
+  test("marks blocking findings incomplete when a blocked path or same-file finding is unparsed", () => {
+    const acrossPaths = parseGateReviewMetadata(`blocking-set: src/api.ts, src/db.ts
+
+### Standards
+- **[high] [fix-now] \`src/api.ts\` (input validation)** — Reject invalid values.
+- **[high] [fix-now] \`src/db.ts\` (authentication): Require an authenticated caller.
+  Additional context for the finding.
+`);
+    expect(acrossPaths?.blockingFindings).toEqual([{
+      target: "src/api.ts",
       severity: "high",
-      finding: "Bind durable evidence to each actual finding.",
+      finding: "Reject invalid values.",
     }]);
+    expect(acrossPaths?.blockingFindingsComplete).toBe(false);
+
+    const samePath = parseGateReviewMetadata(`blocking-set: src/api.ts
+
+### Standards
+- **[high] [fix-now] \`src/api.ts\` (input validation)** — Reject invalid values.
+- **[high] [fix-now] \`src/api.ts\` (authorization): Require an authorized caller.
+  Additional context for the finding.
+`);
+    expect(samePath?.blockingFindings).toEqual([{
+      target: "src/api.ts",
+      severity: "high",
+      finding: "Reject invalid values.",
+    }]);
+    expect(samePath?.blockingFindingsComplete).toBe(false);
   });
 
   test("fails closed on invalid rebaseline markers", () => {
