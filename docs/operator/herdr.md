@@ -24,6 +24,26 @@ Create **one Herdr space per repository**. Start each issue lane as its own work
 | `U5K492/herdr-new-workspace-extended` (`u5k492.new-workspace-extended`) | A new-workspace picker, including **From a GitHub issue**, which selects an open issue and opens a worktree workspace from the latest default branch. | `ctrl+b Shift+N` (`prefix+shift+n`) | `herdr plugin install U5K492/herdr-new-workspace-extended` | `herdr plugin disable u5k492.new-workspace-extended` |
 | `ilazaridis/herdr-pane-issue` (`ilazaridis.pane-issue`) | Displays the issue and PR for each agent pane and opens the PR, or the issue before a PR exists. | `ctrl+b i` (`prefix+i`) | `herdr plugin install ilazaridis/herdr-pane-issue` | `herdr plugin disable ilazaridis.pane-issue` |
 
+Plugin installation does not configure the keybindings or sidebar display. Add these entries to `~/.config/herdr/config.toml`, merging them with any existing configuration:
+
+```toml
+[[keys.command]]
+key = "prefix+shift+n"
+type = "plugin_action"
+command = "u5k492.new-workspace-extended.new"
+description = "new workspace (extended)"
+
+[[keys.command]]
+key = "prefix+i"
+type = "plugin_action"
+command = "ilazaridis.pane-issue.open"
+
+[ui.sidebar.agents]
+rows = [["state_icon", "machine", "workspace", "tab"], ["agent", { token = "$issue", fg = "#89b4fa" }, { token = "$pr", fg = "#cba6f7" }]]
+```
+
+After saving the configuration, run `herdr server reload-config` to apply the extended-workspace key binding. The pane-issue plugin README provides the keybinding and sidebar rows above.
+
 The extended-workspace plugin requires Herdr 0.9.5 or later, `bash`, `git`, `fzf`, `jq`, and authenticated `gh`. The pane-issue plugin requires Herdr 0.9.1 or later, `jq`, and `git`; `gh` is needed for pull requests. Its optional push-hook setup is `herdr plugin action invoke ilazaridis.pane-issue.install-git-hook`; remove that hook with `herdr plugin action invoke ilazaridis.pane-issue.remove-git-hook`. Disabling a plugin stops its future hooks; it does not remove its optional Git hook or stop a process already running in a workspace.
 
 Both keybindings use Herdr's default `ctrl+b` prefix. The plugin READMEs document the commands and actions above. The extended-workspace plugin's GitHub PR picker exists, but whether this operator setup uses it is **unverified**; start issue lanes from the GitHub issue.
