@@ -65,6 +65,8 @@ jobs:
         run: bun scripts/check-review-gate-contract.ts
       - name: Check Review Gate GPT package
         run: bun scripts/check-gpt-package.ts
+      - name: Check Review Gate plugin package
+        run: bun scripts/check-review-gate-plugin-package.ts
 
   gpt-openapi-importer:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
