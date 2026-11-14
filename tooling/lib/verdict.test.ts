@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { latestConformingGateComment, parseGateBody, parseGateComment } from "./verdict";
+import { latestConformingGateComment, parseGateBody, parseGateComment, parseGateReviewMetadata } from "./verdict";
 import type { Comment } from "./verdict";
 import type { Verdict } from "./verdict";
 
@@ -16,6 +16,72 @@ function extractVerdictBlocks(text: string): string[] {
 }
 
 beforeEach(() => { process.env.TRACER_REVIEWER_LOGINS = "reviewer"; });
+
+describe("parseGateReviewMetadata", () => {
+  test("returns trusted blocking targets and an explicit round-zero rebaseline", () => {
+    expect(parseGateReviewMetadata("review-round: 0\nblocking-set: src/api.ts, tooling/poller.ts\nrebaseline: yes\n")).toEqual({
+      blockingTargets: ["src/api.ts", "tooling/poller.ts"],
+      blockingFindings: [],
+      blockingFindingsComplete: false,
+      rebaseline: true,
+    });
+  });
+
+  test("extracts each fix-now finding with its target, severity, and full wording", () => {
+    const metadata = parseGateReviewMetadata("blocking-set: tooling/lib/review-gate-eligibility.ts\n\n### Standards\n- **[high] [fix-now] `tooling/lib/review-gate-eligibility.ts` (`hasNewDurableDisposition`)** — Bind durable evidence to each actual finding.\n");
+    expect(metadata).toEqual({
+      blockingTargets: ["tooling/lib/review-gate-eligibility.ts"],
+      blockingFindings: [{
+        target: "tooling/lib/review-gate-eligibility.ts",
+        severity: "high",
+        finding: "Bind durable evidence to each actual finding.",
+      }],
+      blockingFindingsComplete: true,
+      rebaseline: false,
+    });
+  });
+
+  test("marks blocking findings incomplete when a blocked path or same-file finding is unparsed", () => {
+    const acrossPaths = parseGateReviewMetadata(`blocking-set: src/api.ts, src/db.ts
+
+### Standards
+- **[high] [fix-now] \`src/api.ts\` (input validation)** — Reject invalid values.
+- **[high] [fix-now] \`src/db.ts\` (authentication): Require an authenticated caller.
+  Additional context for the finding.
+`);
+    expect(acrossPaths?.blockingFindings).toEqual([{
+      target: "src/api.ts",
+      severity: "high",
+      finding: "Reject invalid values.",
+    }]);
+    expect(acrossPaths?.blockingFindingsComplete).toBe(false);
+
+    const samePath = parseGateReviewMetadata(`blocking-set: src/api.ts
+
+### Standards
+- **[high] [fix-now] \`src/api.ts\` (input validation)** — Reject invalid values.
+- **[high] [fix-now] \`src/api.ts\` (authorization): Require an authorized caller.
+  Additional context for the finding.
+`);
+    expect(samePath?.blockingFindings).toEqual([{
+      target: "src/api.ts",
+      severity: "high",
+      finding: "Reject invalid values.",
+    }]);
+    expect(samePath?.blockingFindingsComplete).toBe(false);
+  });
+
+  test("fails closed on invalid rebaseline markers", () => {
+    expect(parseGateReviewMetadata("review-round: 1\nblocking-set: src/api.ts\nrebaseline: yes\n")).toBeNull();
+    expect(parseGateComment([{
+      author: { login: "reviewer" },
+      createdAt: "2026-10-01T00:00:00Z",
+      body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 1\nreviewed-files: 1\nblocking-set: src/api.ts\nrebaseline: yes\nnext-action: from-pr-review https://github.com/acme/repo/pull/98\n",
+    }], { pullRequestNumber: 98 }).kind).toBe("invalid");
+    expect(parseGateReviewMetadata("review-round: 0\nblocking-set: src/api.ts\nrebaseline: no\n")).toBeNull();
+    expect(parseGateReviewMetadata("review-round: 0\nblocking-set: src/api.ts\nrebaseline: yes\nrebaseline: yes\n")).toBeNull();
+  });
+});
 
 describe("parseGateComment", () => {
   test("parses a conforming verdict with its round", () => {
@@ -93,6 +159,26 @@ describe("parseGateComment", () => {
     const currentComment: Comment = { ...legacyComment, body: currentBody };
     expect(parseGateComment([currentComment], { pullRequestNumber: 98 }).kind).toBe("parsed");
     expect(parseGateComment([currentComment], { pullRequestNumber: 99 }).kind).toBe("invalid");
+  });
+
+  test("returns a validated next action and supports explicit trusted reviewer logins", () => {
+    const comment: Comment = {
+      author: { login: "Review-Bot" },
+      body: "## review-gate: needs-human\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set:\nnext-action: gh pr view 98 --web\n",
+      createdAt: "2026-09-26T20:18:26Z",
+    };
+
+    expect(parseGateComment([comment], { pullRequestNumber: 98, trustedReviewerLogins: ["review-bot"] })).toEqual({
+      kind: "parsed",
+      verdict: {
+        verdict: "needs-human",
+        headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        reviewRound: 0,
+        reviewedFiles: 1,
+        commentedAt: "2026-09-26T20:18:26Z",
+        nextAction: "gh pr view 98 --web",
+      },
+    });
   });
 
   test("fails closed without an allowlist", () => {
