@@ -292,7 +292,7 @@ jobs:
             fi
             while IFS=$'\t' read -r context app_id; do
               [ -n "$context" ] || continue
-              run="$(printf '%s' "$check_runs_json" | jq -c --arg context "$context" --arg app_id "$app_id" '[.[] | select(.name == $context) | select($app_id == "" or $app_id == "-1" or ((.app.id // "") | tostring) == $app_id)] | last // null')"
+              run="$(printf '%s' "$check_runs_json" | jq -c --arg context "$context" --arg app_id "$app_id" '[.[] | select(.name == $context) | select($app_id == "" or ((.app.id // "") | tostring) == $app_id)] | last // null')"
               if [ "$run" != "null" ]; then
                 run_status="$(printf '%s' "$run" | jq -r '.status // "unknown"')"
                 run_conclusion="$(printf '%s' "$run" | jq -r '.conclusion // ""')"

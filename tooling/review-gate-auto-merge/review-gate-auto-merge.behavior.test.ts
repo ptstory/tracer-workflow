@@ -379,6 +379,15 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     expect(stopComments(result).some((entry) => entry.body?.includes(expectedReason))).toBe(true);
   });
 
+  test("still enforces a concrete app ID for a classic required check", () => {
+    const result = makeHarness({
+      requiredChecks: [{ context: "classic-check", app_id: 25 }],
+      checks: [{ name: "classic-check", status: "completed", conclusion: "success", app: { id: 73 } }],
+    });
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(stopComments(result).some((entry) => entry.body?.includes("required check classic-check from app 25 is missing"))).toBe(true);
+  });
+
   test("stops when the readiness-completion workflow run failed", () => {
     const result = makeHarness({ eventName: "workflow_run", workflowRunConclusion: "failure" });
     expect(mergeCalls(result)).toHaveLength(0);
