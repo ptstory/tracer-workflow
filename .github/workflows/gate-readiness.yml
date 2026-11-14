@@ -8,12 +8,20 @@ on:
         description: PR number to evaluate.
         required: true
         type: number
-  pull_request:
+      reviewer-logins:
+        description: Comma-separated trusted review-gate GitHub logins; defaults to the caller repository variable.
+        required: false
+        type: string
+      pull-request-action:
+        description: Original pull_request action when invoked through a caller workflow.
+        required: false
+        type: string
+  pull_request_target:
     types: [opened, synchronize, reopened]
 
 permissions:
   issues: write # issue comments + labels
-  pull-requests: write # PR comment writeback; workflow_call metadata lookup stays read-only via gh api
+  pull-requests: write # PR comment writeback; PR metadata is read-only via gh api
   checks: read # check-runs lookup
   statuses: read # commit statuses lookup
 
@@ -27,12 +35,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+          INPUT_PULL_REQUEST_ACTION: ${{ github.event.action || inputs.pull-request-action }}
           REPOSITORY: ${{ github.repository }}
-          TRACER_REVIEWER_LOGINS: ${{ vars.TRACER_REVIEWER_LOGINS }}
+          TRACER_REVIEWER_LOGINS: ${{ inputs.reviewer-logins || vars.TRACER_REVIEWER_LOGINS }}
         run: |
           set -euo pipefail
 
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ]; then
             pr_number="${PR_NUMBER:?}"
           else
             pr_number="${INPUT_PR_NUMBER:?}"
@@ -97,21 +106,37 @@ jobs:
             fi
           }
 
-          pr_metadata_source="workflow_call gh api"
+          pr_metadata_source="GitHub API"
           gh_token_source="secrets.GITHUB_TOKEN"
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-            pr_metadata_json="$(cat "${GITHUB_EVENT_PATH:?}")"
-            pr_metadata_source="pull_request event payload"
-            head_sha="$(printf '%s' "$pr_metadata_json" | jq -r '.pull_request.head.sha')"
-            pr_body="$(printf '%s' "$pr_metadata_json" | jq -r '.pull_request.body // ""')"
-            has_ready_label="$(printf '%s' "$pr_metadata_json" | jq -r '([(.pull_request.labels // [])[] | .name] | index("gate:ready")) != null')"
-          else
-            if ! gh_api_capture pr_metadata_json "GET repos/$repo/pulls/$pr_number" "repos/$repo/pulls/$pr_number"; then
+          pull_request_action="${INPUT_PULL_REQUEST_ACTION:-}"
+          if ! gh_api_capture pr_metadata_json "GET repos/$repo/pulls/$pr_number" "repos/$repo/pulls/$pr_number"; then
+            exit 1
+          fi
+          head_sha="$(printf '%s' "$pr_metadata_json" | jq -r '.head.sha')"
+          pr_body="$(printf '%s' "$pr_metadata_json" | jq -r '.body // ""')"
+          has_ready_label="$(printf '%s' "$pr_metadata_json" | jq -r '([(.labels // [])[] | .name] | index("gate:ready")) != null')"
+
+          if [ "$pull_request_action" = "synchronize" ]; then
+            if ! gh_api_capture sync_pr_json "GET repos/$repo/pulls/$pr_number (live head re-check for synchronize cleanup)" "repos/$repo/pulls/$pr_number"; then
               exit 1
             fi
-            head_sha="$(printf '%s' "$pr_metadata_json" | jq -r '.head.sha')"
-            pr_body="$(printf '%s' "$pr_metadata_json" | jq -r '.body // ""')"
-            has_ready_label="$(printf '%s' "$pr_metadata_json" | jq -r '([(.labels // [])[] | .name] | index("gate:ready")) != null')"
+            if [ "$(printf '%s' "$sync_pr_json" | jq -r '.head.sha // empty')" = "$head_sha" ]; then
+              sync_gate_labels="$(printf '%s' "$sync_pr_json" | jq -r '[.labels // [] | .[] | .name | select(startswith("gate:"))] | .[] | @uri')"
+              while IFS= read -r encoded_label; do
+                [ -n "$encoded_label" ] || continue
+                if ! gh_api_capture sync_pr_json "GET repos/$repo/pulls/$pr_number (recheck before synchronize label deletion)" "repos/$repo/pulls/$pr_number"; then
+                  exit 1
+                fi
+                if [ "$(printf '%s' "$sync_pr_json" | jq -r '.head.sha // empty')" != "$head_sha" ]; then
+                  printf 'gate-readiness: PR head moved during synchronize cleanup from %s; stopping label deletion\n' "$head_sha" >&2
+                  break
+                fi
+                gh_api "DELETE repos/$repo/issues/$pr_number/labels/$encoded_label" -X DELETE "repos/$repo/issues/$pr_number/labels/$encoded_label" >/dev/null
+              done <<< "$sync_gate_labels"
+            else
+              printf 'gate-readiness: PR head moved before synchronize cleanup; skipping label deletion\n' >&2
+            fi
+            exit 0
           fi
 
           closing_refs="$(printf '%s' "$pr_body" | jq -Rs -r '
@@ -129,36 +154,63 @@ jobs:
           comments_json="$(printf '%s' "$comments_json_raw" | jq -s 'add // []')"
 
           trusted_reviewers_json="$(printf '%s' "$TRACER_REVIEWER_LOGINS" | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$"; "") | ascii_downcase | select(length > 0))')"
-          ignored_reviewers="$(printf '%s' "$comments_json" | jq -r --argjson reviewers "$trusted_reviewers_json" '
-            [.[] | select(.body | startswith("## review-gate:")) | select((.user.login // "" | ascii_downcase) as $login | $reviewers | index($login) == null) | (.user.login // "unknown")] | unique | join(", ")
+          verdict_parse_result="$(printf '%s' "$comments_json" | jq -c --argjson reviewers "$trusted_reviewers_json" --arg pr_number "$pr_number" '
+            def field_values($body; $field):
+              [$body | scan("(?m)^" + $field + ":[ \\t]*[^\\n]*$")];
+            def field_value($body; $field):
+              try ($body | capture("(?m)^" + $field + ":[ \\t]*(?<value>[^\\n]*)$").value) catch null;
+            def valid_next_action($verdict; $action; $head_sha):
+              if $verdict == "needs-fix" then
+                ($action | capture("^from-pr-review https://github\\.com/[^/\\s]+/[^/\\s]+/pull/(?<number>[0-9]+)$")? | .number == $pr_number)
+              elif $verdict == "merge-candidate" then
+                (($action | test("^gh pr ready " + $pr_number + "$")) or
+                  ($action | test("^gh pr merge " + $pr_number + " --squash --match-head-commit " + $head_sha + "$")))
+              elif $verdict == "needs-human" then
+                $action == ("gh pr view " + $pr_number + " --web")
+              else
+                (($action == ("gh pr checks " + $pr_number)) or
+                  ($action | test("^gh (api \\S+|pr view [0-9]+( --web)?|run view [0-9]+( --log)?|variable get \\S+( -R \\S+)?)$")))
+              end;
+            def parse_comment:
+              . as $comment
+              | $comment.body as $body
+              | $comment.created_at as $created_at
+              | try (
+                  ($body | capture("^## review-gate:\\s*(?<verdict>\\S+)").verdict) as $verdict
+                  | ($body | capture("(?m)^head-sha:[ \\t]*(?<head_sha>[0-9a-fA-F]{40})[ \\t]*$").head_sha | ascii_downcase) as $head_sha
+                  | ($body | capture("(?m)^review-round:[ \\t]*(?<review_round>[0-9]+)[ \\t]*$").review_round | tonumber) as $review_round
+                  | ($body | capture("(?m)^reviewed-files:[ \\t]*(?<reviewed_files>[0-9]+)[ \\t]*$").reviewed_files | tonumber) as $reviewed_files
+                  | field_values($body; "blocking-set") as $blocking_fields
+                  | field_values($body; "next-action") as $next_action_fields
+                  | field_value($body; "blocking-set") as $blocking_set
+                  | field_value($body; "next-action") as $next_action
+                  | (if $blocking_set == null or ($blocking_set | gsub("^\\s+|\\s+$"; "")) == "" then [] else ($blocking_set | split(",") | map(gsub("^\\s+|\\s+$"; ""))) end) as $blocking_targets
+                  | if (["merge-candidate", "needs-fix", "needs-human", "blocked"] | index($verdict)) == null then null
+                    elif ($blocking_fields | length) > 1 or ($next_action_fields | length) > 1 then null
+                    elif ($blocking_fields | length) == 0 and $created_at >= "2026-09-01T12:23:47Z" then null
+                    elif ($next_action_fields | length) == 0 and $created_at >= "2026-09-26T20:18:26Z" then null
+                    elif ($blocking_targets | any(. == "")) then null
+                    elif $verdict == "needs-fix" and ($blocking_targets | length) == 0 then null
+                    elif (["merge-candidate", "needs-human"] | index($verdict)) != null and ($blocking_targets | length) > 0 then null
+                    elif $next_action != null and (($next_action | gsub("^\\s+|\\s+$"; "")) == "" or (valid_next_action($verdict; ($next_action | gsub("^\\s+|\\s+$"; "")); $head_sha) | not)) then null
+                    else {created_at: $created_at, verdict: $verdict, head_sha: $head_sha, review_round: $review_round, reviewed_files: $reviewed_files}
+                    end
+                ) catch null;
+            [.[] | select(.body | startswith("## review-gate:"))] as $marked
+            | [$marked[] | select((.user.login // "" | ascii_downcase) as $login | $reviewers | index($login) != null)] as $trusted
+            | [$trusted[] | parse_comment | select(. != null)] | sort_by(.created_at) | last as $latest
+            | {
+                status: (if $latest != null then "valid" elif ($trusted | length) > 0 then "invalid" else "none" end),
+                details: (if $latest == null then null else $latest | del(.created_at) end),
+                ignoredAuthors: ([$marked[] | select((.user.login // "" | ascii_downcase) as $login | $reviewers | index($login) == null) | (.user.login // "unknown")] | unique | sort)
+              }
           ')"
-          latest_review_gate_json="$(printf '%s' "$comments_json" | jq -c --argjson reviewers "$trusted_reviewers_json" '
-            map(select(.body | startswith("## review-gate:")) | select((.user.login // "" | ascii_downcase) as $login | $reviewers | index($login) != null))
-            | sort_by(.created_at)
-            | last // null
-          ')"
+          ignored_reviewers="$(printf '%s' "$verdict_parse_result" | jq -r '(.ignoredAuthors // []) | join(", ")')"
           if [ -n "$ignored_reviewers" ]; then
             printf 'gate-readiness: ignored review-gate comments from non-allowlisted authors: %s\n' "$ignored_reviewers" >&2
           fi
-          review_gate_details="null"
-
-          if [ "$latest_review_gate_json" = "null" ]; then
-            marker_parse_status="none"
-          else
-            review_gate_details="$(printf '%s' "$latest_review_gate_json" | jq -c '
-              try {
-                verdict: (.body | capture("^## review-gate:\\s*(?<verdict>\\S+)").verdict),
-                head_sha: (.body | capture("(?m)^head-sha:\\s*(?<head_sha>[0-9a-f]{40})\\s*$").head_sha),
-                review_round: (.body | capture("(?m)^review-round:\\s*(?<review_round>\\d+)\\s*$").review_round | tonumber),
-                reviewed_files: (.body | capture("(?m)^reviewed-files:\\s*(?<reviewed_files>\\d+)\\s*$").reviewed_files | tonumber)
-              } catch null
-            ')"
-            if [ "$review_gate_details" = "null" ]; then
-              marker_parse_status="invalid"
-            else
-              marker_parse_status="valid"
-            fi
-          fi
+          marker_parse_status="$(printf '%s' "$verdict_parse_result" | jq -r '.status')"
+          review_gate_details="$(printf '%s' "$verdict_parse_result" | jq -c '.details // null')"
 
           review_gate_state="ungated"
           review_gate_verdict="none"
@@ -288,6 +340,19 @@ jobs:
             done
           fi
 
+          # Re-read the live PR immediately before any write. Event payloads and earlier reads can
+          # describe a head that has since been replaced; writing labels or the readiness comment
+          # for a superseded head would restore stale state. A newer run evaluates the new head.
+          if ! gh_api_capture live_pr_json "GET repos/$repo/pulls/$pr_number (live head re-check)" "repos/$repo/pulls/$pr_number"; then
+            exit 1
+          fi
+          live_head_sha="$(printf '%s' "$live_pr_json" | jq -r '.head.sha // empty')"
+          if [ "$live_head_sha" != "$head_sha" ]; then
+            printf 'gate-readiness: PR head moved from %s to %s during evaluation; skipping comment and label writes\n' "$head_sha" "${live_head_sha:-unknown}" >&2
+            exit 0
+          fi
+          has_ready_label="$(printf '%s' "$live_pr_json" | jq -r '([(.labels // [])[] | .name] | index("gate:ready")) != null')"
+
           comment_body="$(printf '%s\n' "${comment_lines[@]}")"
           existing_comment_id="$(printf '%s' "$comments_json" | jq -r --arg marker "$marker" '
             [ .[] | select(.body | contains($marker)) | {id, created_at} ]
@@ -301,6 +366,38 @@ jobs:
           else
             gh_api "POST repos/$repo/issues/$pr_number/comments" -X POST "repos/$repo/issues/$pr_number/comments" -f body="$comment_body" >/dev/null
           fi
+
+          pr_label_json="$(printf '%s' "$live_pr_json" | jq -c '[.labels // [] | .[] | .name]')"
+          verdict_label=""
+          if [ "$review_gate_state" = "current" ]; then
+            case "$review_gate_verdict" in
+              merge-candidate) verdict_label="gate:merge-candidate" ;;
+              needs-fix) verdict_label="gate:needs-fix" ;;
+              needs-human) verdict_label="gate:needs-human" ;;
+              blocked) verdict_label="gate:blocked" ;;
+            esac
+          fi
+          existing_verdict_labels="$pr_label_json"
+          while IFS='|' read -r label color description; do
+            if ! gh api "repos/$repo/labels/$label" >/dev/null 2>&1; then
+              if ! create_error="$(gh api -X POST "repos/$repo/labels" -f name="$label" -f color="$color" -f description="$description" 2>&1 >/dev/null)"; then
+                if [[ "$create_error" != *"already_exists"* && "$create_error" != *"HTTP 422"* ]]; then
+                  printf 'gate-readiness: failed to create label %s: %s\n' "$label" "$create_error" >&2
+                  exit 1
+                fi
+              fi
+            fi
+            if [ "$label" = "$verdict_label" ]; then
+              gh_api "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="$label" >/dev/null
+            elif printf '%s' "$existing_verdict_labels" | jq -e --arg label "$label" 'index($label) != null' >/dev/null; then
+              gh_api "DELETE repos/$repo/issues/$pr_number/labels/$label" -X DELETE "repos/$repo/issues/$pr_number/labels/$label" >/dev/null || true
+            fi
+          done <<'LABELS'
+          gate:merge-candidate|0e8a16|Trusted current-head merge-candidate verdict
+          gate:needs-fix|d93f0b|Trusted current-head needs-fix verdict
+          gate:needs-human|fbca04|Trusted current-head needs-human verdict
+          gate:blocked|b60205|Trusted current-head blocked verdict
+          LABELS
 
           if [ "$ready" = "true" ]; then
             if [ "$has_ready_label" != "true" ]; then

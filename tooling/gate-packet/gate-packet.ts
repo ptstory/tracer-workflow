@@ -77,12 +77,12 @@ function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }
 
-function latestGateComment(comments: Comment[]): Comment | null {
+function latestGateComment(comments: Comment[], number: number): Comment | null {
   const logins = reviewerLogins();
   const ordered = [...comments].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const parsed = parseGateComment(ordered);
+  const parsed = parseGateComment(ordered, { pullRequestNumber: number });
   if (parsed.kind !== "parsed") return null;
-  return ordered.find((comment) => comment.createdAt === parsed.verdict.commentedAt && !!comment.author?.login && logins.has(comment.author.login.toLowerCase()) && parseGateBody(comment.body)?.headSha === parsed.verdict.headSha) ?? null;
+  return ordered.find((comment) => comment.createdAt === parsed.verdict.commentedAt && !!comment.author?.login && logins.has(comment.author.login.toLowerCase()) && parseGateBody(comment.body, comment.createdAt, { pullRequestNumber: number })?.headSha === parsed.verdict.headSha) ?? null;
 }
 
 function warn(message: string): void {
@@ -138,7 +138,7 @@ function buildPacket(row: {
   const details = loadPrDetails(row.repo, row.number);
   const issueNumber = parseIssueNumber(details.body);
   const issueText = issueNumber === null ? "none" : loadIssueText(row.repo, issueNumber).trimEnd() || "none";
-  const verdict = latestGateComment(details.comments);
+  const verdict = latestGateComment(details.comments, row.number);
   const priorVerdictText = verdict?.body.trimEnd() || "none";
   const diffText = loadDiffText(row.repo, row.number).trimEnd() || "none";
 

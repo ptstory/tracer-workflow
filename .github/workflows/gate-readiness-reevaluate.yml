@@ -46,7 +46,12 @@ jobs:
   after-ci:
     needs: resolve-ci-pr
     if: needs.resolve-ci-pr.outputs.pr-number != ''
-    uses: ./.github/workflows/gate-readiness.yml
+    # One gate run per PR at a time; a newer event supersedes an in-flight one. Kept on the
+    # calling job (not workflow level) so skipped jobs, e.g. unrelated PR comments, never cancel a real run.
+    concurrency:
+      group: gate-readiness-pr-${{ needs.resolve-ci-pr.outputs.pr-number }}
+      cancel-in-progress: true
+    uses: ptstory/tracer-workflow/.github/workflows/gate-readiness.yml@main
     with:
       pr-number: ${{ fromJSON(needs.resolve-ci-pr.outputs.pr-number) }}
     secrets: inherit
@@ -56,7 +61,12 @@ jobs:
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '## review-gate:')
-    uses: ./.github/workflows/gate-readiness.yml
+    # One gate run per PR at a time; a newer event supersedes an in-flight one. Kept on the
+    # calling job (not workflow level) so skipped jobs, e.g. unrelated PR comments, never cancel a real run.
+    concurrency:
+      group: gate-readiness-pr-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    uses: ptstory/tracer-workflow/.github/workflows/gate-readiness.yml@main
     with:
       pr-number: ${{ github.event.issue.number }}
     secrets: inherit

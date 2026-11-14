@@ -82,7 +82,7 @@ function prComments(n: number): Comment[] {
 /** Latest gate verdict on a PR, or null. Latest by comment creation time. */
 function latestVerdict(n: number): GateComment | null {
   const comments = prComments(n);
-  const parsed = parseGateComment(comments);
+  const parsed = parseGateComment(comments, { pullRequestNumber: n });
   if (parsed.kind === "parsed") return parsed.verdict;
   if (parsed.kind === "invalid") {
     const reason = parsed.comment.body.split(/\r?\n/).find((line) => line.trim()) ?? parsed.comment.body;

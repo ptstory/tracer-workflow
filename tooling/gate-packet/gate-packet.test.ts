@@ -159,15 +159,15 @@ function runGatePacket(h: Harness, args: string[] = []) {
   });
 }
 
-function gateComment(headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
+function gateComment(number: number, headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
   return {
     author: { login: "reviewer" },
-    body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreview-round: 1\nreviewed-files: 1\n`,
+    body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreview-round: 1\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/${number}\n`,
     createdAt: at,
   };
 }
 
-function invalidGateComment(headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
+function invalidGateComment(_number: number, headSha: string, verdict = "needs-fix", at = "2026-01-01T00:00:00Z"): Comment {
   return {
     author: { login: "reviewer" },
     body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreviewed-files: 1\n`,
@@ -189,9 +189,9 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
   });
 
   test("returns only trusted prior verdicts even when an untrusted verdict is newer", () => {
-    const trusted = gateComment("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    const untrusted = { ...gateComment("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "needs-fix", "2026-01-02T00:00:00Z"), author: { login: "attacker" } };
-    expect(latestGateComment([trusted, untrusted])).toEqual(trusted);
+    const trusted = gateComment(98, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const untrusted = { ...gateComment(98, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "needs-fix", "2026-01-02T00:00:00Z"), author: { login: "attacker" } };
+    expect(latestGateComment([trusted, untrusted], 98)).toEqual(trusted);
   });
 
   test("filters drafts and current PRs and copies the remaining packets to the clipboard by default", () => {
@@ -210,14 +210,14 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
         number: 2,
         title: "stale",
         headRefOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        comments: [gateComment("cccccccccccccccccccccccccccccccccccccccc")],
+        comments: [gateComment(2, "cccccccccccccccccccccccccccccccccccccccc")],
         isDraft: false,
       },
       {
         number: 3,
         title: "current",
         headRefOid: "dddddddddddddddddddddddddddddddddddddddd",
-        comments: [gateComment("dddddddddddddddddddddddddddddddddddddddd")],
+        comments: [gateComment(3, "dddddddddddddddddddddddddddddddddddddddd")],
         isDraft: false,
       },
       {
@@ -235,12 +235,18 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     };
     state.prViews[`${repo}#2`] = {
       body: "Fixes https://github.com/ptstory/tracer-workflow/issues/12",
-      comments: [gateComment("cccccccccccccccccccccccccccccccccccccccc", "needs-fix", "2026-01-02T00:00:00Z")],
+      comments: [gateComment(2, "cccccccccccccccccccccccccccccccccccccccc", "needs-fix", "2026-01-02T00:00:00Z")],
+    };
+    state.prViews[`${repo}#3`] = {
+      body: "Closes #13",
+      comments: [gateComment(3, "dddddddddddddddddddddddddddddddddddddddd")],
     };
     state.issueViews[`${repo}#11`] = { text: "issue #11 — alpha\nbody:\nissue body 11" };
     state.issueViews[`${repo}#12`] = { text: "issue #12 — beta\nbody:\nissue body 12" };
+    state.issueViews[`${repo}#13`] = { text: "issue #13 — gamma\nbody:\nissue body 13" };
     state.diffs[`${repo}#1`] = { text: "diff --git a/a.txt b/a.txt\n+one\n" };
     state.diffs[`${repo}#2`] = { text: "diff --git a/b.txt b/b.txt\n+two\n" };
+    state.diffs[`${repo}#3`] = { text: "diff --git a/c.txt b/c.txt\n+three\n" };
     writeGhStub(harness, state);
 
     const result = runGatePacket(harness);
@@ -267,13 +273,13 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
         number: 7,
         title: "packet",
         headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        comments: [gateComment("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")],
+        comments: [gateComment(7, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")],
         isDraft: false,
       },
     ];
     state.prViews[`${repo}#7`] = {
       body: "Resolves #77",
-      comments: [gateComment("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "needs-fix", "2026-01-02T00:00:00Z")],
+      comments: [gateComment(7, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "needs-fix", "2026-01-02T00:00:00Z")],
     };
     state.issueViews[`${repo}#77`] = { text: "issue #77 — packet\nbody:\nissue body 77" };
     state.diffs[`${repo}#7`] = { text: "diff --git a/x.txt b/x.txt\n+payload\n" };
@@ -304,7 +310,7 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     ];
     state.prViews[`${repo}#8`] = {
       body: "Closes #78",
-      comments: [invalidGateComment("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "needs-fix", "2026-01-02T00:00:00Z")],
+      comments: [invalidGateComment(8, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "needs-fix", "2026-01-02T00:00:00Z")],
     };
     state.issueViews[`${repo}#78`] = { text: "issue #78 — invalid verdict\nbody:\nissue body 78" };
     state.diffs[`${repo}#8`] = { text: "diff --git a/x.txt b/x.txt\n+payload\n" };
@@ -334,14 +340,14 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
         number: 2,
         title: "small diff",
         headRefOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        comments: [gateComment("cccccccccccccccccccccccccccccccccccccccc")],
+        comments: [gateComment(2, "cccccccccccccccccccccccccccccccccccccccc")],
         isDraft: false,
       },
     ];
     state.prViews[`${repo}#1`] = { body: "Closes #101", comments: [] };
     state.prViews[`${repo}#2`] = {
       body: "Closes #102",
-      comments: [gateComment("cccccccccccccccccccccccccccccccccccccccc", "needs-fix", "2026-01-02T00:00:00Z")],
+      comments: [gateComment(2, "cccccccccccccccccccccccccccccccccccccccc", "needs-fix", "2026-01-02T00:00:00Z")],
     };
     state.issueViews[`${repo}#101`] = { text: "issue #101 — big\nbody:\nissue body 101" };
     state.issueViews[`${repo}#102`] = { text: "issue #102 — small\nbody:\nissue body 102" };
@@ -413,14 +419,14 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
         number: 10,
         title: "omit",
         headRefOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        comments: [gateComment("cccccccccccccccccccccccccccccccccccccccc")],
+        comments: [gateComment(10, "cccccccccccccccccccccccccccccccccccccccc")],
         isDraft: false,
       },
     ];
     state.prViews[`${repo}#9`] = { body: "Closes #109", comments: [] };
     state.prViews[`${repo}#10`] = {
       body: "Closes #110",
-      comments: [gateComment("cccccccccccccccccccccccccccccccccccccccc", "needs-fix", "2026-01-02T00:00:00Z")],
+      comments: [gateComment(10, "cccccccccccccccccccccccccccccccccccccccc", "needs-fix", "2026-01-02T00:00:00Z")],
     };
     state.issueViews[`${repo}#109`] = { text: "issue #109 — keep\nbody:\nissue body 109" };
     state.issueViews[`${repo}#110`] = { text: "issue #110 — omit\nbody:\nissue body 110" };
@@ -454,14 +460,14 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
         number: 22,
         title: "healthy",
         headRefOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        comments: [gateComment("cccccccccccccccccccccccccccccccccccccccc")],
+        comments: [gateComment(22, "cccccccccccccccccccccccccccccccccccccccc")],
         isDraft: false,
       },
     ];
     state.prViews[`${repo}#21`] = { error: "boom" };
     state.prViews[`${repo}#22`] = {
       body: "Closes #122",
-      comments: [gateComment("cccccccccccccccccccccccccccccccccccccccc", "needs-fix", "2026-01-02T00:00:00Z")],
+      comments: [gateComment(22, "cccccccccccccccccccccccccccccccccccccccc", "needs-fix", "2026-01-02T00:00:00Z")],
     };
     state.issueViews[`${repo}#122`] = { text: "issue #122 — healthy\nbody:\nissue body 122" };
     state.diffs[`${repo}#21`] = { text: "diff --git a/bad.txt b/bad.txt\n+bad\n" };
