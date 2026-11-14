@@ -283,10 +283,11 @@ jobs:
             if [ "$(printf '%s' "$required_checks" | jq 'length')" -eq 0 ]; then
               changed_files_raw="$(gh api --paginate "repos/$repo/pulls/$pr_number/files?per_page=100")"
               changed_files_json="$(printf '%s' "$changed_files_raw" | jq -s 'add // [] | map(.filename)')"
-              test_nodes="$(printf '%s' "$live_pr_json" | jq '[.body // "" | split("Test node IDs exercising changed paths:") | if length > 1 then .[1] | split("\\n## ") | first | split("\\n- Verification:") | first | [scan("(?m)^\\s+-\\s+`([^`]+)`")] | flatten else [] end] | flatten')"
+              test_nodes="$(printf '%s' "$live_pr_json" | jq '[.body // "" | split("Test node IDs exercising changed paths:") | if length > 1 then .[1] | split("\\n## ") | first | split("\\n- Verification:") | first | [scan("`([^`]+)`")] | flatten else [] end] | flatten')"
               matching_path_node_count="$(jq -cn --argjson changed_files "$changed_files_json" --argjson nodes "$test_nodes" '[ $changed_files[] as $path | select(any($nodes[]; contains($path))) ] | length')"
+              changed_file_count="$(printf '%s' "$changed_files_json" | jq 'length')"
               test_run="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.name == "test" and .status == "completed" and .conclusion == "success") | select(((.app.slug // "") == "github-actions") or ((.app.name // "") == "GitHub Actions"))] | last // null')"
-              if [ "$matching_path_node_count" -eq 0 ] || [ "$test_run" = "null" ]; then
+              if [ "$changed_file_count" -eq 0 ] || [ "$matching_path_node_count" -ne "$changed_file_count" ] || [ "$test_run" = "null" ]; then
                 add_failure "base branch $base_ref has no required checks and no green current-head CI/check run exercises the changed paths"
               fi
               return

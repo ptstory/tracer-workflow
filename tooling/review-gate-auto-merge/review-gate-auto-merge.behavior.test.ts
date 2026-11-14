@@ -418,7 +418,7 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
       branchProtected: false,
       rulesAvailable: false,
       checks: [{ name: "unrelated-job", status: "completed", conclusion: "success", app: { id: 1, slug: "github-actions", name: "GitHub Actions" } }],
-      changedFiles: ["tooling/lib/verdict.test.ts"],
+      changedFiles: ["tooling/lib/verdict.test.ts", "tooling/review-gate-auto-merge/review-gate-auto-merge.behavior.test.ts"],
       prBody: `## Evidence\n\n- Test node IDs exercising changed paths:\n  - \`tooling/review-gate-auto-merge/review-gate-auto-merge.behavior.test.ts > unrelated test\`\n- Verification: full test suite`,
     });
     expect(mergeCalls(result)).toHaveLength(0);
