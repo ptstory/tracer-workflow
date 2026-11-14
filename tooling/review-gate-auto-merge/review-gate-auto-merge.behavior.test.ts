@@ -146,7 +146,7 @@ function makeHarness(fixture: Fixture): HarnessResult {
       base: { ref: "main" },
       draft: fixture.draft ?? false,
       html_url: "https://github.com/acme/repo/pull/98",
-      body: fixture.prBody ?? `## Evidence\n\n- Head SHA: ${headSha}\n- Test node IDs exercising changed paths:\n  - \`tooling/review-gate-auto-merge/review-gate-auto-merge.behavior.test.ts :: test exercises changed paths\`\n`,
+      body: fixture.prBody ?? `## Evidence\n\n- Head SHA: ${headSha}\n`,
       labels: (fixture.labels ?? ["gate:merge-candidate"]).map((name) => ({ name })),
       merged: false,
       merge_commit_sha: null as string | null,
@@ -395,34 +395,52 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     expect(result.comments.some((comment) => comment.body.includes("Gate Readiness Reevaluate completed with failure"))).toBe(true);
   });
 
-  test("a no-required-check branch stops without green current-head evidence", () => {
+  test("a no-required-check branch stops without docs-only or current-head pr-body evidence", () => {
     const result = makeHarness({ requiredChecks: [], branchProtected: false, rulesAvailable: false, checks: [] });
     expect(mergeCalls(result)).toHaveLength(0);
-    expect(stopComments(result).some((entry) => entry.body?.includes("no green current-head CI/check run"))).toBe(true);
+    expect(stopComments(result).some((entry) => entry.body?.includes("no required checks and the changed files are not docs-only or the current-head pr-body check is not successful")), `${result.stderr}\n${result.stdout}`).toBe(true);
   });
 
-  test("a no-required-check branch merges after green current-head check evidence for a changed path", () => {
+  test("a no-required-check code change stops despite a green unrelated test job and fabricated PR-body node names", () => {
     const result = makeHarness({
       requiredChecks: [],
       branchProtected: false,
       rulesAvailable: false,
-      requiredCheckContext: "test",
-      prBody: `## Evidence\n\n- Test node IDs exercising changed paths:\n  - \`tooling/review-gate-auto-merge/review-gate-auto-merge.behavior.test.ts > targeted test\`\n- Verification: full test suite`,
+      checks: [
+        { name: "test", status: "completed", conclusion: "success", app: { id: 1, slug: "github-actions", name: "GitHub Actions" } },
+        { name: "pr-body", status: "completed", conclusion: "success", app: { id: 1, slug: "github-actions", name: "GitHub Actions" } },
+      ],
+      changedFiles: ["tooling/lib/verdict.ts"],
+      prBody: `## Evidence\n\n- Test node IDs exercising changed paths:\n  - \`tooling/lib/verdict.ts > fabricated passing test\``,
+    });
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(stopComments(result).some((entry) => entry.body?.includes("no required checks and the changed files are not docs-only or the current-head pr-body check is not successful")), `${result.stderr}\n${result.stdout}`).toBe(true);
+  });
+
+  test("a no-required-check docs-only change is eligible with a successful current-head pr-body check", () => {
+    const result = makeHarness({
+      requiredChecks: [],
+      branchProtected: false,
+      rulesAvailable: false,
+      checks: [{ name: "pr-body", status: "completed", conclusion: "success", app: { id: 1, slug: "github-actions", name: "GitHub Actions" } }],
+      changedFiles: ["README.md", "docs/architecture/policy.md"],
     });
     expect(mergeCalls(result)).toHaveLength(1);
   });
 
-  test("a no-required-check branch does not merge when only an unrelated job is green", () => {
+  test.each([
+    ["missing", []],
+    ["failing", [{ name: "pr-body", status: "completed", conclusion: "failure", app: { id: 1, slug: "github-actions", name: "GitHub Actions" } }]],
+  ] as const)("a no-required-check docs-only change stops when current-head pr-body is %s", (_state, checks) => {
     const result = makeHarness({
       requiredChecks: [],
       branchProtected: false,
       rulesAvailable: false,
-      checks: [{ name: "unrelated-job", status: "completed", conclusion: "success", app: { id: 1, slug: "github-actions", name: "GitHub Actions" } }],
-      changedFiles: ["tooling/lib/verdict.test.ts", "tooling/review-gate-auto-merge/review-gate-auto-merge.behavior.test.ts"],
-      prBody: `## Evidence\n\n- Test node IDs exercising changed paths:\n  - \`tooling/review-gate-auto-merge/review-gate-auto-merge.behavior.test.ts > unrelated test\`\n- Verification: full test suite`,
+      checks: [...checks],
+      changedFiles: ["README.md", "docs/architecture/policy.md"],
     });
     expect(mergeCalls(result)).toHaveLength(0);
-    expect(stopComments(result).some((entry) => entry.body?.includes("no green current-head CI/check run exercises the changed paths"))).toBe(true);
+    expect(stopComments(result).some((entry) => entry.body?.includes("no required checks and the changed files are not docs-only or the current-head pr-body check is not successful")), `${result.stderr}\n${result.stdout}`).toBe(true);
   });
 
   test("combines legacy branch checks with checks required by branch rules", () => {

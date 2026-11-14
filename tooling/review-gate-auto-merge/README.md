@@ -28,9 +28,11 @@ PR/check reads and stop or completion comments.
 ## Readiness behavior
 
 When required checks are configured, every applicable check must be successful
-on the exact current PR head. If no required checks are configured, at least one
-green CI/check run on that head is required; readiness remains bound to the
-current trusted verdict and the Review Gate contract's changed-path coverage
-rule. A missing, pending, failed, unverifiable, or stale condition stops the
-merge. The workflow rereads verdict, PR state, labels, and checks before merge,
-then uses `--match-head-commit` to prevent merging a different head.
+on the exact current PR head. If no required checks are configured, the workflow
+allows only changes where every live GitHub PR file path is in the canonical
+docs-only set (`README.md`, `RUNTIME.md`, `STACK.md`, or `docs/**`) and the
+current-head GitHub Actions `pr-body` check succeeded. PR-body test-node names
+are not used as coverage evidence. Any other changed path, missing or failing
+check, unverifiable, or stale condition stops the merge. The workflow rereads
+verdict, PR state, labels, and checks before merge, then uses
+`--match-head-commit` to prevent merging a different head.
