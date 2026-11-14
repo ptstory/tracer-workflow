@@ -42,7 +42,7 @@ command = "ilazaridis.pane-issue.open"
 rows = [["state_icon", "machine", "workspace", "tab"], ["agent", { token = "$issue", fg = "#89b4fa" }, { token = "$pr", fg = "#cba6f7" }]]
 ```
 
-After saving the configuration, run `herdr server reload-config` to apply the extended-workspace key binding. The pane-issue plugin README provides the keybinding and sidebar rows above.
+If your existing `[keys]` configuration sets `new_workspace = "prefix+shift+n"`, remove that assignment so the plugin binding can take effect, or move the built-in command to another key, for example `[keys]` with `new_workspace = "prefix+ctrl+n"`. Otherwise Herdr keeps the built-in binding and disables the extended-workspace plugin binding. After merging the configuration, run `herdr server reload-config` to apply it. The pane-issue plugin README provides the keybinding and sidebar rows above.
 
 The extended-workspace plugin requires Herdr 0.9.5 or later, `bash`, `git`, `fzf`, `jq`, and authenticated `gh`. The pane-issue plugin requires Herdr 0.9.1 or later, `jq`, and `git`; `gh` is needed for pull requests. Its optional push-hook setup is `herdr plugin action invoke ilazaridis.pane-issue.install-git-hook`; remove that hook with `herdr plugin action invoke ilazaridis.pane-issue.remove-git-hook`. Disabling a plugin stops its future hooks; it does not remove its optional Git hook or stop a process already running in a workspace.
 
