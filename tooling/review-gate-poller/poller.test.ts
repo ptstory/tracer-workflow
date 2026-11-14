@@ -46,12 +46,13 @@ function writeGhStub(h: Harness, listJson: string, viewJson: string): void {
     join(h.binDir, "gh"),
     `#!/usr/bin/env node
 const fs = require("node:fs");
-const [cmd, subcmd] = process.argv.slice(2);
+const [cmd, subcmd, ...args] = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(h.ghLog)}, process.argv.slice(2).join(" ") + "\\n");
 if (cmd === "pr" && subcmd === "list") {
   process.stdout.write(${JSON.stringify(listJson)});
 } else if (cmd === "pr" && subcmd === "view") {
-  process.stdout.write(${JSON.stringify(viewJson)});
+  const details = JSON.parse(${JSON.stringify(viewJson)});
+  process.stdout.write(JSON.stringify({ ...details, labels: details.labels ?? [{ name: "gate:needs-fix" }] }));
 } else {
   process.stderr.write("unexpected gh args: " + process.argv.slice(2).join(" ") + "\\n");
   process.exit(64);
@@ -64,6 +65,7 @@ function writeOpencodeStub(
   h: Harness,
   body: string,
   exitCode = 0,
+  verifiedProgress = exitCode === 0,
 ): void {
   writeExecutable(
     join(h.binDir, "opencode"),
@@ -71,19 +73,24 @@ function writeOpencodeStub(
 set -eu
 printf '%s\n' "$*" >> "${h.opencodeLog}"
 ${body}
+if [ "${verifiedProgress}" = "true" ]; then : > "${h.workdir}/finished"; fi
 exit ${exitCode}
 `,
   );
 }
 
-function writeGitStub(h: Harness, headSha: string): void {
+function writeGitStub(h: Harness, headSha: string, resultingSha = headSha, initialSha = headSha): void {
   writeExecutable(
     join(h.binDir, "git"),
     `#!/bin/sh
 set -eu
 case "$1 $2" in
   "rev-parse HEAD")
-    printf '%s\n' '${headSha}'
+    if [ -f "${h.workdir}/finished" ]; then
+      printf '%s\n' '${resultingSha}'
+    else
+      printf '%s\n' '${initialSha}'
+    fi
     ;;
   *)
     printf 'unexpected git args: %s\n' "$*" >&2
@@ -143,7 +150,7 @@ describe("tooling/review-gate-poller/poller.ts", () => {
 
   beforeEach(() => {
     harness = makeHarness();
-    writeGitStub(harness, defaultGitHeadSha);
+    writeGitStub(harness, defaultGitHeadSha, defaultGitHeadSha, "8888888888888888888888888888888888888888");
   });
 
   afterEach(() => {
@@ -174,7 +181,8 @@ describe("tooling/review-gate-poller/poller.ts", () => {
 
     writeOpencodeStub(
       harness,
-      `if ! [ -f "${harness.statePath}" ]; then
+      `touch "${harness.workdir}/finished"
+if ! [ "${harness.statePath}" ]; then
   printf 'state missing before opencode\n' >&2
   exit 91
 fi
@@ -234,6 +242,7 @@ esac
     expect(result.stderr).toBe("");
     expect(readFileSync(harness.opencodeLog, "utf8")).toBe("");
     expect(existsSync(harness.statePath)).toBe(false);
+    expect(readFileSync(harness.ghLog, "utf8")).toContain("comments,labels");
   });
 
   test("persists state even when opencode exits nonzero", () => {
@@ -251,7 +260,7 @@ esac
       }),
     );
 
-    writeOpencodeStub(harness, `printf 'boom\n' >&2`, 37);
+    writeOpencodeStub(harness, `printf 'boom\n' >&2`, 37, false);
 
     const result = runPoller(harness);
 
@@ -288,7 +297,7 @@ esac
       }),
     );
 
-    writeOpencodeStub(harness, `:`, 0);
+    writeOpencodeStub(harness, `touch "${harness.workdir}/finished"`, 0);
 
     const result = runPoller(harness);
 
@@ -319,7 +328,7 @@ esac
       }),
     );
 
-    writeOpencodeStub(harness, `printf 'boom\nstack trace\nmore noise\n' >&2`, 37);
+    writeOpencodeStub(harness, `printf 'boom\nstack trace\nmore noise\n' >&2`, 37, false);
 
     const result = runPoller(harness);
 
@@ -351,8 +360,8 @@ esac
       }),
     );
 
-    writeGitStub(harness, "2222222222222222222222222222222222222222");
-    writeOpencodeStub(harness, `:`, 0);
+    writeGitStub(harness, "1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222");
+    writeOpencodeStub(harness, `touch "${harness.workdir}/progress"`, 0);
 
     const result = runPoller(harness);
 
@@ -387,7 +396,7 @@ esac
     );
 
     writeFileSync(harness.statePath, JSON.stringify({ 18: "3333333333333333333333333333333333333333" }, null, 2));
-    writeOpencodeStub(harness, `:`, 0);
+    writeOpencodeStub(harness, `printf 'unexpected launch\\n' >&2`, 91);
 
     const result = runPoller(harness);
 
@@ -440,7 +449,7 @@ esac
       ),
     );
 
-    writeGitStub(harness, "5555555555555555555555555555555555555555");
+    writeGitStub(harness, "4444444444444444444444444444444444444444", "5555555555555555555555555555555555555555");
     writeOpencodeStub(harness, `:`, 0);
 
     const backoffOnlyResult = runPoller(harness, { RG_NOW_MS: "60001" });
@@ -556,7 +565,7 @@ esac
     );
 
     writeInProgressState(harness, 23, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 1);
-    writeGitStub(harness, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    writeGitStub(harness, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     writeOpencodeStub(harness, `:`, 0);
 
     const result = runPoller(harness, {
@@ -593,9 +602,8 @@ esac
     );
 
     writeInProgressState(harness, 24, "cccccccccccccccccccccccccccccccccccccccc", 1);
-    writeGitStub(harness, "dddddddddddddddddddddddddddddddddddddddd");
+    writeGitStub(harness, "cccccccccccccccccccccccccccccccccccccccc", "dddddddddddddddddddddddddddddddddddddddd");
     writeOpencodeStub(harness, `:`, 0);
-
     const result = runPoller(harness, {
       RG_NOW_MS: "300001",
       RG_STALE_IN_PROGRESS_TIMEOUT_MS: "300000",
@@ -757,6 +765,7 @@ esac
       ),
     );
 
+    writeGitStub(harness, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", defaultGitHeadSha, "dddddddddddddddddddddddddddddddddddddddd");
     writeOpencodeStub(
       harness,
       `if ! [ -f "${harness.statePath}" ]; then

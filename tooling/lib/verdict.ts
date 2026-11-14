@@ -13,18 +13,16 @@ type Comment = { author: { login: string } | null; body: string; createdAt: stri
 type ParseGateOptions = {
   pullRequestNumber?: number;
   trustedReviewerLogins?: readonly string[];
-  onUntrustedComment?: (login: string) => void;
 };
 
-function reviewerLogins(allowedLogins = (process.env.TRACER_REVIEWER_LOGINS ?? "").split(",")): Set<string> {
+function reviewerLogins(allowedLogins: readonly string[] = (process.env.TRACER_REVIEWER_LOGINS ?? "").split(",")): Set<string> {
   const logins = new Set(allowedLogins.map((login) => login.trim().toLowerCase()).filter(Boolean));
   if (logins.size === 0) throw new Error("TRACER_REVIEWER_LOGINS must contain at least one reviewer login");
   return logins;
 }
 
-function trustedComments(comments: Comment[], options: ParseGateOptions = {}): Comment[] {
+function trustedComments(comments: Comment[], options: ParseGateOptions = {}, onUntrustedComment = (login: string) => console.warn(`Ignoring review-gate comment from non-allowlisted author ${login}`)): Comment[] {
   const logins = reviewerLogins(options.trustedReviewerLogins);
-  const onUntrustedComment = options.onUntrustedComment ?? ((login) => console.warn(`Ignoring review-gate comment from non-allowlisted author ${login}`));
   return comments.filter((comment) => {
     if (!comment.body.startsWith("## review-gate:")) return false;
     if (comment.author?.login && logins.has(comment.author.login.toLowerCase())) return true;
@@ -111,8 +109,8 @@ function parseGateBody(body: string, commentedAt?: string, options: ParseGateOpt
   return { verdict, headSha: headShaMatch[1], reviewRound, reviewedFiles, ...(nextAction === undefined ? {} : { nextAction }) };
 }
 
-function parseGateComment(comments: Comment[], options: ParseGateOptions = {}): ParseGateCommentResult {
-  const trusted = trustedComments(comments, options);
+function parseGateComment(comments: Comment[], options: ParseGateOptions = {}, onUntrustedComment?: (login: string) => void): ParseGateCommentResult {
+  const trusted = trustedComments(comments, options, onUntrustedComment);
   let latestConforming: GateComment | null = null;
 
   for (const comment of trusted) {
