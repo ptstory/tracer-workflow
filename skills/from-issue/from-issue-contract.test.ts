@@ -76,6 +76,20 @@ describe("from-issue contract", () => {
     expect(regressionCases).toHaveLength(14);
   });
 
+  test("plan checkpoint posts a bounded plan before implementation or stops with a split proposal", () => {
+    const skillDoc = read("SKILL.md");
+    const contract = normalize(readSection(skillDoc, "Contract")).toLowerCase();
+    const steps = normalize(readSection(skillDoc, "Steps")).toLowerCase();
+
+    expect(contract).toContain("settled facts");
+    expect(steps).toContain("more than one pr");
+    expect(steps).toContain("any acceptance criterion cannot be mapped to a concrete change");
+    expect(steps).toContain("outside this repository");
+    expect(steps).toContain("make no commits");
+    expect(steps).toContain("post one issue comment listing the files to change");
+    expect(steps).toContain("do not write code or make the first commit until the plan comment is posted");
+  });
+
   test("regression case 1 asserts the execution transition into the documented Steps", () => {
     const regressionCase = regressionCases[0];
     const steps = regressionCase.skillMatches.find(({ heading }) => heading === "Steps");
