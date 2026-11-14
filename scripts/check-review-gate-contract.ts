@@ -411,8 +411,8 @@ function main(): void {
       },
       {
         field: "readiness",
-        snippet: "Merge remains HITL.",
-        message: "missing HITL merge clarification",
+        snippet: "Merge remains HITL by default.",
+        message: "missing explicit merge-authorization clarification",
       },
     ]),
     ...validateTextSnippets("skills/review-gate/PROMPT.md", promptText, [
@@ -443,8 +443,8 @@ function main(): void {
       },
       {
         field: "readiness",
-        snippet: "Merge remains HITL.",
-        message: "missing HITL merge clarification",
+        snippet: "Merge remains HITL by default.",
+        message: "missing explicit merge-authorization clarification",
       },
     ]),
   ];

@@ -33,7 +33,7 @@ gh pr list --state open --label gate:needs-human
 # Owner action: resolve or inspect the blocker.
 gh pr list --state open --label gate:blocked
 
-# Review passed; human decides whether to merge.
+# Review passed; an authorized auto-merge workflow can act after its independent gate.
 gh pr list --state open --label gate:merge-candidate
 
 # Agent action: no current review-gate verdict label.
@@ -58,3 +58,15 @@ prSections:
 
 The ungated query excludes all four verdict labels; it intentionally remains an
 agent-action queue, while `needs-human` and `blocked` are owner-action queues.
+
+## Review-gate auto-merge token
+
+The repository auto-merge workflow requires the repository secret
+`TRACER_MERGE_TOKEN`. Set it to a fine-grained personal access token scoped only
+to this repository with **Administration: read**, **Contents: read and write**,
+and **Pull requests: read and write**. Administration read is required to read
+branch-protection required checks; Contents write is required so squash merges
+trigger push workflows on `main`. The same token is used for both required-check
+configuration lookup and the merge. If the secret is absent or the token cannot
+read configuration, the workflow posts a stop comment and does not fall back to
+`GITHUB_TOKEN` for merging.

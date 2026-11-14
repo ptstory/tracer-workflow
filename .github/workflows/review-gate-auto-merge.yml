@@ -1,0 +1,397 @@
+name: Review Gate Auto Merge
+
+on:
+  issue_comment:
+    types: [created, edited]
+  workflow_run:
+    workflows: [CI, Gate Labels, Gate Readiness Reevaluate]
+    types: [completed]
+  check_run:
+    types: [completed]
+  status:
+  repository_dispatch:
+    types: [review-gate-readiness-completed]
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  issues: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: review-gate-auto-merge-${{ github.event.issue.number || github.event.client_payload.pull_request_number || github.event.workflow_run.pull_requests[0].number || github.event.check_run.pull_requests[0].number || github.event.workflow_run.head_sha || github.event.check_run.head_sha || github.event.sha || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  auto-merge:
+    if: >-
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '## review-gate:')) ||
+      (github.event_name == 'workflow_run' &&
+       contains(fromJSON('["CI", "Gate Labels", "Gate Readiness Reevaluate"]'), github.event.workflow_run.name)) ||
+      (github.event_name == 'check_run' && github.event.action == 'completed') ||
+      github.event_name == 'status' ||
+      (github.event_name == 'repository_dispatch' &&
+       github.event.action == 'review-gate-readiness-completed')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted workflow code
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Evaluate and merge current review-gate candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRACER_MERGE_TOKEN: ${{ secrets.TRACER_MERGE_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TRACER_REVIEWER_LOGINS: ${{ vars.TRACER_REVIEWER_LOGINS }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          set -euo pipefail
+
+          event_json="$(cat "${GITHUB_EVENT_PATH:?}")"
+          repo="${REPOSITORY:?}"
+          pr_number=""
+          source_head_sha=""
+          gate_event_source=""
+          event_comment_login=""
+          event_comment_updated_at=""
+          event_comment_id=""
+          workflow_name=""
+          event_workflow_run_updated_at=""
+          event_workflow_run_conclusion=""
+          if [ "$GITHUB_EVENT_NAME" = "issue_comment" ]; then
+            pr_number="$(printf '%s' "$event_json" | jq -r '.issue.number // empty')"
+            event_comment_login="$(printf '%s' "$event_json" | jq -r '.comment.user.login // empty' | tr '[:upper:]' '[:lower:]')"
+            event_comment_updated_at="$(printf '%s' "$event_json" | jq -r '.comment.updated_at // .comment.created_at // empty')"
+            event_comment_id="$(printf '%s' "$event_json" | jq -r '.comment.id // empty')"
+          elif [ "$GITHUB_EVENT_NAME" = "repository_dispatch" ]; then
+            pr_number="$(printf '%s' "$event_json" | jq -r '.client_payload.pull_request_number // empty')"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            source_event="$(printf '%s' "$event_json" | jq -r '.workflow_run.event // empty')"
+            workflow_name="$(printf '%s' "$event_json" | jq -r '.workflow_run.name // empty')"
+            if ! [[ "$workflow_name" =~ ^(CI|Gate\ Labels|Gate\ Readiness\ Reevaluate)$ ]] || ! [[ "$source_event" =~ ^(pull_request|issue_comment|workflow_run)$ ]]; then
+              exit 0
+            fi
+            source_head_sha="$(printf '%s' "$event_json" | jq -r '.workflow_run.head_sha // empty')"
+            gate_event_source="$workflow_name"
+            event_workflow_run_updated_at="$(printf '%s' "$event_json" | jq -r '.workflow_run.updated_at // .workflow_run.completed_at // empty')"
+            event_workflow_run_conclusion="$(printf '%s' "$event_json" | jq -r '.workflow_run.conclusion // empty')"
+            pr_number="$(printf '%s' "$event_json" | jq -r '[.workflow_run.pull_requests[]?.number] | if length == 1 then .[0] else empty end')"
+          elif [ "$GITHUB_EVENT_NAME" = "check_run" ]; then
+            source_head_sha="$(printf '%s' "$event_json" | jq -r '.check_run.head_sha // empty')"
+            pr_number="$(printf '%s' "$event_json" | jq -r '[.check_run.pull_requests[]?.number] | if length == 1 then .[0] else empty end')"
+          else
+            source_head_sha="$(printf '%s' "$event_json" | jq -r '.sha // empty')"
+          fi
+
+          if [ -z "$pr_number" ] && [ -n "$source_head_sha" ]; then
+            pull_requests_json="$(gh api --paginate "repos/$repo/commits/$source_head_sha/pulls?per_page=100")"
+            pr_number="$(printf '%s' "$pull_requests_json" | jq -r --arg sha "$source_head_sha" '[.[] | select(.state == "open" and .head.sha == $sha) | .number] | if length == 1 then .[0] else empty end')"
+          fi
+          if [ -z "$pr_number" ] && [ -n "$source_head_sha" ]; then
+            exit 0
+          fi
+          if [ -z "$pr_number" ] || ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+            exit 0
+          fi
+
+          reviewer_logins_json="$(printf '%s' "${TRACER_REVIEWER_LOGINS:-}" | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$"; "") | ascii_downcase | select(length > 0))')"
+          failures=()
+          live_pr_json='{}'
+          comments_json='[]'
+          head_sha=''
+          pr_state=''
+          draft='false'
+          base_ref=''
+          pr_url="https://github.com/$repo/pull/$pr_number"
+          gate_state=''
+          gate_verdict=''
+          gate_head_sha=''
+          gate_round=''
+          gate_files=''
+          gate_parse_status=''
+          gate_comment_updated_at=''
+          gate_comment_id=''
+          gate_report_updated_at=''
+          gate_report_readiness=''
+          has_merge_candidate_label='false'
+
+          add_failure() {
+            local candidate="$1"
+            local existing
+            for existing in "${failures[@]}"; do
+              if [ "$existing" = "$candidate" ]; then
+                return
+              fi
+            done
+            failures+=("$candidate")
+          }
+
+          refresh_pr_state() {
+            live_pr_json="$(gh api "repos/$repo/pulls/$pr_number")"
+            head_sha="$(printf '%s' "$live_pr_json" | jq -r '.head.sha // empty')"
+            pr_state="$(printf '%s' "$live_pr_json" | jq -r '.state // empty')"
+            draft="$(printf '%s' "$live_pr_json" | jq -r '.draft // false')"
+            base_ref="$(printf '%s' "$live_pr_json" | jq -r '.base.ref // empty')"
+            pr_url="$(printf '%s' "$live_pr_json" | jq -r '.html_url // empty')"
+            comments_raw="$(gh api --paginate "repos/$repo/issues/$pr_number/comments?per_page=100")"
+            comments_json="$(printf '%s' "$comments_raw" | jq -s 'add // []')"
+            has_merge_candidate_label="$(printf '%s' "$live_pr_json" | jq -r '([.labels[]?.name | ascii_downcase] | index("gate:merge-candidate")) != null')"
+            latest_verdict="$(printf '%s' "$comments_json" | TRACER_REVIEWER_LOGINS="${TRACER_REVIEWER_LOGINS:-}" bun tooling/lib/verdict-cli.ts "$pr_number")"
+            gate_parse_status="$(printf '%s' "$latest_verdict" | jq -r '.status')"
+            gate_verdict="$(printf '%s' "$latest_verdict" | jq -r '.verdict // "none"')"
+            gate_head_sha="$(printf '%s' "$latest_verdict" | jq -r '.headSha // empty')"
+            gate_round="$(printf '%s' "$latest_verdict" | jq -r '.reviewRound // empty')"
+            gate_files="$(printf '%s' "$latest_verdict" | jq -r '.reviewedFiles // empty')"
+            gate_comment_updated_at="$(printf '%s' "$latest_verdict" | jq -r '.updatedAt // empty')"
+            gate_comment_id="$(printf '%s' "$latest_verdict" | jq -r '.commentId // empty')"
+            gate_report="$(printf '%s' "$comments_json" | jq -c '
+              map(select(.user.login == "github-actions[bot]" and ((.body // "") | contains("<!-- gate-readiness:bot -->"))))
+              | sort_by(.updated_at // .created_at // "")
+              | last // null
+            ')"
+            gate_state="$(printf '%s' "$gate_report" | jq -r 'try (.body | capture("(?m)^- review gate state: (?<state>[^\\r\\n]+)$").state) catch ""')"
+            gate_report_verdict="$(printf '%s' "$gate_report" | jq -r 'try (.body | capture("(?m)^- review gate verdict: (?<verdict>[^\\r\\n]+)$").verdict) catch ""')"
+            gate_report_parse_status="$(printf '%s' "$gate_report" | jq -r 'try (.body | capture("(?m)^- latest marker parse: (?<status>[^\\r\\n]+)$").status) catch ""')"
+            gate_report_details="$(printf '%s' "$gate_report" | jq -c 'try (.body | capture("(?m)^- latest valid verdict: (?<verdict>[^ ]+) \\(head-sha: (?<sha>[0-9a-f]{40}), review-round: (?<round>[0-9]+), reviewed-files: (?<files>[0-9]+)\\)$")) catch {}')"
+            gate_report_head_sha="$(printf '%s' "$gate_report_details" | jq -r '.sha // empty')"
+            gate_report_round="$(printf '%s' "$gate_report_details" | jq -r '.round // empty')"
+            gate_report_files="$(printf '%s' "$gate_report_details" | jq -r '.files // empty')"
+            gate_report_readiness="$(printf '%s' "$gate_report" | jq -r 'try (.body | capture("(?m)^- readiness: (?<readiness>[^\\r\\n]+)$").readiness) catch ""')"
+            gate_report_updated_at="$(printf '%s' "$gate_report" | jq -r '.updated_at // .created_at // empty')"
+          }
+
+          post_stop_comments() {
+            local reason marker_id marker body
+            for reason in "${failures[@]}"; do
+              marker_id="$(printf '%s' "$reason" | sha256sum | cut -c1-16)"
+              marker="<!-- review-gate-auto-merge-stop:$head_sha:$marker_id -->"
+              if printf '%s' "$comments_json" | jq -e --arg marker "$marker" 'any(.[]; (.body // "") | contains($marker))' >/dev/null; then
+                continue
+              fi
+              body="$(printf '%s\n' "$marker" "## Auto-merge stopped" "" "- PR: $pr_url" "- head-sha: $head_sha" "- Reason: $reason")"
+              gh api -X POST "repos/$repo/issues/$pr_number/comments" -f body="$body" >/dev/null
+              comments_json="$(printf '%s' "$comments_json" | jq -c --arg marker "$marker" --arg body "$body" '. + [{body: ($marker + "\\n" + $body)}]')"
+            done
+          }
+
+          collect_gate_failures() {
+            local label lower_label
+            if [ "$pr_state" != "open" ]; then
+              add_failure "PR is not open"
+            fi
+            if [ "$(printf '%s' "$reviewer_logins_json" | jq -r 'length')" -eq 0 ]; then
+              add_failure "TRACER_REVIEWER_LOGINS is empty; no reviewer can be trusted"
+            fi
+            if [ -n "$event_comment_login" ] && ! printf '%s' "$reviewer_logins_json" | jq -e --arg login "$event_comment_login" 'index($login) != null' >/dev/null; then
+              add_failure "verdict author $event_comment_login is not allowlisted"
+            fi
+            if [ "$gate_parse_status" != "valid" ]; then
+              add_failure "latest trusted review-gate verdict is malformed or missing required fields"
+            fi
+            if [ "$gate_state" != "current" ]; then
+              if [ "$gate_state" = "stale" ]; then
+                add_failure "latest Review Gate report says verdict head $gate_report_head_sha is stale for current PR head $head_sha"
+              elif [ -n "$gate_report_head_sha" ] && [ "$gate_report_head_sha" != "$head_sha" ]; then
+                add_failure "latest Review Gate report says verdict head $gate_report_head_sha is stale for current PR head $head_sha"
+              else
+                add_failure "no current allowlisted review-gate verdict is available"
+              fi
+            fi
+            if [ "$gate_verdict" != "merge-candidate" ]; then
+              add_failure "latest current allowlisted verdict is ${gate_verdict:-unknown}, not merge-candidate"
+            fi
+            if [ -z "$gate_head_sha" ]; then
+              add_failure "latest current allowlisted verdict is missing a valid head-sha"
+            elif [ "$gate_head_sha" != "$head_sha" ]; then
+              add_failure "verdict head $gate_head_sha is stale for current PR head $head_sha"
+            fi
+            if [ -n "$source_head_sha" ] && [ "$source_head_sha" != "$head_sha" ]; then
+              add_failure "trigger completed for head $source_head_sha, but current PR head is $head_sha"
+            fi
+            if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "$gate_event_source" = "Gate Readiness Reevaluate" ] && [ "$event_workflow_run_conclusion" != "success" ]; then
+              add_failure "Gate Readiness Reevaluate completed with ${event_workflow_run_conclusion:-unknown}"
+            fi
+            if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "$gate_event_source" = "Gate Readiness Reevaluate" ] && [ -n "$gate_report_updated_at" ] && [[ "$gate_report_updated_at" > "$event_workflow_run_updated_at" ]]; then
+              add_failure "latest Review Gate readiness report is newer than the reevaluation run that triggered this decision"
+            fi
+            if [ "$GITHUB_EVENT_NAME" = "issue_comment" ] && [ -n "$event_comment_updated_at" ] && [[ "$gate_report_updated_at" < "$event_comment_updated_at" ]]; then
+              add_failure "Review Gate readiness report has not processed edited verdict comment $event_comment_id"
+            fi
+            if [ -z "$gate_report_updated_at" ] || [[ "$gate_report_updated_at" < "$gate_comment_updated_at" ]]; then
+              add_failure "Review Gate readiness report predates the latest trusted verdict revision $gate_comment_id"
+            fi
+            if [ "$gate_report_parse_status" != "valid" ] || [ "$gate_report_verdict" != "$gate_verdict" ] || [ "$gate_report_head_sha" != "$gate_head_sha" ] || [ "$gate_report_round" != "$gate_round" ] || [ "$gate_report_files" != "$gate_files" ]; then
+              add_failure "Review Gate readiness report does not reflect the latest trusted verdict revision $gate_comment_id"
+            fi
+            if [ "$gate_report_readiness" != "true" ]; then
+              add_failure "latest Review Gate readiness report is not ready"
+            fi
+            if [ "$has_merge_candidate_label" != "true" ]; then
+              add_failure "current PR is missing the gate:merge-candidate label from the trusted verdict mirror"
+            fi
+            while IFS= read -r label; do
+              [ -n "$label" ] || continue
+              lower_label="$(printf '%s' "$label" | tr '[:upper:]' '[:lower:]')"
+              case "$lower_label" in
+                hitl|needs-human|needs-fix|gate:needs-human|gate:needs-fix|gate:blocked)
+                  add_failure "blocking label $label is present"
+                  ;;
+              esac
+            done < <(printf '%s' "$live_pr_json" | jq -r '.labels[]?.name')
+          }
+
+          check_required_checks() {
+            local branch_path branch_json branch_protected required_checks rules_error rules_json check_runs_raw check_runs_json statuses_raw statuses_json changed_files_raw changed_files_json changed_file_count docs_only pr_body_run
+            branch_path="$(printf '%s' "$base_ref" | jq -sRr @uri)"
+            if ! branch_json="$(GH_TOKEN="$TRACER_MERGE_TOKEN" gh api "repos/$repo/branches/$branch_path" 2>/dev/null)"; then
+              add_failure "could not read required-check configuration for base branch $base_ref using TRACER_MERGE_TOKEN"
+              return
+            fi
+            branch_protected="$(printf '%s' "$branch_json" | jq -r '.protected // false')"
+            required_checks="$(printf '%s' "$branch_json" | jq -c '
+              .protection.required_status_checks as $required
+              | if $required == null then []
+                elif (($required.checks // []) | length) > 0 then [$required.checks[] | {context: (.context // ""), app_id: (if .app_id == -1 then "" else (.app_id // "") end | tostring)}]
+                else [$required.contexts[]? | {context: ., app_id: ""}]
+                end
+            ')"
+            rules_error="$(mktemp)"
+            if rules_json="$(GH_TOKEN="$TRACER_MERGE_TOKEN" gh api "repos/$repo/rules/branches/$branch_path" 2>"$rules_error")"; then
+              rules_checks="$(printf '%s' "$rules_json" | jq -c '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | {context: (.context // ""), app_id: (.integration_id // "") | tostring}]')"
+              required_checks="$(jq -cn --argjson classic "$required_checks" --argjson rules "$rules_checks" '$classic + $rules | unique_by([.context, .app_id])')"
+            else
+              rules_error_text="$(cat "$rules_error")"
+              if [ "$branch_protected" != "false" ] || [[ "$rules_error_text" != *"Upgrade to GitHub Pro or make this repository public to enable this feature."* ]]; then
+                rm -f "$rules_error"
+                add_failure "could not verify required checks or rulesets for base branch $base_ref using TRACER_MERGE_TOKEN"
+                return
+              fi
+              required_checks="$(printf '%s' "$required_checks" | jq -c '.')"
+            fi
+            rm -f "$rules_error"
+            check_runs_raw="$(gh api --paginate "repos/$repo/commits/$head_sha/check-runs?per_page=100")"
+            check_runs_json="$(printf '%s' "$check_runs_raw" | jq -s '[.[].check_runs[]?] | sort_by((.run_started_at // .started_at // .created_at // ""), (.id // 0)) | group_by(.name) | map(last)')"
+            statuses_raw="$(gh api --paginate "repos/$repo/commits/$head_sha/statuses?per_page=100")"
+            statuses_json="$(printf '%s' "$statuses_raw" | jq -s 'add // [] | sort_by(.context, .created_at) | group_by(.context) | map(last)')"
+            if [ "$(printf '%s' "$required_checks" | jq 'length')" -eq 0 ]; then
+              changed_files_raw="$(gh api --paginate "repos/$repo/pulls/$pr_number/files?per_page=100")"
+              changed_files_json="$(printf '%s' "$changed_files_raw" | jq -s 'add // [] | map(.filename)')"
+              changed_file_count="$(printf '%s' "$changed_files_json" | jq 'length')"
+              docs_only="$(printf '%s' "$changed_files_json" | jq -r 'length > 0 and all(.[]; . == "README.md" or . == "RUNTIME.md" or . == "STACK.md" or startswith("docs/"))')"
+              pr_body_run="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.name == "pr-body" and .status == "completed" and .conclusion == "success") | select(((.app.slug // "") == "github-actions") or ((.app.name // "") == "GitHub Actions"))] | last // null')"
+              if [ "$changed_file_count" -eq 0 ] || [ "$docs_only" != "true" ] || [ "$pr_body_run" = "null" ]; then
+                add_failure "base branch $base_ref has no required checks and the changed files are not docs-only or the current-head pr-body check is not successful"
+              fi
+              return
+            fi
+            while IFS=$'\t' read -r context app_id; do
+              [ -n "$context" ] || continue
+              run="$(printf '%s' "$check_runs_json" | jq -c --arg context "$context" --arg app_id "$app_id" '[.[] | select(.name == $context) | select($app_id == "" or ((.app.id // "") | tostring) == $app_id)] | last // null')"
+              if [ "$run" != "null" ]; then
+                run_status="$(printf '%s' "$run" | jq -r '.status // "unknown"')"
+                run_conclusion="$(printf '%s' "$run" | jq -r '.conclusion // ""')"
+                if [ "$run_status" != "completed" ]; then
+                  add_failure "required check $context is $run_status at head $head_sha"
+                elif [ "$run_conclusion" != "success" ]; then
+                  add_failure "required check $context completed with $run_conclusion at head $head_sha"
+                fi
+              elif [ -z "$app_id" ]; then
+                status="$(printf '%s' "$statuses_json" | jq -c --arg context "$context" '[.[] | select(.context == $context)] | last // null')"
+                if [ "$status" = "null" ]; then
+                  add_failure "required check $context is missing at head $head_sha"
+                elif [ "$(printf '%s' "$status" | jq -r '.state // "unknown"')" != "success" ]; then
+                  add_failure "required check $context is not successful at head $head_sha"
+                fi
+              else
+                add_failure "required check $context from app $app_id is missing at head $head_sha"
+              fi
+            done < <(printf '%s' "$required_checks" | jq -r '.[] | [.context, .app_id] | @tsv')
+          }
+
+          refresh_pr_state
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "$gate_event_source" = "CI" ] && [ "$has_merge_candidate_label" != "true" ]; then
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "issue_comment" ] && [ -n "$event_comment_login" ] && ! printf '%s' "$reviewer_logins_json" | jq -e --arg login "$event_comment_login" 'index($login) != null' >/dev/null; then
+            add_failure "verdict author $event_comment_login is not allowlisted"
+            post_stop_comments
+            exit 0
+          fi
+
+          wait_attempts="${LABEL_WAIT_ATTEMPTS:-12}"
+          wait_interval="${LABEL_WAIT_INTERVAL_SECONDS:-5}"
+          if [ "$GITHUB_EVENT_NAME" = "issue_comment" ]; then
+            for ((attempt = 0; attempt < wait_attempts; attempt += 1)); do
+              report_is_current="false"
+              if [[ "$gate_report_updated_at" > "$event_comment_updated_at" ]] || [ "$gate_report_updated_at" = "$event_comment_updated_at" ]; then
+                report_is_current="true"
+              fi
+              if [ "$report_is_current" = "true" ] && { [ "$gate_verdict" != "merge-candidate" ] || [ "$has_merge_candidate_label" = "true" ]; }; then
+                break
+              fi
+              sleep "$wait_interval"
+              refresh_pr_state
+            done
+          fi
+
+          collect_gate_failures
+          if [ "${#failures[@]}" -gt 0 ]; then
+            post_stop_comments
+            exit 0
+          fi
+          if [ -z "${TRACER_MERGE_TOKEN:-}" ]; then
+            add_failure "required repository secret TRACER_MERGE_TOKEN is missing; configure the fine-grained token documented in the workflow README"
+            post_stop_comments
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "issue_comment" ] && [ -n "$event_comment_login" ] && ! printf '%s' "$reviewer_logins_json" | jq -e --arg login "$event_comment_login" 'index($login) != null' >/dev/null; then
+            add_failure "verdict author $event_comment_login is not allowlisted"
+            post_stop_comments
+            exit 0
+          fi
+
+          check_required_checks
+          if [ "${#failures[@]}" -gt 0 ]; then
+            post_stop_comments
+            exit 0
+          fi
+
+          if [ "$draft" = "true" ]; then
+            if ! gh pr ready "$pr_number" --repo "$repo"; then
+              add_failure "GitHub could not mark the draft PR ready"
+              post_stop_comments
+              exit 0
+            fi
+          fi
+
+          failures=()
+          refresh_pr_state
+          collect_gate_failures
+          if [ "${#failures[@]}" -eq 0 ]; then
+            check_required_checks
+          fi
+          if [ "${#failures[@]}" -gt 0 ]; then
+            post_stop_comments
+            exit 0
+          fi
+
+          if ! GH_TOKEN="$TRACER_MERGE_TOKEN" gh pr merge "$pr_number" --repo "$repo" --squash --delete-branch --match-head-commit "$head_sha"; then
+            refreshed_pr="$(gh api "repos/$repo/pulls/$pr_number")"
+            if [ "$(printf '%s' "$refreshed_pr" | jq -r '.merged // false')" != "true" ]; then
+              add_failure "GitHub rejected the squash merge for head $head_sha"
+              post_stop_comments
+              exit 0
+            fi
+          fi
+
+          merged_pr="$(gh api "repos/$repo/pulls/$pr_number")"
+          merge_sha="$(printf '%s' "$merged_pr" | jq -r '.merge_commit_sha // empty')"
+          merge_body="$(printf '%s\n' "## Review-gate auto-merge complete" "" "- PR: $pr_url" "- Reviewed head: $head_sha" "- Merge SHA: $merge_sha" "- Merge identity: fine-grained TRACER_MERGE_TOKEN")"
+          gh api -X POST "repos/$repo/issues/$pr_number/comments" -f body="$merge_body" >/dev/null

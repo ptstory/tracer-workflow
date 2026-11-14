@@ -7,9 +7,11 @@ shells `opencode run` to apply the fix pass through `from-pr-review`. Pushing a
 new commit invalidates that verdict, so the cycle repeats until
 `merge-candidate`.
 
-Only `needs-fix` triggers autonomous action. Humans handle `merge-candidate`,
-`needs-human`, and `blocked`, and merge stays manual. Malformed gate-marked
-comments are logged and never trigger a fix pass.
+Only `needs-fix` triggers autonomous repair through this poller. The separate
+repository auto-merge workflow may act on `merge-candidate` only when explicitly
+authorized and after its independent current-head checks; `needs-human` and
+`blocked` remain human decisions. Malformed gate-marked comments are logged and
+never trigger a fix pass.
 
 ## Setup
 
