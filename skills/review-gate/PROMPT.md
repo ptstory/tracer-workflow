@@ -208,4 +208,4 @@ Rules:
   why none was needed. If a PR changes behavior and the Docs line is missing or
   unjustified, emit a `fix-now` finding.
 - Branch protection is not required.
-- Merge remains HITL.
+- Merge remains HITL by default. An explicitly authorized repository auto-merge workflow may merge only a current `merge-candidate` for the exact reviewed head after independently revalidating the trusted verdict, blocking labels, current-head required checks (or the contract's no-required-check path), and exact-head guard. A verdict is not merge authorization outside that configured path. `needs-human`, explicit human-only findings, one-way-door decisions, and any other stated human approval remain HITL.

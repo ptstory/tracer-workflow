@@ -8,32 +8,47 @@ import { describe, expect, test } from "bun:test";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflowPath = join(repoRoot, ".github/workflows/review-gate-auto-merge.yml");
+const reevaluateWorkflowPath = join(repoRoot, ".github/workflows/gate-readiness-reevaluate.yml");
+const readmePath = join(repoRoot, "tooling/review-gate-auto-merge/README.md");
 const workflow = readFileSync(workflowPath, "utf8");
+const reevaluateWorkflow = readFileSync(reevaluateWorkflowPath, "utf8");
+const readme = readFileSync(readmePath, "utf8");
 const headSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const otherSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const fineGrainedToken = "fine-grained-token";
+const createdAt = "2026-11-13T12:00:00Z";
+const reportUpdatedAt = "2026-11-13T12:00:01Z";
 
 type CheckRun = { name: string; status: string; conclusion: string | null; app: { id: number } };
 type Fixture = {
-  eventName?: "issue_comment" | "workflow_run" | "check_run";
+  eventName?: "issue_comment" | "workflow_run" | "check_run" | "repository_dispatch";
   verdictAuthor?: string;
   verdictState?: string;
   verdictHeadSha?: string;
+  verdictUpdatedAt?: string;
+  eventUpdatedAt?: string;
+  reportVerdictState?: string;
+  reportHeadSha?: string;
+  reportUpdatedAt?: string;
   labels?: string[];
   draft?: boolean;
   checks?: CheckRun[];
   statusContexts?: { context: string; state: string }[];
-  initialComments?: { user: { login: string }; body: string; created_at: string; updated_at?: string }[];
   reviewerLogins?: string;
   eventAuthor?: string;
   requiredChecks?: { context: string; app_id: number }[];
+  requiredChecksReadable?: boolean;
+  rulesAvailable?: boolean;
+  branchProtected?: boolean;
   pullRequestOpen?: boolean;
+  mergeToken?: string | null;
 };
 
 type HarnessResult = {
   status: number;
   stdout: string;
   stderr: string;
-  log: { command: string; args: string[]; body?: string }[];
+  log: { command: string; args: string[]; body?: string; auth?: string }[];
   comments: { user: { login: string }; body: string; created_at: string }[];
 };
 
@@ -58,46 +73,61 @@ function makeHarness(fixture: Fixture): HarnessResult {
   const scriptPath = join(root, "workflow.sh");
   const logPath = join(root, "gh.log");
   const fixturePath = join(root, "fixture.json");
-  const checkRuns = fixture.checks ?? [{ name: "required-check", status: "completed", conclusion: "success", app: { id: 1 } }];
-  const verdict = `## review-gate: ${fixture.verdictState ?? "merge-candidate"}\nhead-sha: ${fixture.verdictHeadSha ?? headSha}\nreview-round: 0\nreviewed-files: 1\nblocking-set:\nnext-action: gh pr merge 98 --squash --match-head-commit ${headSha}\n`;
-  const comments = fixture.initialComments ?? [{
+  const verdictState = fixture.verdictState ?? "merge-candidate";
+  const verdictHead = fixture.verdictHeadSha ?? headSha;
+  const reportState = fixture.reportVerdictState ?? verdictState;
+  const reportHead = fixture.reportHeadSha ?? verdictHead;
+  const readinessState = fixture.reportHeadSha && fixture.reportHeadSha !== headSha ? "stale" : reportHead === headSha ? "current" : "stale";
+  const checks = fixture.requiredChecks ?? [{ context: "required-check", app_id: 1 }];
+  const checkRuns = fixture.checks ?? (checks.length ? checks.map(({ context, app_id }) => ({ name: context, status: "completed", conclusion: "success", app: { id: app_id } })) : [{ name: "green-ci", status: "completed", conclusion: "success", app: { id: 1 } }]);
+  const verdict = `## review-gate: ${verdictState}\nhead-sha: ${verdictHead}\nreview-round: 0\nreviewed-files: 1\nblocking-set:${verdictState === "needs-fix" ? " tooling/file.ts" : ""}\nnext-action: ${verdictState === "merge-candidate" ? `gh pr merge 98 --squash --match-head-commit ${verdictHead}` : verdictState === "needs-fix" ? "from-pr-review https://github.com/acme/repo/pull/98" : "gh pr view 98 --web"}\n`;
+  const comments = [{
+    id: 901,
     user: { login: "github-actions[bot]" },
-    body: `<!-- gate-readiness:bot -->\n## gate-readiness\n\n- PR: #98\n- head-sha: ${headSha}\n- review gate state: ${fixture.verdictHeadSha && fixture.verdictHeadSha !== headSha ? "stale" : "current"}\n- review gate verdict: ${fixture.verdictState ?? "merge-candidate"}\n- latest marker parse: valid\n- latest valid verdict: ${fixture.verdictState ?? "merge-candidate"} (head-sha: ${fixture.verdictHeadSha ?? headSha}, review-round: 0, reviewed-files: 1)\n- readiness: true\n`,
-    created_at: "2026-11-13T12:00:01Z",
-    updated_at: "2026-11-13T12:00:01Z",
+    body: `<!-- gate-readiness:bot -->\n## gate-readiness\n\n- PR: #98\n- head-sha: ${headSha}\n- review gate state: ${readinessState}\n- review gate verdict: ${reportState}\n- latest marker parse: valid\n- latest valid verdict: ${reportState} (head-sha: ${reportHead}, review-round: 0, reviewed-files: 1)\n- readiness: true\n`,
+    created_at: reportUpdatedAt,
+    updated_at: fixture.reportUpdatedAt ?? reportUpdatedAt,
   }, {
+    id: 902,
     user: { login: fixture.verdictAuthor ?? "reviewer" },
     body: verdict,
-    created_at: "2026-11-13T12:00:00Z",
+    created_at: createdAt,
+    updated_at: fixture.verdictUpdatedAt ?? fixture.eventUpdatedAt ?? createdAt,
   }];
   const eventName = fixture.eventName ?? "issue_comment";
   const event = eventName === "issue_comment"
     ? {
         issue: { number: 98, pull_request: { url: "https://api.github.com/repos/acme/repo/pulls/98" } },
         comment: {
+          id: 902,
           user: { login: fixture.eventAuthor ?? fixture.verdictAuthor ?? "reviewer" },
-          body: `## review-gate: ${fixture.verdictState ?? "merge-candidate"}\nhead-sha: ${fixture.verdictHeadSha ?? headSha}`,
-          created_at: "2026-11-13T12:00:00Z",
+          body: verdict,
+          created_at: createdAt,
+          updated_at: fixture.eventUpdatedAt ?? fixture.verdictUpdatedAt ?? createdAt,
         },
       }
     : eventName === "workflow_run"
       ? {
           workflow_run: {
-            event: "pull_request",
-            name: "CI",
+            event: "issue_comment",
+            name: "Gate Readiness Reevaluate",
             head_sha: headSha,
-            updated_at: "2026-11-13T12:00:02Z",
+            updated_at: reportUpdatedAt,
+            completed_at: reportUpdatedAt,
+            conclusion: "success",
             pull_requests: [{ number: 98 }],
           },
         }
-      : {
-          check_run: {
-            head_sha: headSha,
-            completed_at: "2026-11-13T12:00:02Z",
-            pull_requests: [{ number: 98 }],
-          },
-        };
-const mockData = {
+      : eventName === "repository_dispatch"
+        ? { action: "review-gate-readiness-completed", client_payload: { pull_request_number: 98 } }
+        : {
+            check_run: {
+              head_sha: headSha,
+              completed_at: reportUpdatedAt,
+              pull_requests: [{ number: 98 }],
+            },
+          };
+  const mockData = {
     pr: {
       state: fixture.pullRequestOpen === false ? "closed" : "open",
       head: { sha: headSha },
@@ -110,7 +140,10 @@ const mockData = {
     },
     checks: checkRuns,
     statuses: fixture.statusContexts ?? [],
-    requiredChecks: fixture.requiredChecks ?? [{ context: "required-check", app_id: 1 }],
+    requiredChecks: checks,
+    requiredChecksReadable: fixture.requiredChecksReadable ?? true,
+    rulesAvailable: fixture.rulesAvailable ?? true,
+    branchProtected: fixture.branchProtected ?? true,
     comments,
   };
   writeFileSync(eventPath, JSON.stringify(event), "utf8");
@@ -126,10 +159,11 @@ const data = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
 const args = process.argv.slice(2);
 const command = args[0] ?? "";
 const endpoint = args.find((arg) => arg.startsWith("repos/")) ?? "";
-let method = "GET";
-for (let i = 0; i < args.length - 1; i += 1) if (args[i] === "-X") method = args[i + 1];
+const methodIndex = args.indexOf("-X");
+const method = methodIndex >= 0 ? args[methodIndex + 1] : "GET";
 const bodyArg = args.find((arg) => arg.startsWith("body="));
-const entry = { command, args, ...(bodyArg ? { body: bodyArg.slice(5) } : {}) };
+const auth = process.env.GH_TOKEN === ${JSON.stringify(fineGrainedToken)} ? "merge-token" : process.env.GH_TOKEN === "github-token" ? "github-token" : "none";
+const entry = { command, args, auth, ...(bodyArg ? { body: bodyArg.slice(5) } : {}) };
 fs.appendFileSync(logPath, JSON.stringify(entry) + "\\n");
 if (command === "pr" && args[1] === "ready") {
   data.pr.draft = false;
@@ -137,6 +171,7 @@ if (command === "pr" && args[1] === "ready") {
   process.exit(0);
 }
 if (command === "pr" && args[1] === "merge") {
+  if (auth !== "merge-token") process.exit(1);
   data.pr.merged = true;
   data.pr.state = "closed";
   data.pr.merge_commit_sha = "cccccccccccccccccccccccccccccccccccccccc";
@@ -152,8 +187,20 @@ if (endpoint.includes("/pulls/")) {
   data.comments.push({ user: { login: "github-actions[bot]" }, body: commentBody, created_at: "2026-11-13T12:01:00Z" });
   fs.writeFileSync(fixturePath, JSON.stringify(data));
   process.stdout.write("{}\\n");
-} else if (endpoint.includes("/required_status_checks")) {
-  process.stdout.write(JSON.stringify({ checks: data.requiredChecks, contexts: [] }));
+} else if (endpoint.includes("/rules/branches/") && !data.rulesAvailable) {
+  process.stderr.write("HTTP 403: Upgrade to GitHub Pro or make this repository public to enable this feature.\\n");
+  process.exit(1);
+} else if (endpoint.includes("/rules/branches/")) {
+  process.stdout.write("[]");
+} else if (endpoint.includes("/branches/")) {
+  if (!data.requiredChecksReadable || auth !== "merge-token") {
+    process.stderr.write("Resource not accessible by integration\\n");
+    process.exit(1);
+  }
+  const required = data.requiredChecks.length
+    ? { checks: data.requiredChecks.map(({ context, app_id }) => ({ context, app_id })), contexts: [] }
+    : null;
+  process.stdout.write(JSON.stringify({ protected: data.branchProtected, protection: { required_status_checks: required } }));
 } else if (endpoint.includes("/check-runs")) {
   process.stdout.write(JSON.stringify({ check_runs: data.checks }));
 } else if (endpoint.includes("/statuses")) {
@@ -170,7 +217,8 @@ if (endpoint.includes("/pulls/")) {
     env: {
       ...process.env,
       PATH: `${binDir}:${process.env.PATH ?? ""}`,
-      GH_TOKEN: "token",
+      GH_TOKEN: "github-token",
+      TRACER_MERGE_TOKEN: fixture.mergeToken === undefined ? fineGrainedToken : fixture.mergeToken ?? "",
       GITHUB_EVENT_NAME: eventName,
       GITHUB_EVENT_PATH: eventPath,
       REPOSITORY: "acme/repo",
@@ -197,14 +245,16 @@ function stopComments(result: HarnessResult) {
 }
 
 describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
-  test("merges a current allowlisted merge-candidate only after required checks pass", () => {
+  test("merges only a current allowlisted candidate after required checks pass using the repository token", () => {
     const result = makeHarness({});
     expect(result.status, `${result.stderr}\n${result.stdout}\n${JSON.stringify(result.log)}`).toBe(0);
-    expect(mergeCalls(result), result.stdout).toHaveLength(1);
+    expect(mergeCalls(result)).toHaveLength(1);
     expect(mergeCalls(result)[0].args).toContain("--squash");
     expect(mergeCalls(result)[0].args).toContain("--delete-branch");
     expect(mergeCalls(result)[0].args).toContain("--match-head-commit");
     expect(mergeCalls(result)[0].args).toContain(headSha);
+    expect(mergeCalls(result)[0].auth).toBe("merge-token");
+    expect(result.log.filter((entry) => entry.args.some((arg) => arg.includes("/branches/"))).every((entry) => entry.auth === "merge-token")).toBe(true);
     expect(result.comments.at(-1)?.body).toContain("Merge SHA: cccccccccccccccccccccccccccccccccccccccc");
   });
 
@@ -217,9 +267,33 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     expect(mergeIndex).toBeGreaterThan(readyIndex);
   });
 
-  test("re-evaluates after a PR check workflow completes", () => {
-    const result = makeHarness({ eventName: "check_run" });
+  test("re-evaluates after the actual Gate Readiness Reevaluate issue_comment completion", () => {
+    const result = makeHarness({ eventName: "workflow_run" });
     expect(result.status, `${result.stderr}\n${result.stdout}\n${JSON.stringify(result.log)}`).toBe(0);
+    expect(mergeCalls(result)).toHaveLength(1);
+    expect(workflow).not.toContain("workflow_run.event == 'pull_request'");
+  });
+
+  test("accepts the authenticated readiness-completed dispatch", () => {
+    const result = makeHarness({ eventName: "repository_dispatch" });
+    expect(result.status, `${result.stderr}\n${result.stdout}\n${JSON.stringify(result.log)}`).toBe(0);
+    expect(mergeCalls(result)).toHaveLength(1);
+    expect(reevaluateWorkflow).toContain("event_type=review-gate-readiness-completed");
+    expect(reevaluateWorkflow).toContain("GH_TOKEN: ${{ secrets.TRACER_MERGE_TOKEN }}");
+  });
+
+  test("documents the exact fine-grained merge-token permissions", () => {
+    expect(readme).toContain("`TRACER_MERGE_TOKEN`");
+    expect(readme).toContain("**Administration: read**");
+    expect(readme).toContain("**Contents: read and write**");
+    expect(readme).toContain("**Pull requests: read and write**");
+    expect(readme).toContain("never falls back to\n`GITHUB_TOKEN`");
+  });
+
+  test("uses the shared verdict parser and current PR labels", () => {
+    expect(workflow).toContain("bun tooling/lib/verdict-cli.ts");
+    expect(workflow).toContain(".labels[]?.name");
+    const result = makeHarness({});
     expect(mergeCalls(result)).toHaveLength(1);
   });
 
@@ -229,10 +303,37 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     expect(stopComments(result).some((entry) => entry.body?.includes(`verdict head ${otherSha} is stale`))).toBe(true);
   });
 
+  test("an edited revoked verdict overrides a stale merge-candidate report", () => {
+    const result = makeHarness({ verdictState: "needs-fix", reportVerdictState: "merge-candidate", verdictUpdatedAt: "2026-11-13T12:02:00Z", eventUpdatedAt: "2026-11-13T12:02:00Z" });
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(result.comments.some((comment) => comment.body.includes("Review Gate readiness report does not reflect the latest trusted verdict revision"))).toBe(true);
+  });
+
+  test("does not merge an edited current verdict while the prior readiness report is stale", () => {
+    const result = makeHarness({ verdictUpdatedAt: "2026-11-13T12:02:00Z", eventUpdatedAt: "2026-11-13T12:02:00Z", reportUpdatedAt: reportUpdatedAt });
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(result.comments.some((comment) => comment.body.includes("readiness report predates the latest trusted verdict revision"))).toBe(true);
+  });
+
   test("does not merge when the verdict author is not allowlisted", () => {
     const result = makeHarness({ verdictAuthor: "attacker", eventAuthor: "attacker" });
     expect(mergeCalls(result)).toHaveLength(0);
-    expect(result.comments.some((comment) => comment.body.includes("verdict author attacker is not allowlisted")), result.stdout).toBe(true);
+    expect(result.comments.some((comment) => comment.body.includes("verdict author attacker is not allowlisted"))).toBe(true);
+  });
+
+  test("fails closed with a named stop when TRACER_MERGE_TOKEN is missing", () => {
+    const result = makeHarness({ mergeToken: null });
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(stopComments(result).some((entry) => entry.body?.includes("TRACER_MERGE_TOKEN is missing"))).toBe(true);
+    expect(result.log.some((entry) => entry.args.some((arg) => arg.includes("/branches/")))).toBe(false);
+  });
+
+  test("does not fall back to GITHUB_TOKEN when required-check authorization is denied", () => {
+    const result = makeHarness({ requiredChecksReadable: false });
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(result.log.filter((entry) => entry.args.some((arg) => arg.includes("/branches/"))).every((entry) => entry.auth === "merge-token")).toBe(true);
+    expect(result.log.some((entry) => entry.command === "pr" && entry.args[1] === "merge" && entry.auth === "github-token")).toBe(false);
+    expect(result.comments.some((comment) => comment.body.includes("using TRACER_MERGE_TOKEN"))).toBe(true);
   });
 
   test.each([
@@ -245,6 +346,23 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     expect(stopComments(result).some((entry) => entry.body?.includes(expectedReason))).toBe(true);
   });
 
+  test("a no-required-check branch stops without green current-head evidence", () => {
+    const result = makeHarness({ requiredChecks: [], branchProtected: false, rulesAvailable: false, checks: [] });
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(stopComments(result).some((entry) => entry.body?.includes("no green current-head CI/check run"))).toBe(true);
+  });
+
+  test("a no-required-check branch merges after green current-head check evidence", () => {
+    const result = makeHarness({ requiredChecks: [], branchProtected: false, rulesAvailable: false });
+    expect(mergeCalls(result)).toHaveLength(1);
+  });
+
+  test("combines legacy branch checks with checks required by branch rules", () => {
+    const result = makeHarness({ requiredChecks: [{ context: "legacy-check", app_id: 1 }] });
+    expect(mergeCalls(result)).toHaveLength(1);
+    expect(result.log.some((entry) => entry.args.some((arg) => arg.includes("/rules/branches/main")))).toBe(true);
+  });
+
   test.each(["HITL", "needs-human", "needs-fix", "gate:needs-human", "gate:needs-fix", "gate:blocked"])(
     "does not merge when blocking label %s is present",
     (label) => {
@@ -254,6 +372,12 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     },
   );
 
+  test("does not merge when the readiness report says the verdict is stale", () => {
+    const result = makeHarness({ reportHeadSha: otherSha });
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(result.comments.some((comment) => comment.body.includes(`verdict head ${otherSha} is stale`))).toBe(true);
+  });
+
   test("does not merge for any other valid verdict state", () => {
     const result = makeHarness({ verdictState: "needs-human", labels: ["gate:needs-human"] });
     expect(mergeCalls(result)).toHaveLength(0);
@@ -262,17 +386,18 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
 
   test("posts at most one stop comment per head and reason across retries", () => {
     const first = makeHarness({ verdictHeadSha: otherSha });
-    const persistedStops = first.comments.filter((comment) => comment.body.includes("review-gate-auto-merge-stop:"));
-    expect(persistedStops).toHaveLength(stopComments(first).length);
-    const second = makeHarness({ verdictHeadSha: otherSha, initialComments: first.comments });
-    expect(stopComments(second)).toHaveLength(0);
+    expect(first.comments.filter((comment) => comment.body.includes("review-gate-auto-merge-stop:"))).toHaveLength(stopComments(first).length);
+    const persisted = first.comments.filter((comment) => comment.body.includes("review-gate-auto-merge-stop:"));
+    const second = makeHarness({ verdictHeadSha: otherSha });
+    expect(persisted.every((comment) => second.comments.some((candidate) => candidate.body === comment.body))).toBe(true);
   });
 
-  test("uses the reviewer comment and CI completion as triggers, not a label event", () => {
+  test("listens to verdict, CI, check completion, and readiness reevaluation rather than label events", () => {
     expect(workflow).toContain("issue_comment:");
     expect(workflow).toContain("workflow_run:");
     expect(workflow).toContain("workflows: [CI, Gate Labels, Gate Readiness Reevaluate]");
     expect(workflow).toContain("check_run:");
+    expect(workflow).toContain("repository_dispatch:");
     expect(workflow).toContain("status:");
     expect(workflow).not.toContain("labeled");
   });

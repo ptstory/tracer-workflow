@@ -261,7 +261,7 @@ configuration.
   require another verdict at the same SHA.
 - Older-head results never count.
 - Branch protection is not required. `getBranch protected: false` is sufficient evidence that no classic required checks exist; `/protection` is not required, and its 403 is not a readiness blocker when `protected: false`. Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`. Try `rules/branches/{branch}` first; when the calling surface rejects it before reaching GitHub (including HTTP 400/unsupported endpoint), fall through to `rulesets`. HTTP 403 with the exact body message `Upgrade to GitHub Pro or make this repository public to enable this feature.` from either endpoint, with no classic required checks, uses the no-required-check path and records `plan-unavailable`; name the successful evidence call next to the path. Captured bodies: 2026-10-08 rules-for-branch, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}`; 2026-10-10 get-all-repository-rulesets on a private repo under GitHub Free, HTTP 403, `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-all-repository-rulesets","status":"403"}`. Any other status or message, including HTTP 400 except the described pre-GitHub endpoint rejection, or both rules calls unreachable, is `rules-unverifiable`: record `indeterminate`, name each call and status, and preserve every fix-now file in `blocking-set`. Record `available` when usable configuration is obtained.
-- Merge remains HITL.
+- Merge remains HITL by default. An explicitly authorized repository auto-merge workflow may merge only a current `merge-candidate` for the exact reviewed head after independently revalidating the trusted verdict, blocking labels, current-head required checks (or the contract's no-required-check path), and exact-head guard. A verdict is not merge authorization outside that configured path. `needs-human`, explicit human-only findings, one-way-door decisions, and any other stated human approval remain HITL.
 
 On round `N > 0`, compare the current evidence bundle with the prior round's bundle. For any claim of added or changed coverage, require new or modified test node IDs in the diff since the previously reviewed SHA, and verify those exact IDs are present in runner-generated output showing they passed at the current head. A changed test ID with a green current-head result is consistent even when the aggregate test count is unchanged; this includes replacing an invalid test with a valid one. A claim that lacks matching changed test IDs or current-head green runner output is an evidence inconsistency: report it as a `fix-now` finding under `needs-fix`, not `blocked`. Reserve `blocked` for missing or incomplete current-head CI/readiness evidence needed to determine the check-run gate.
 
@@ -289,8 +289,10 @@ findings remain `needs-fix` when no higher-priority rule matches.
 
 ## What the reader does per state
 
-- `merge-candidate` + SHA current + non-draft PR → eligible to merge; human
-  still owns the button for HITL.
+- `merge-candidate` + SHA current + non-draft PR → eligible for the authorized
+  repository auto-merge path only after that workflow independently verifies the
+  current verdict, blocking labels, current-head checks, and exact-head guard.
+  A verdict alone is not authorization; otherwise HITL approval still applies.
 - `needs-fix` + SHA current → run the fix pass on `fix-now` findings via
   `skills/from-pr-review/references/disposition-rules.md`; any push invalidates this verdict and requires a
   fresh review.
