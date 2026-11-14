@@ -237,7 +237,10 @@ describe("evaluateFixPassCompletion", () => {
       headSha,
       resultingHeadSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       changedFilesSinceHead: ["tooling/lib/review-gate-eligibility.ts"],
-      blockingTargets: ["tooling/lib/review-gate-eligibility.ts", "tooling/review-gate-poller/poller.ts"],
+      blockingFindings: [
+        { target: "tooling/lib/review-gate-eligibility.ts", severity: "high", finding: "eligibility" },
+        { target: "tooling/review-gate-poller/poller.ts", severity: "high", finding: "progress" },
+      ],
     };
     const comment: Comment = {
       author: { login: "agent" },
@@ -258,6 +261,30 @@ describe("evaluateFixPassCompletion", () => {
     expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("disposition: defer | reasoning: out of scope | left open: tracked", "disposition: fix-now | reasoning: applied | done: cccccccccccccccccccccccccccccccccccccccc") }], context)).toBe(false);
     expect(hasNewDurableDisposition([], [comment], { ...context, resultingHeadSha: "invalid" })).toBe(false);
     expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("PR: acme/repo#98", "PR: acme/repo#99") }], context)).toBe(false);
+    const sameFileFindings = {
+      ...context,
+      blockingFindings: [
+        { target: "tooling/lib/review-gate-eligibility.ts", severity: "high", finding: "eligibility" },
+        { target: "tooling/lib/review-gate-eligibility.ts", severity: "high", finding: "second finding" },
+      ],
+    };
+    expect(hasNewDurableDisposition([], [comment], sameFileFindings)).toBe(false);
+    const malformedSecondRow = {
+      ...comment,
+      body: comment.body.replace(
+        "thread 2 | tooling/review-gate-poller/poller.ts | finding: progress | severity: high | disposition: follow-up-issue | reasoning: tracked separately | issue: #123",
+        "thread 2 | tooling/review-gate-poller/poller.ts | finding: progress | severity: high | disposition: invalid | reasoning: tracked separately | issue: #123",
+      ),
+    };
+    expect(hasNewDurableDisposition([], [malformedSecondRow], context)).toBe(false);
+    const unrelatedSameFileFinding = {
+      ...comment,
+      body: comment.body.replace("finding: eligibility", "finding: unrelated").replace(
+        "tooling/review-gate-poller/poller.ts | finding: progress",
+        "tooling/lib/review-gate-eligibility.ts | finding: progress",
+      ),
+    };
+    expect(hasNewDurableDisposition([], [unrelatedSameFileFinding], sameFileFindings)).toBe(false);
   });
 
   test("preserves worker failure regardless of progress", () => {

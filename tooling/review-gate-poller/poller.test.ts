@@ -69,7 +69,8 @@ if (cmd === "pr" && subcmd === "list") {
   const comments = JSON.parse(${JSON.stringify(viewJson)}).comments ?? [];
   process.stdout.write(JSON.stringify([comments.map((comment) => ({ user: comment.author, body: comment.body, created_at: comment.createdAt }))]));
 } else if (cmd === "api" && subcmd.includes("/pulls/") && subcmd.endsWith("/comments")) {
-  process.stdout.write("[[]]");
+  const inlineComments = JSON.parse(${JSON.stringify(viewJson)}).inlineComments ?? [];
+  process.stdout.write(JSON.stringify([inlineComments]));
 } else if (cmd === "api" && subcmd.includes("/compare/")) {
   const [baseSha, headSha] = subcmd.split("/compare/")[1].split("...");
   const comparison = JSON.parse(fs.readFileSync(${JSON.stringify(h.comparisonJson)}, "utf8"));
@@ -301,42 +302,29 @@ esac
     });
   });
 
-  test("ignores a malformed newer verdict and handles the older conforming needs-fix verdict", () => {
+  test("ignores a trusted inline review comment instead of treating it as a gate verdict", () => {
     writeGhStub(
       harness,
       JSON.stringify([{ number: 14, headRefOid: "dddddddddddddddddddddddddddddddddddddddd" }]),
       JSON.stringify({
-        comments: [
-          {
-            author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/14\n",
-            createdAt: "2026-01-01T00:00:00Z",
-          },
-          {
-            author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
-            createdAt: "2026-10-01T00:00:00Z",
-          },
-        ],
+        comments: [],
+        inlineComments: [{
+          user: { login: "review-bot" },
+          body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/14\n",
+          created_at: "2026-01-01T00:00:00Z",
+        }],
       }),
     );
 
-    writeOpencodeStub(harness, `touch "${harness.workdir}/finished"`, 0);
+    writeOpencodeStub(harness, `printf 'unexpected launch\\n' >&2`, 91);
 
     const result = runPoller(harness);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
-    expect(readFileSync(harness.opencodeLog, "utf8")).not.toBe("");
-    expect(readFileSync(harness.ghLog, "utf8")).toContain("repos/acme/repo/issues/14/comments --paginate --slurp");
+    expect(readFileSync(harness.opencodeLog, "utf8")).toBe("");
+    expect(existsSync(harness.statePath)).toBe(false);
     expect(readFileSync(harness.ghLog, "utf8")).toContain("repos/acme/repo/pulls/14/comments --paginate --slurp");
-    expect(readState(harness.statePath)).toEqual({
-      14: expect.objectContaining({
-        headSha: "dddddddddddddddddddddddddddddddddddddddd",
-        status: "completed",
-        attempts: 1,
-      }),
-    });
   });
 
   test("sanitizes noisy stderr to a single line", () => {
@@ -376,13 +364,11 @@ esac
       harness,
       JSON.stringify([{ number: 17, headRefOid: "1111111111111111111111111111111111111111" }]),
       JSON.stringify({
-        comments: [
-          {
-            author: { login: "review-bot" },
-            body: "## review-gate: needs-fix\nhead-sha: 1111111111111111111111111111111111111111\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/17\n",
-            createdAt: "2026-01-01T00:00:00Z",
-          },
-        ],
+        comments: [{
+          author: { login: "review-bot" },
+          body: "## review-gate: needs-fix\nhead-sha: 1111111111111111111111111111111111111111\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/17\n",
+          createdAt: "2026-01-01T00:00:00Z",
+        }],
       }),
     );
 
@@ -412,12 +398,12 @@ esac
       JSON.stringify({
         comments: [{
           author: { login: "review-bot" },
-          body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/26\n",
+          body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/26\n\n### Standards\n- **[high] [fix-now] `src/api.ts` (review finding)** — Existing blocking finding requires a tracked disposition.\n",
           createdAt: "2026-01-01T00:00:00Z",
         }],
       }),
     );
-    writeOpencodeStub(harness, `node -e 'const fs=require("node:fs");fs.writeFileSync("${harness.workdir}/disposition.json", JSON.stringify({author:{login:"ptstory"},createdAt:"2026-01-02T00:00:00Z",body:${JSON.stringify(`PR: acme/repo#26\nhead SHA (before → after): aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa → aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\nDisposition ledger:\nthread 1 | src/api.ts | finding: example | severity: high | disposition: defer | reasoning: non-blocking | left open: tracked\n\nNext action: review-gate https://github.com/acme/repo/pull/26`)} }))'`, 0, false);
+    writeOpencodeStub(harness, `node -e 'const fs=require("node:fs");fs.writeFileSync("${harness.workdir}/disposition.json", JSON.stringify({author:{login:"ptstory"},createdAt:"2026-01-02T00:00:00Z",body:${JSON.stringify(`PR: acme/repo#26\nhead SHA (before → after): aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa → aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\nDisposition ledger:\nthread 1 | src/api.ts | finding: Existing blocking finding requires a tracked disposition. | severity: high | disposition: defer | reasoning: non-blocking | left open: tracked\n\nNext action: review-gate https://github.com/acme/repo/pull/26`)} }))'`, 0, false);
 
     const result = runPoller(harness);
 
@@ -425,6 +411,44 @@ esac
     expect(result.stderr).toBe("");
     expect(readState(harness.statePath)).toEqual({
       26: expect.objectContaining({ status: "completed", exitCode: null }),
+    });
+  });
+
+  test("rejects unrelated same-file disposition evidence for a different blocker", () => {
+    writeGhStub(
+      harness,
+      JSON.stringify([{ number: 28, headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }]),
+      JSON.stringify({ comments: [{
+        author: { login: "review-bot" },
+        body: `## review-gate: needs-fix
+head-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+review-round: 0
+reviewed-files: 1
+blocking-set: src/api.ts
+next-action: from-pr-review https://github.com/acme/repo/pull/28
+
+### Standards
+- **[high] [fix-now] \`src/api.ts\` (authorization check)** — Protect this write path from untrusted access.
+- **[high] [fix-now] \`src/api.ts\` (input validation)** — Reject malformed request values.
+`,
+        createdAt: "2026-01-01T00:00:00Z",
+      }] }),
+    );
+    writeOpencodeStub(harness, `node -e 'const fs=require("node:fs");fs.writeFileSync("${harness.workdir}/disposition.json", JSON.stringify({author:{login:"ptstory"},createdAt:"2026-01-02T00:00:00Z",body:${JSON.stringify(`PR: acme/repo#28
+head SHA (before → after): aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa → aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+Disposition ledger:
+thread 1 | src/api.ts | finding: Protect this write path from untrusted access. | severity: high | disposition: defer | reasoning: tracked separately | left open: tracked
+thread 2 | src/api.ts | finding: unrelated finding | severity: high | disposition: defer | reasoning: tracked separately | left open: tracked
+
+Next action: review-gate https://github.com/acme/repo/pull/28`)} }))'`, 0, false);
+
+    const result = runPoller(harness);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(readState(harness.statePath)).toEqual({
+      28: expect.objectContaining({ status: "failed", exitCode: 0, error: "no-progress" }),
     });
   });
 

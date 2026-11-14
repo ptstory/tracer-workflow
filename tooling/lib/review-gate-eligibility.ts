@@ -50,6 +50,12 @@ export type CompletionInput = {
   durableDispositionRecorded: boolean;
 };
 
+export type BlockingFinding = {
+  target: string;
+  severity: string;
+  finding: string;
+};
+
 export type DurableDispositionContext = {
   repository: string;
   pullRequestNumber: number;
@@ -57,7 +63,7 @@ export type DurableDispositionContext = {
   headSha: string;
   resultingHeadSha: string;
   changedFilesSinceHead: readonly string[];
-  blockingTargets: readonly string[];
+  blockingFindings: readonly BlockingFinding[];
 };
 
 export type CompletionDecision =
@@ -177,8 +183,7 @@ function hasNewDurableDisposition(
   context: DurableDispositionContext,
 ): boolean {
   const prior = new Set(before.map((comment) => `${comment.createdAt}\u0000${comment.author?.login ?? ""}\u0000${comment.body}`));
-  const requiredTargets = new Set(context.blockingTargets);
-  if (requiredTargets.size === 0) return false;
+  if (context.blockingFindings.length === 0) return false;
 
   return after.some((comment) => {
     const key = `${comment.createdAt}\u0000${comment.author?.login ?? ""}\u0000${comment.body}`;
@@ -199,30 +204,36 @@ function hasNewDurableDisposition(
     const prIndex = lines.indexOf(prLines[0]);
     const ledgerBoundary = Math.min(...[prIndex, shaIndex, nextActionIndex].filter((index) => index > ledgerStart));
     const ledgerLines = lines.slice(ledgerStart + 1, ledgerBoundary).filter((line) => line.trim());
-    if (prIndex !== 0 || shaIndex <= prIndex || shaIndex >= ledgerStart || ledgerBoundary === Infinity || ledgerLines.length === 0 || ledgerLines.some((line) => !/^\s*thread [^|]+\|/.test(line))) return false;
+    if (prIndex !== 0 || shaIndex <= prIndex || shaIndex >= ledgerStart || ledgerBoundary === Infinity || ledgerLines.length === 0) return false;
 
-    const ledgerRows = ledgerLines.flatMap((line) => {
-      const match = line.match(/^\s*thread [^|]+\| ([^|]+) \| finding: [^|]+ \| severity: [^|]+ \| disposition: (fix-now|follow-up-issue|defer|reject|needs-human) \| reasoning: [^|]+ \| (done: ([0-9a-f]{40})|issue: #\d+|left open: .+|reply posted|handed back)\s*$/);
-      return match ? [{ area: match[1].trim(), disposition: match[2], doneSha: match[3] ? match[4] : null }] : [];
+    const ledgerRows = ledgerLines.map((line) => {
+      const match = line.match(/^\s*thread ([^|]+)\| ([^|]+) \| finding: ([^|]+) \| severity: ([^|]+) \| disposition: (fix-now|follow-up-issue|defer|reject|needs-human) \| reasoning: ([^|]+) \| (done: ([0-9a-f]{40})|issue: #\d+|left open: .+|reply posted|handed back)\s*$/);
+      if (!match || !match[1].trim() || !match[2].trim() || !match[3].trim() || !match[4].trim() || !match[6].trim()) return null;
+      return {
+        area: match[2].trim().split(/,\s*/),
+        finding: normalizeLedgerText(match[3]),
+        severity: normalizeLedgerText(match[4]).toLowerCase(),
+        disposition: match[5],
+        doneSha: match[7] ? match[8] : null,
+      };
     });
-    if (ledgerRows.length === 0) return false;
+    if (ledgerRows.some((row) => row === null)) return false;
+    const unmatchedRows = ledgerRows.filter((row): row is NonNullable<typeof row> => row !== null);
 
-    const dispositionsByTarget = new Map<string, Set<string>>();
-    for (const row of ledgerRows) {
-      for (const target of row.area.split(/,\s*/)) {
-        const dispositions = dispositionsByTarget.get(target) ?? new Set<string>();
-        dispositions.add(row.disposition);
-        dispositionsByTarget.set(target, dispositions);
-      }
-    }
-    return [...requiredTargets].every((target) => {
-      const dispositions = dispositionsByTarget.get(target);
-      if (!dispositions || dispositions.size !== 1) return false;
-      const findingRows = ledgerRows.filter((row) => row.area.split(/,\s*/).includes(target));
-      return findingRows.every((row) => row.disposition !== "fix-now" ||
-        (row.doneSha === context.resultingHeadSha && row.doneSha !== context.headSha && context.changedFilesSinceHead.includes(target)));
+    return context.blockingFindings.every((finding) => {
+      const rowIndex = unmatchedRows.findIndex((row) => row.area.includes(finding.target) &&
+        row.severity === normalizeLedgerText(finding.severity).toLowerCase() &&
+        row.finding === normalizeLedgerText(finding.finding));
+      if (rowIndex < 0) return false;
+      const [row] = unmatchedRows.splice(rowIndex, 1);
+      return row.disposition !== "fix-now" ||
+        (row.doneSha === context.resultingHeadSha && row.doneSha !== context.headSha && context.changedFilesSinceHead.includes(finding.target));
     });
   });
+}
+
+function normalizeLedgerText(value: string): string {
+  return value.normalize("NFKC").trim().replace(/\s+/g, " ").replace(/`/g, "");
 }
 
 function evaluateFixPassCompletion(input: CompletionInput): CompletionDecision {

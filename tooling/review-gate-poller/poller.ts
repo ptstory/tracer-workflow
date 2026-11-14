@@ -17,7 +17,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { evaluateFixPassCompletion, evaluateReviewGateEligibility, hasNewDurableDisposition, recordFailedAttempt, type AttemptState, type CorrectiveReview } from "../lib/review-gate-eligibility";
+import { evaluateFixPassCompletion, evaluateReviewGateEligibility, hasNewDurableDisposition, recordFailedAttempt, type AttemptState, type BlockingFinding, type CorrectiveReview } from "../lib/review-gate-eligibility";
 import { parseGateComment, parseGateReviewMetadata, reviewerLogins, type Comment, type GateComment } from "../lib/verdict";
 
 // --- config -------------------------------------------------------------------
@@ -89,10 +89,14 @@ function reviewThreadComments(pullRequestNumber: number): Comment[] {
   })));
 }
 
-function reviewComments(pullRequestNumber: number): ReviewComment[] {
+function inlineReviewComments(pullRequestNumber: number): Comment[] {
   const out = gh(["api", `repos/${repo}/pulls/${pullRequestNumber}/comments`, "--paginate", "--slurp"]);
   const pages = JSON.parse(out) as ReviewComment[][];
-  return pages.flatMap((page) => page);
+  return pages.flatMap((page) => page.map((comment) => ({
+    author: comment.user ? { login: comment.user.login } : null,
+    body: comment.body,
+    createdAt: comment.created_at,
+  })));
 }
 
 function compareCommits(baseSha: string, headSha: string): CompareResult {
@@ -151,15 +155,15 @@ function correctiveReviewHistory(comments: Comment[], pullRequestNumber: number,
   return history;
 }
 
-function blockingTargetsForVerdict(comments: Comment[], verdict: GateComment, pullRequestNumber: number, trustedLogins: readonly string[]): string[] {
+function blockingFindingsForVerdict(comments: Comment[], verdict: GateComment, pullRequestNumber: number, trustedLogins: readonly string[]): BlockingFinding[] {
   const matches = comments.flatMap((comment) => {
     if (!comment.author?.login || !trustedLogins.some((login) => login.trim().toLowerCase() === comment.author?.login.toLowerCase())) return [];
     const parsed = parseGateComment([comment], { pullRequestNumber, trustedReviewerLogins: trustedLogins });
     const metadata = parseGateReviewMetadata(comment.body);
     if (parsed.kind !== "parsed" || !metadata || parsed.verdict.headSha !== verdict.headSha || parsed.verdict.verdict !== "needs-fix") return [];
-    return [{ commentedAt: parsed.verdict.commentedAt, blockingTargets: metadata.blockingTargets }];
+    return [{ commentedAt: parsed.verdict.commentedAt, blockingFindings: metadata.blockingFindings }];
   }).sort((left, right) => left.commentedAt.localeCompare(right.commentedAt));
-  return matches.at(-1)?.blockingTargets ?? [];
+  return matches.at(-1)?.blockingFindings ?? [];
 }
 
 function authenticatedLogin(): string {
@@ -332,13 +336,10 @@ function main(): void {
 
   for (const pr of openPRs()) {
     const details = prDetails(pr.number);
-    const comments = [...reviewThreadComments(pr.number), ...reviewComments(pr.number).map((comment) => ({
-      author: comment.user,
-      body: comment.body,
-      createdAt: comment.created_at,
-    }))];
+    const comments = reviewThreadComments(pr.number);
+    const inlineComments = inlineReviewComments(pr.number);
     const existing = state[String(pr.number)];
-    const previousComments = comments;
+    const previousComments = [...comments, ...inlineComments];
     let reviewHistory: CorrectiveReview[];
     try {
       reviewHistory = correctiveReviewHistory(comments, pr.number, (process.env.TRACER_REVIEWER_LOGINS ?? "").split(","));
@@ -393,7 +394,7 @@ function main(): void {
       const updatedComments = [
         ...(updatedDetails.comments ?? []),
         ...reviewThreadComments(pr.number),
-        ...reviewComments(pr.number).map((comment) => ({ author: comment.user, body: comment.body, createdAt: comment.created_at })),
+        ...inlineReviewComments(pr.number),
       ];
       const resultingSha = updatedDetails.headRefOid;
       const progressComparison = resultingSha === decision.verdict.headSha
@@ -407,7 +408,7 @@ function main(): void {
         headSha: decision.verdict.headSha,
         resultingHeadSha: resultingSha,
         changedFilesSinceHead: progressComparison?.files.map((file) => file.filename) ?? [],
-        blockingTargets: blockingTargetsForVerdict(previousComments, decision.verdict, pr.number, (process.env.TRACER_REVIEWER_LOGINS ?? "").split(",")),
+        blockingFindings: blockingFindingsForVerdict(comments, decision.verdict, pr.number, (process.env.TRACER_REVIEWER_LOGINS ?? "").split(",")),
       });
       const completion = evaluateFixPassCompletion({ exitCode: 0, verifiedPrProgress, durableDispositionRecorded });
       if (completion.kind === "failed") {

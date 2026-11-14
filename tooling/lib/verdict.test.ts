@@ -21,8 +21,18 @@ describe("parseGateReviewMetadata", () => {
   test("returns trusted blocking targets and an explicit round-zero rebaseline", () => {
     expect(parseGateReviewMetadata("review-round: 0\nblocking-set: src/api.ts, tooling/poller.ts\nrebaseline: yes\n")).toEqual({
       blockingTargets: ["src/api.ts", "tooling/poller.ts"],
+      blockingFindings: [],
       rebaseline: true,
     });
+  });
+
+  test("extracts each fix-now finding with its target, severity, and full wording", () => {
+    const metadata = parseGateReviewMetadata("blocking-set: tooling/lib/review-gate-eligibility.ts\n\n### Standards\n- **[high] [fix-now] `tooling/lib/review-gate-eligibility.ts` (`hasNewDurableDisposition`)** — Bind durable evidence to each actual finding.\n");
+    expect(metadata?.blockingFindings).toEqual([{
+      target: "tooling/lib/review-gate-eligibility.ts",
+      severity: "high",
+      finding: "Bind durable evidence to each actual finding.",
+    }]);
   });
 
   test("fails closed on invalid rebaseline markers", () => {
