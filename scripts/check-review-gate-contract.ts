@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { formatCheckDiagnostic } from "./check-diagnostic";
+
 type Issue = {
   file: string;
   field: string;
@@ -94,7 +96,7 @@ function isRepoRelativePath(value: string): boolean {
 
 function report(issues: Issue[]): void {
   for (const issue of issues) {
-    console.error(`${issue.file}: ${issue.field}: ${issue.message}`);
+    console.error(`${issue.file}: ${formatCheckDiagnostic(`valid ${issue.field}`, issue.message, "correct the contract source and rerun the check")}`);
   }
 }
 

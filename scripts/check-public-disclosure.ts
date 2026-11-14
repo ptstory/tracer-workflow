@@ -3,6 +3,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+import { formatCheckDiagnostic } from "./check-diagnostic";
+
 type Finding = { path: string; kind: string };
 
 const PUBLIC_OWNER = "ptstory";
@@ -58,7 +60,7 @@ function main(): void {
     return;
   }
 
-  for (const finding of findings) console.error(`${finding.path}: ${finding.kind}`);
+  for (const finding of findings) console.error(formatCheckDiagnostic(`public-safe content in ${finding.path}`, finding.kind, `remove or redact the ${finding.kind} from ${finding.path}`));
   process.exit(1);
 }
 

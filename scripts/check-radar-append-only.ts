@@ -1,13 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+import { formatCheckDiagnostic } from "./check-diagnostic";
+
 const RADAR_PATH = "RADAR.md";
 
 export function splitEntries(text: string): string[] {
   const starts = [...text.matchAll(/^## /gm)].map((match) => match.index!);
 
   if (starts.length === 0) {
-    throw new Error(`${RADAR_PATH} contains no entries`);
+    throw new Error(formatCheckDiagnostic(`at least one entry in ${RADAR_PATH}`, "no entries", "restore an entry heading before validating append-only history"));
   }
 
   return starts.map((start, index) =>
@@ -43,8 +45,9 @@ function main(): void {
   const baseRef = process.argv[2];
 
   if (!baseRef) {
-    console.error("usage: bun scripts/check-radar-append-only.ts <base-ref>");
-    process.exit(2);
+    console.error(formatCheckDiagnostic("a base-ref argument", "missing", "run bun scripts/check-radar-append-only.ts <base-ref>"));
+    process.exitCode = 2;
+    return;
   }
 
   const current = readFileSync(RADAR_PATH, "utf8");
@@ -56,18 +59,20 @@ function main(): void {
     });
   } catch {
     console.error(
-      `unable to read ${RADAR_PATH} from base ref ${baseRef}; ensure the base branch was fetched`,
+      formatCheckDiagnostic(`${RADAR_PATH} to be readable from base ref ${baseRef}`, "base file unavailable", "fetch the base branch and retry"),
     );
-    process.exit(2);
+    process.exitCode = 2;
+    return;
   }
 
   const violation = findAppendOnlyViolation(base, current);
 
   if (violation) {
     console.error(
-      `${RADAR_PATH} append-only violation: existing entry changed, disappeared, or moved: ${violation}`,
+      formatCheckDiagnostic(`${RADAR_PATH} to preserve all existing entries unchanged and in order`, violation, "restore the changed, missing, or moved entry and append new entries without modifying existing ones"),
     );
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   console.log(

@@ -107,9 +107,10 @@ against actual check-run state, and hand back.
    exercising changed paths; do not make coverage claims in prose. This is
    evidence, not a readiness claim — see step 9.
 
-8. **Commit and push.** One commit per coherent group, message referencing the
-   thread(s) it resolves. Push to the same head branch. Capture the **new** head
-   SHA.
+8. **Commit, push, and refresh the PR body.** One commit per coherent group,
+   message referencing the thread(s) it resolves. Push to the same head branch,
+   capture the **new** head SHA, regenerate the complete Evidence bundle for that
+   SHA, and update the PR body before checking readiness.
 
 9. **Verify against real check-runs (the gate).** For the new head SHA, poll
    actual check-run state — `gh pr checks <N>` or the GitHub checks API — until

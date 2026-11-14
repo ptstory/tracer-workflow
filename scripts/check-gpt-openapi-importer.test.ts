@@ -13,14 +13,14 @@ function schema(path: string): unknown {
 describe("Custom GPT OpenAPI importer checks", () => {
   test("detects parameter references at any depth", () => {
     expect(checkOpenApi({ paths: { "/x": { get: { parameters: [{ $ref: "#/components/parameters/Owner" }] } } } }))
-      .toContain("paths./x.get.parameters.0: unsupported parameter reference #/components/parameters/Owner");
+      .toContain("Expected: paths./x.get.parameters.0 to avoid unsupported parameter references; found: #/components/parameters/Owner; action: inline the parameter or use a supported schema reference");
   });
 
   test("detects objects without properties including array items", () => {
     expect(checkOpenApi({ components: { schemas: { AnyObject: { type: "object", additionalProperties: true }, AnyArray: { type: "array", items: { type: "object" } } } } }))
       .toEqual([
-        "components.schemas.AnyObject: object schema has no properties",
-        "components.schemas.AnyArray.items: object schema has no properties",
+        "Expected: components.schemas.AnyObject object schema to declare at least one property; found: no properties; action: add schema properties or use a non-object schema type",
+        "Expected: components.schemas.AnyArray.items object schema to declare at least one property; found: no properties; action: add schema properties or use a non-object schema type",
       ]);
   });
 
@@ -35,7 +35,7 @@ describe("Custom GPT OpenAPI importer checks", () => {
   });
 
   test("rejects malformed schema input", () => {
-    expect(checkSchemas({ components: { schemas: [] } })).toContain("components.schemas: expected a mapping");
+    expect(checkSchemas({ components: { schemas: [] } })).toContain("Expected: components.schemas to be a mapping; found: array; action: correct the OpenAPI components.schemas structure");
   });
 
   test("v1.1.0 is importable while immutable v1.0.0 reports known failures", () => {
