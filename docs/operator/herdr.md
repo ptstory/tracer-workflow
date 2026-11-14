@@ -39,13 +39,13 @@ Both keybindings use Herdr's default `ctrl+b` prefix. The plugin READMEs documen
 
    For example: `from-issue https://github.com/ptstory/tracer-workflow/issues/258`. `from-issue` reads the issue contract, posts its plan checkpoint before editing, implements and verifies one scoped slice, then commits/pushes and prepares a PR with current-head evidence.
 3. Run lanes in parallel only when their files do not overlap. If one issue needs another issue's output, record the prerequisite as **Depends on** in GitHub; do not use parallel lanes to bypass that ordering.
-4. After the implementation push and PR evidence refresh, launch the review in a fresh Review Gate session from the issue lane. The `open -g` command opens ChatGPT with the userscript's opt-in autosend query:
+4. After the implementation push and PR evidence refresh, `from-issue` runs the Review Gate Auto-send launch guard. It opens a fresh Review Gate session only when the PR has no trusted verdict for its current head; otherwise the helper prints the current verdict and next action. Do not also run this manual fallback after the normal guarded launch.
 
    ```sh
    open -g "https://chatgpt.com/?autosend=1&q=@review-gate <PR URL>"
    ```
 
-   Replace `<PR URL>` with the full pull request URL. Review Gate Auto-send only opens the browser when the PR has no trusted verdict for its current head; a matching current-head verdict is printed instead. If no userscript is installed, the prompt remains available for manual submission.
+   Replace `<PR URL>` with the full pull request URL. Use this `open -g` command only when launching manually because the normal guard was not run; `open -g` itself does not check for a current-head verdict. If no userscript is installed, the prompt remains available for manual submission.
 
 ## Read the `gate:*` verdict labels
 
