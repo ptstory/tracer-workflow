@@ -223,21 +223,35 @@ itself.
 `merge-candidate` is determined by the target branch's required status-check
 configuration.
 
+- Docs-only allowlist: `README.md`, `RUNTIME.md`, `STACK.md`, and `docs/**`.
+  `RADAR.md` is excluded because its append-only contract is checked separately.
+  `CONTEXT.md`, `WORKFLOW.md`, `AGENTS.md`, `.agents/repo-context.md` (delegated
+  operational and safety policy), `skills/**`, `actions/**`, `prompts/**`, workflow
+  and Review Gate contract files, and all other paths are not allowlisted. File
+  extensions do not grant an exception.
+- Docs-only path: when every changed path matches the docs-only allowlist, replace
+  changed-path exercise with all applicable required checks green at the current
+  head (when configured), a passing `pr-body` check at the current head, and a
+  clean Review Gate content review at that same head. The `pr-body` check must
+  pass even when it is not a branch-required check. Missing, pending, or failing
+  configured required checks or `pr-body` evidence emits `blocked`; older-head
+  results never count. Any non-allowlisted path, including a mixed PR, uses the
+  ordinary path-coverage rules below.
 - Configured path: all applicable required checks are green at the current head,
   and at least one applicable required check exercises the changed paths.
 - No-required-check path: at least one green CI/check run on the current head
   exercises the changed paths.
-- A no-capable-check escalation is allowed only when repository CI/check
-  configuration is known, every configured required check has a successful
-  result at the current head, and none can exercise the changed paths. If any
-  required check is failing, pending, or missing from current-head check evidence,
-  emit `blocked` regardless of whether it can exercise the changed paths. When
-  all required checks are green but none can exercise the changed paths, an
-  otherwise-clean review emits a `needs-human` finding, not `blocked`. Include
-  the manual-verification checklist required above; identify the behavior to
-  verify, where to verify it (for example, the PR's deploy preview URL), and the
-  expected result. This applies to both readiness paths when no capable check
-  exists.
+- For changes outside the docs-only allowlist, a no-capable-check escalation is
+  allowed only when repository CI/check configuration is known, every configured
+  required check has a successful result at the current head, and none can
+  exercise the changed paths. If any required check is failing, pending, or
+  missing from current-head check evidence, emit `blocked` regardless of whether
+  it can exercise the changed paths. When all required checks are green but none
+  can exercise the changed paths, an otherwise-clean review emits a `needs-human`
+  finding, not `blocked`. Include the manual-verification checklist required
+  above; identify the behavior to verify, where to verify it (for example, the
+  PR's deploy preview URL), and the expected result. This applies to both
+  readiness paths when no capable check exists.
 - If readiness configuration or current-head evidence cannot be established,
   emit `blocked` rather than assuming no capable check exists. Older-head results
   do not satisfy readiness.

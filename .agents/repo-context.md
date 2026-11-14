@@ -136,10 +136,9 @@ lint or build commands here if the repository introduces them.
 - **Evidence bundle** — exact local commands and outputs anchored to a PR head
   SHA; prose alone is insufficient.
 - **Check-run gate** — merge readiness follows the current head's required
-  status-check configuration: if required checks are configured, they must all be
-  green at the current head with path coverage; if no required checks are
-  configured, at least one green CI/check run on the current head must exercise
-  the changed paths. Older-head results never count.
+  status-check configuration. The docs-only exception and canonical allowlist are
+  defined in `skills/review-gate/references/verdict-contract.md`; mixed changes
+  retain ordinary changed-path coverage. Older-head results never count.
 - **Slice contract** — a downstream issue may start only when its blocker
   supplies the exact data/API/behavior/file contract it consumes.
 - **HITL / AFK** — human-in-the-loop versus pre-authorized autonomous work.

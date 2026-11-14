@@ -21,7 +21,8 @@ against actual check-run state, and hand back.
 
 - Resolve the PR in order: (a) use an explicit PR URL or number; (b) if absent,
   run `gh pr view --json number,url,headRefName,headRefOid` for the current branch;
-  (c) if neither resolves, list open PRs labeled `gate:needs-fix` and stop,
+  (c) if neither resolves, list open PRs labeled `gate:needs-fix` (the reusable
+  gate applies this label only for a trusted current-head verdict) and stop,
   printing the exact rerun command `from-pr-review <PR_URL>` for the selected PR.
   Do not choose a PR from the list automatically. The first output line must
   state `owner/repo#N`, the head SHA, and the resolution path used (`explicit`
@@ -107,20 +108,21 @@ against actual check-run state, and hand back.
    exercising changed paths; do not make coverage claims in prose. This is
    evidence, not a readiness claim — see step 9.
 
-8. **Commit and push.** One commit per coherent group, message referencing the
-   thread(s) it resolves. Push to the same head branch. Capture the **new** head
-   SHA.
+8. **Commit, push, and refresh the PR body.** One commit per coherent group,
+   message referencing the thread(s) it resolves. Push to the same head branch,
+   capture the **new** head SHA, regenerate the complete Evidence bundle for that
+   SHA, and update the PR body before checking readiness.
 
 9. **Verify against real check-runs (the gate).** For the new head SHA, poll
    actual check-run state — `gh pr checks <N>` or the GitHub checks API — until
    checks settle (not pending). Record per-check conclusion. Readiness follows
-   the current head's required status-check configuration: if required checks
-   are configured, all applicable required checks must be green at the current
-   head and at least one applicable required check must exercise the changed
-   paths; if no required checks are configured, at least one green CI/check run
-   on the current head must exercise the changed paths. Older-head results never
-   count. A green local run in step 7 does not satisfy this; a reported "tests
-   pass" never does. See `WORKFLOW.md` → check-run gate.
+   `WORKFLOW.md` and the canonical docs-only exception in
+   `skills/review-gate/references/verdict-contract.md`. For a docs-only PR, every
+   changed path must be allowlisted, applicable configured required checks (if
+   any) and `pr-body` must pass at the current head, and Review Gate review must
+   be clean at that head. Any mixed PR retains changed-path coverage. Older-head
+   results never count. A green local run in step 7 does not satisfy this; a
+   reported "tests pass" never does.
 
 10. **Reply to review threads.** For each ledger row, post a threaded reply that
     states what was done (commit SHA) or the returned disposition and its issue

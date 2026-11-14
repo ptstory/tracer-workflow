@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import { latestConformingGateComment, parseGateBody, parseGateComment } from "./verdict";
+import type { Comment } from "./verdict";
 import type { Verdict } from "./verdict";
 
 const verdictExamples = readFileSync(
@@ -20,7 +21,7 @@ describe("parseGateComment", () => {
   test("parses a conforming verdict with its round", () => {
     const comment = parseGateComment([
       {
-        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 3\n",
+        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 3\nblocking-set: src/api.ts\n",
         author: { login: "reviewer" },
         createdAt: "2026-01-01T00:00:00Z",
       },
@@ -43,7 +44,7 @@ describe("parseGateComment", () => {
     const messages: string[] = [];
     console.warn = (message: string) => { messages.push(message); };
     try {
-      const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n";
+      const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\n";
       const comments = [
         { author: { login: "reviewer" }, body, createdAt: "2026-01-01T00:00:00Z" },
         { author: { login: "attacker" }, body, createdAt: "2026-01-02T00:00:00Z" },
@@ -54,6 +55,44 @@ describe("parseGateComment", () => {
     } finally {
       console.warn = warn;
     }
+  });
+
+  test("ignores a newer malformed trusted marker and keeps the latest conforming verdict", () => {
+    process.env.TRACER_REVIEWER_LOGINS = "reviewer";
+    const validBody = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\n";
+    const comments = [
+      { author: { login: "reviewer" }, body: validBody, createdAt: "2026-01-01T00:00:00Z" },
+      { author: { login: "reviewer" }, body: validBody.replace("review-round: 0\n", "review-round: zero\n"), createdAt: "2026-08-01T00:00:00Z" },
+    ];
+
+    expect(parseGateComment(comments)).toEqual({
+      kind: "parsed",
+      verdict: {
+        verdict: "needs-fix",
+        headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        reviewRound: 0,
+        reviewedFiles: 1,
+        commentedAt: "2026-01-01T00:00:00Z",
+      },
+    });
+  });
+
+  test("accepts historical verdicts without blocking-set or next-action before their schema cutoffs", () => {
+    const legacyBody = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n";
+    expect(parseGateComment([
+      { author: { login: "reviewer" }, body: legacyBody, createdAt: "2026-09-01T11:00:00Z" },
+    ], { pullRequestNumber: 98 }).kind).toBe("parsed");
+  });
+
+  test("validates present next-action and blocking-set rules and checks the target PR", () => {
+    const legacyBody = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\n";
+    const legacyComment = { author: { login: "reviewer" }, body: legacyBody, createdAt: "2026-09-01T11:00:00Z" };
+    expect(parseGateComment([legacyComment], { pullRequestNumber: 98 }).kind).toBe("parsed");
+
+    const currentBody = `${legacyBody}blocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/98\n`;
+    const currentComment: Comment = { ...legacyComment, body: currentBody };
+    expect(parseGateComment([currentComment], { pullRequestNumber: 98 }).kind).toBe("parsed");
+    expect(parseGateComment([currentComment], { pullRequestNumber: 99 }).kind).toBe("invalid");
   });
 
   test("fails closed without an allowlist", () => {
@@ -72,6 +111,20 @@ describe("parseGateComment", () => {
         },
       ]),
     ).toEqual({ kind: "none" });
+  });
+
+  test("rejects a new verdict with a state-inappropriate next action", () => {
+    const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: nonsense\n";
+    expect(parseGateComment([
+      { author: { login: "reviewer" }, body, createdAt: "2026-09-26T20:18:26Z" },
+    ], { pullRequestNumber: 98 }).kind).toBe("invalid");
+  });
+
+  test("rejects a needs-fix verdict with an empty blocking set", () => {
+    const body = "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set:\nnext-action: from-pr-review https://github.com/acme/repo/pull/98\n";
+    expect(parseGateComment([
+      { author: { login: "reviewer" }, body, createdAt: "2026-09-26T20:18:26Z" },
+    ], { pullRequestNumber: 98 }).kind).toBe("invalid");
   });
 
   test("treats a verdict missing review-round as invalid", () => {
@@ -117,8 +170,8 @@ describe("verdict examples", () => {
   const blocks = extractVerdictBlocks(verdictExamples);
   const mergeCandidateBlocks = blocks.filter((block) => /^## review-gate:\s*merge-candidate\s*$/m.test(block));
 
-  test("contains thirteen conforming verdict blocks", () => {
-    expect(blocks).toHaveLength(13);
+  test("contains fourteen conforming verdict blocks", () => {
+    expect(blocks).toHaveLength(14);
   });
 
   test("covers verdict precedence for draft, human stops, and blockers", () => {
@@ -154,8 +207,8 @@ describe("verdict examples", () => {
     expect(mergeCandidateBlocks[1]).toContain("next-action: gh pr merge 123");
   });
 
-  test("includes three merge-candidate examples and they parse", () => {
-    expect(mergeCandidateBlocks).toHaveLength(3);
+  test("includes four merge-candidate examples and they parse", () => {
+    expect(mergeCandidateBlocks).toHaveLength(4);
 
     expect(
       mergeCandidateBlocks.map((block) => {
@@ -164,7 +217,7 @@ describe("verdict examples", () => {
         expect(parsed.verdict).toBe("merge-candidate");
         return parsed.reviewRound;
       }),
-    ).toEqual([0, 1, 0]);
+    ).toEqual([0, 1, 0, 0]);
   });
 
   for (const [index, block] of blocks.entries()) {

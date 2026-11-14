@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { findAppendOnlyViolation } from "./check-radar-append-only";
+import { formatCheckDiagnostic } from "./check-diagnostic";
 
 const base = `This file is append-only.
 
@@ -41,6 +42,8 @@ describe("RADAR append-only validation", () => {
     const current = base.replace("- Value: one", "- Value: changed");
 
     expect(findAppendOnlyViolation(base, current)).toBe("## alpha");
+    expect(formatCheckDiagnostic("existing entries unchanged and ordered", "## alpha", "restore the entry"))
+      .toBe("Expected: existing entries unchanged and ordered; found: ## alpha; action: restore the entry");
   });
 
   test("rejects deleting an existing entry", () => {

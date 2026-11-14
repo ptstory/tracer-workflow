@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflowPath = join(repoRoot, ".github/workflows/gate-readiness.yml");
 const workflow = readFileSync(workflowPath, "utf8");
@@ -19,15 +20,21 @@ type Harness = {
 };
 
 type WorkflowFixture = {
-  eventName: "pull_request" | "workflow_call";
+  eventName: "pull_request_target" | "workflow_call";
   eventPayload?: unknown;
   prNumber: number;
   pullJson?: unknown;
+  labelCreateFailure?: { label: string; stderr: string; exitCode?: number };
+  labels?: { name: string }[];
   commentsJson: unknown[];
   checkRunsJson: unknown[];
   statusesJson: unknown[];
   blockPulls?: boolean;
+  /** Head SHA the live re-check sees; defaults to the evaluated head. */
+  liveHeadSha?: string;
+  liveHeadSequence?: string[];
   reviewerLogins?: string;
+  pullRequestAction?: string;
   failure?: {
     endpointIncludes: string;
     method?: string;
@@ -60,7 +67,7 @@ function writeExecutable(path: string, content: string): void {
 
 function extractRunScript(): string {
   const lines = workflow.split("\n");
-  const runIndex = lines.findIndex((line) => line.trim() === "run: |");
+  const runIndex = lines.findLastIndex((line) => line.trim() === "run: |");
   if (runIndex < 0) throw new Error("could not locate Evaluate readiness script");
 
   const scriptLines: string[] = [];
@@ -86,7 +93,13 @@ const logPath = ${JSON.stringify(harness.ghLog)};
 const commentPath = ${JSON.stringify(harness.commentLog)};
 const fixture = ${JSON.stringify({
     blockPulls: fixture.blockPulls ?? false,
+    eventName: fixture.eventName,
+    eventPullRequest: (fixture.eventPayload as { pull_request?: unknown } | undefined)?.pull_request ?? null,
+    liveHeadSha: fixture.liveHeadSha ?? null,
+    liveHeadSequence: fixture.liveHeadSequence ?? null,
     pullJson: fixture.pullJson ?? null,
+    labels: fixture.labels ?? (fixture.pullJson && typeof fixture.pullJson === "object" ? (fixture.pullJson as { labels?: { name: string }[] }).labels : undefined) ?? ((fixture.eventPayload as { pull_request?: { labels?: { name: string }[] } } | undefined)?.pull_request?.labels) ?? [],
+    labelCreateFailure: fixture.labelCreateFailure ?? null,
     commentsJson: fixture.commentsJson,
     checkRunsJson: fixture.checkRunsJson,
     statusesJson: fixture.statusesJson,
@@ -103,6 +116,11 @@ for (let i = 0; i < argv.length; i += 1) {
 }
 fs.appendFileSync(logPath, JSON.stringify({ argv, endpoint, method }) + "\\n");
 
+if (fixture.labelCreateFailure && method === "POST" && endpoint === "repos/acme/repo/labels" && argv.includes("name=" + fixture.labelCreateFailure.label)) {
+  process.stderr.write(fixture.labelCreateFailure.stderr);
+  process.exit(fixture.labelCreateFailure.exitCode ?? 1);
+}
+
 if (fixture.failure && endpoint.includes(fixture.failure.endpointIncludes) && (!fixture.failure.method || method === fixture.failure.method)) {
   if (fixture.failure.stdout) {
     process.stdout.write(fixture.failure.stdout);
@@ -118,11 +136,19 @@ if (body && (endpoint.includes("/issues/") || endpoint.includes("/labels"))) {
 }
 
 if (endpoint.includes("/pulls/")) {
-  if (fixture.blockPulls) {
+  const countPath = logPath + ".pulls";
+  const calls = (fs.existsSync(countPath) ? Number(fs.readFileSync(countPath, "utf8")) : 0) + 1;
+  fs.writeFileSync(countPath, String(calls));
+  if (fixture.blockPulls && calls >= 2) {
     process.stderr.write("GET /pulls/98 blocked\\n");
     process.exit(42);
   }
-  process.stdout.write(JSON.stringify(fixture.pullJson ?? {}));
+  const base = fixture.pullJson ?? fixture.eventPullRequest ?? {};
+  const isRecheck = calls >= 2;
+  const head = isRecheck && fixture.liveHeadSequence?.length
+    ? { sha: fixture.liveHeadSequence[Math.min(calls - 2, fixture.liveHeadSequence.length - 1)] }
+    : isRecheck && fixture.liveHeadSha ? { sha: fixture.liveHeadSha } : base.head;
+  process.stdout.write(JSON.stringify({ ...base, head, labels: fixture.labels ?? base.labels ?? [] }));
   process.exit(0);
 }
 
@@ -163,10 +189,11 @@ function runWorkflow(fixture: WorkflowFixture) {
       GITHUB_EVENT_NAME: fixture.eventName,
       GITHUB_EVENT_PATH: harness.eventPath,
       GITHUB_TOKEN: "token",
+      PR_NUMBER: String(fixture.prNumber),
       REPOSITORY: "acme/repo",
       TRACER_REVIEWER_LOGINS: fixture.reviewerLogins ?? "reviewer",
-      PR_NUMBER: String(fixture.prNumber),
-      INPUT_PR_NUMBER: String(fixture.prNumber),
+      INPUT_PR_NUMBER: fixture.eventName === "workflow_call" ? String(fixture.prNumber) : "",
+      INPUT_PULL_REQUEST_ACTION: fixture.pullRequestAction ?? (fixture.eventPayload as { action?: string } | undefined)?.action ?? "",
     },
     encoding: "utf8",
   });
@@ -179,8 +206,15 @@ function runWorkflow(fixture: WorkflowFixture) {
 
 const currentReviewGateComment = {
   user: { login: "reviewer" },
-  body: "## review-gate: merge-candidate\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 1\nreviewed-files: 2\n",
+  body: "## review-gate: merge-candidate\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 1\nreviewed-files: 2\nblocking-set:\nnext-action: gh pr merge 98 --squash --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
   created_at: "2026-01-01T00:00:00Z",
+};
+const prUrl = "https://github.com/acme/repo/pull/98";
+const nextActionByVerdict = {
+  "merge-candidate": "gh pr merge 98 --squash --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "needs-fix": `from-pr-review ${prUrl}`,
+  "needs-human": "gh pr view 98 --web",
+  blocked: "gh pr checks 98",
 };
 
 describe(".github/workflows/gate-readiness.yml behavior", () => {
@@ -200,7 +234,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
       pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
       commentsJson: [currentReviewGateComment, {
         user: { login: "attacker" },
-        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 2\nreviewed-files: 1\n",
+        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 2\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/98\n",
         created_at: "2026-01-02T00:00:00Z",
       }],
       checkRunsJson: [], statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
@@ -222,9 +256,182 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(commentLog).toContain("- review gate state: ungated");
     expect(commentLog).toContain("- readiness: false");
   });
-  test("pull_request uses event payload data and never touches the pulls endpoint", () => {
+  test.each([
+    ["merge-candidate", "gate:merge-candidate", "", "gh pr merge 98 --squash --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    ["needs-fix", "gate:needs-fix", "src/api.ts", "from-pr-review https://github.com/acme/repo/pull/98"],
+    ["needs-human", "gate:needs-human", "", "gh pr view 98 --web"],
+    ["blocked", "gate:blocked", "", "gh pr checks 98"],
+  ])("mirrors the current %s verdict as %s", (verdict, label, blockingSet, nextAction) => {
+    const body = currentReviewGateComment.body
+      .replace("merge-candidate", verdict)
+      .replace("blocking-set:", `blocking-set: ${blockingSet}`)
+      .replace(/next-action: [^\n]+/, `next-action: ${nextAction}`);
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [{ ...currentReviewGateComment, body }],
+      checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).toContain(`"labels[]=${label}"`);
+    expect(ghLog).toContain("gate:merge-candidate");
+  });
+
+  test("normalizes uppercase verdict head SHAs before comparing with GitHub metadata", () => {
+    const body = currentReviewGateComment.body.replace(/a{40}/, "A".repeat(40));
     const { result, ghLog, commentLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "a".repeat(40) }, body: "Closes #97", labels: [] },
+      commentsJson: [{ ...currentReviewGateComment, body }],
+      checkRunsJson: [], statusesJson: [],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- review gate state: current");
+    expect(ghLog).toContain("labels[]=gate:merge-candidate");
+  });
+
+  test("removes an existing stale verdict label without deleting absent labels", () => {
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }, body: "Closes #97", labels: [{ name: "gate:merge-candidate" }] },
+      commentsJson: [currentReviewGateComment], checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:merge-candidate","method":"DELETE"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-fix","method":"DELETE"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-human","method":"DELETE"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:blocked","method":"DELETE"');
+  });
+
+  test("stops synchronize cleanup after the head moves between label deletions", () => {
+    const headSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const { result, ghLog } = runWorkflow({
+      eventName: "pull_request_target",
+      eventPayload: {
+        action: "synchronize",
+        pull_request: {
+          number: 98,
+          head: { sha: headSha },
+          body: "Closes #97",
+          labels: [{ name: "gate:needs-fix" }, { name: "gate:needs-human" }],
+        },
+      },
+      prNumber: 98,
+      liveHeadSequence: [headSha, headSha, "cccccccccccccccccccccccccccccccccccccccc"],
+      commentsJson: [],
+      checkRunsJson: [],
+      statusesJson: [],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate%3Aneeds-fix","method":"DELETE"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate%3Aneeds-human","method":"DELETE"');
+    expect(result.stderr).toContain("PR head moved during synchronize cleanup");
+  });
+
+  test("synchronize after a needs-fix verdict removes every gate label", () => {
+    const headSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const needsFixComment = {
+      ...currentReviewGateComment,
+      body: currentReviewGateComment.body.replace(/merge-candidate/g, "needs-fix").replace(/a{40}/, headSha),
+    };
+    const { result, ghLog } = runWorkflow({
+      eventName: "pull_request_target",
+      eventPayload: {
+        action: "synchronize",
+        pull_request: {
+          number: 98,
+          head: { sha: headSha },
+          body: "Closes #97",
+          labels: [{ name: "gate:needs-fix" }, { name: "gate:custom-state" }, { name: "gate:ready" }, { name: "triage" }],
+        },
+      },
+      prNumber: 98,
+      commentsJson: [needsFixComment],
+      checkRunsJson: [],
+      statusesJson: [],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    for (const label of ["gate:needs-fix", "gate:custom-state", "gate:ready"]) {
+      expect(ghLog).toContain(`"endpoint":"repos/acme/repo/issues/98/labels/${encodeURIComponent(label)}","method":"DELETE"`);
+    }
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/triage","method":"DELETE"');
+    expect(ghLog).not.toContain('"method":"POST"');
+  });
+
+  test("a superseded synchronize event does not clear labels from a newer head", () => {
+    const eventHeadSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const { result, ghLog } = runWorkflow({
+      eventName: "pull_request_target",
+      eventPayload: {
+        action: "synchronize",
+        pull_request: {
+          number: 98,
+          head: { sha: eventHeadSha },
+          body: "Closes #97",
+          labels: [{ name: "gate:needs-human" }],
+        },
+      },
+      prNumber: 98,
+      liveHeadSha: "cccccccccccccccccccccccccccccccccccccccc",
+      commentsJson: [],
+      checkRunsJson: [],
+      statusesJson: [],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).not.toContain('"method":"DELETE"');
+    expect(result.stderr).toContain("PR head moved before synchronize cleanup");
+  });
+
+  test("does not delete absent verdict labels when no trusted verdict exists", () => {
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [{ name: "triage" }] },
+      commentsJson: [], checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).not.toContain('"method":"DELETE"');
+  });
+
+  test("an untrusted commenter cannot apply a verdict label", () => {
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [{ ...currentReviewGateComment, user: { login: "attacker" }, body: currentReviewGateComment.body.replace("merge-candidate", "needs-fix") }],
+      checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).not.toContain('labels[]=gate:needs-fix');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:needs-fix","method":"DELETE"');
+  });
+
+  test("treats a concurrent already_exists label creation response as success", () => {
+    const { result } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [currentReviewGateComment], checkRunsJson: [], statusesJson: [],
+      labelCreateFailure: { label: "gate:merge-candidate", stderr: "HTTP 422: already_exists\\n" },
+    });
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  test("preserves existing gate:ready behavior", () => {
+    const { result, ghLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [{ name: "gate:ready" }, { name: "gate:merge-candidate" }] },
+      commentsJson: [currentReviewGateComment], checkRunsJson: [], statusesJson: [],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(ghLog).not.toContain("labels[]=gate:ready");
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:ready","method":"DELETE"');
+  });
+
+  test("pull_request_target reads PR metadata only through the API and rechecks the live head", () => {
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "pull_request_target",
       eventPayload: {
         pull_request: {
           number: 98,
@@ -234,16 +441,116 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
         },
       },
       prNumber: 98,
-      blockPulls: true,
       commentsJson: [],
       checkRunsJson: [],
       statusesJson: [],
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(ghLog).not.toContain("/pulls/98");
-    expect(commentLog).toContain("- PR metadata source: pull_request event payload");
+    const pullsReads = ghLog.split("\n").filter((line) => line.includes('"endpoint":"repos/acme/repo/pulls/98"'));
+    expect(pullsReads).toHaveLength(2);
+    expect(commentLog).toContain("- PR metadata source: GitHub API");
     expect(commentLog).toContain("- auth path: GH_TOKEN -> secrets.GITHUB_TOKEN");
+  });
+
+  test("a failed live head re-check fails the run before any write", () => {
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "pull_request_target",
+      eventPayload: {
+        pull_request: { number: 98, head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Fixes #97", labels: [] },
+      },
+      prNumber: 98,
+      blockPulls: true,
+      commentsJson: [currentReviewGateComment],
+      checkRunsJson: [],
+      statusesJson: [],
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(commentLog).toBe("");
+    expect(ghLog).not.toContain('"method":"POST"');
+    expect(ghLog).not.toContain('"method":"DELETE"');
+    expect(ghLog).not.toContain('"method":"PATCH"');
+  });
+
+  test.each(["pull_request_target", "workflow_call"] as const)(
+    "%s: a head that moved during evaluation skips every comment and label write",
+    (eventName) => {
+      const pr = { number: 98, head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Fixes #97", labels: [{ name: "gate:needs-fix" }] };
+      const { result, ghLog, commentLog } = runWorkflow({
+        eventName,
+        eventPayload: eventName === "pull_request_target" ? { action: "opened", pull_request: pr } : undefined,
+        pullJson: eventName === "workflow_call" ? pr : undefined,
+        prNumber: 98,
+        liveHeadSha: "cccccccccccccccccccccccccccccccccccccccc",
+        commentsJson: [currentReviewGateComment],
+        checkRunsJson: [],
+        statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain("PR head moved from aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa to cccccccccccccccccccccccccccccccccccccccc");
+      expect(commentLog).toBe("");
+      expect(ghLog).not.toContain('"method":"POST"');
+      expect(ghLog).not.toContain('"method":"DELETE"');
+      expect(ghLog).not.toContain('"method":"PATCH"');
+    },
+  );
+
+  test.each([
+    ["missing blocking-set", currentReviewGateComment.body.replace("blocking-set:\n", "")],
+    ["missing next-action", currentReviewGateComment.body.replace(/next-action: [^\n]+\n/, "")],
+    ["empty next-action", currentReviewGateComment.body.replace(/next-action: [^\n]+/, "next-action:")],
+    ["unknown verdict state", currentReviewGateComment.body.replace("merge-candidate", "approved")],
+  ])("a trusted verdict with %s parses as invalid and gets no label", (_case, body) => {
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [{ name: "gate:merge-candidate" }] },
+      commentsJson: [{ ...currentReviewGateComment, body, created_at: "2026-09-26T20:18:26Z" }],
+      checkRunsJson: [], statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- latest marker parse: invalid");
+    expect(commentLog).toContain("- review gate state: ungated");
+    expect(commentLog).toContain("- readiness: false");
+    expect(ghLog).not.toContain("labels[]=gate:");
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:merge-candidate","method":"DELETE"');
+  });
+
+  test("a newer malformed trusted comment does not supersede an older valid verdict", () => {
+    process.env.TRACER_REVIEWER_LOGINS = "reviewer";
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [
+        currentReviewGateComment,
+        { ...currentReviewGateComment, body: currentReviewGateComment.body.replace("blocking-set:\n", ""), created_at: "2026-01-02T00:00:00Z" },
+      ],
+      checkRunsJson: [], statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- latest marker parse: valid");
+    expect(commentLog).toContain("- review gate verdict: merge-candidate");
+    expect(commentLog).toContain("- readiness: true");
+    expect(ghLog).toContain('"labels[]=gate:merge-candidate"');
+  });
+
+  test.each([
+    ["invalid next action", currentReviewGateComment.body.replace(/next-action: [^\n]+/, "next-action: nonsense")],
+    ["empty needs-fix blocking set", currentReviewGateComment.body.replace("merge-candidate", "needs-fix").replace("next-action: gh pr merge 98 --squash --match-head-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", `next-action: ${nextActionByVerdict["needs-fix"]}`)],
+  ])("does not authorize any label for a verdict with %s", (_case, body) => {
+    process.env.TRACER_REVIEWER_LOGINS = "reviewer";
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "workflow_call", prNumber: 98,
+      pullJson: { head: { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, body: "Closes #97", labels: [] },
+      commentsJson: [{ ...currentReviewGateComment, body, created_at: "2026-09-26T20:18:26Z" }],
+      checkRunsJson: [], statusesJson: [{ context: "ci", state: "success", created_at: "2026-01-03T00:00:00Z" }],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- latest marker parse: invalid");
+    expect(ghLog).not.toContain("labels[]=gate:");
   });
 
   test("workflow_call still uses the PR endpoint when no event payload is available", () => {
@@ -295,7 +602,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
   test("a superseded failed rerun cannot override a newer success", () => {
     const { result, commentLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "pull_request_target",
       eventPayload: {
         pull_request: {
           number: 98,
@@ -354,7 +661,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
   test("same-name check runs from distinct apps stay separate", () => {
     const { result, commentLog } = runWorkflow({
-      eventName: "pull_request",
+      eventName: "pull_request_target",
       eventPayload: {
         pull_request: {
           number: 98,
@@ -367,7 +674,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
       commentsJson: [
         {
           user: { login: "reviewer" },
-          body: "## review-gate: merge-candidate\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 1\nreviewed-files: 2\n",
+          body: "## review-gate: merge-candidate\nhead-sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nreview-round: 1\nreviewed-files: 2\nblocking-set:\nnext-action: gh pr view 98\n",
           created_at: "2026-01-01T00:00:00Z",
         },
       ],

@@ -9,6 +9,7 @@ type GateComment = {
 };
 
 type Comment = { author: { login: string } | null; body: string; createdAt: string };
+type ParseGateOptions = { pullRequestNumber?: number };
 
 function reviewerLogins(): Set<string> {
   const logins = new Set((process.env.TRACER_REVIEWER_LOGINS ?? "").split(",").map((login) => login.trim().toLowerCase()).filter(Boolean));
@@ -27,6 +28,8 @@ function trustedComments(comments: Comment[]): Comment[] {
 }
 
 const VALID_VERDICTS = new Set<Verdict>(["needs-fix", "merge-candidate", "needs-human", "blocked"]);
+const BLOCKING_SET_REQUIRED_SINCE = "2026-09-01T12:23:47Z";
+const NEXT_ACTION_REQUIRED_SINCE = "2026-09-26T20:18:26Z";
 
 type ParseGateCommentResult =
   | { kind: "none" }
@@ -40,7 +43,27 @@ function parseIntegerField(body: string, field: string): number | null {
   return Number.isInteger(value) ? value : null;
 }
 
-function parseGateBody(body: string): Omit<GateComment, "commentedAt"> | null {
+function validNextAction(verdict: Verdict, nextAction: string, headSha: string, pullRequestNumber?: number): boolean {
+  if (verdict === "needs-fix") {
+    const match = nextAction.match(/^from-pr-review https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)$/);
+    return match !== null && (pullRequestNumber === undefined || Number(match[1]) === pullRequestNumber);
+  }
+  if (verdict === "merge-candidate") {
+    const readyMatch = nextAction.match(/^gh pr ready (\d+)$/);
+    const mergeMatch = nextAction.match(new RegExp(`^gh pr merge (\\d+) --squash --match-head-commit ${headSha}$`));
+    return (readyMatch !== null && (pullRequestNumber === undefined || Number(readyMatch[1]) === pullRequestNumber)) ||
+      (mergeMatch !== null && (pullRequestNumber === undefined || Number(mergeMatch[1]) === pullRequestNumber));
+  }
+  if (verdict === "needs-human") {
+    const match = nextAction.match(/^gh pr view (\d+) --web$/);
+    return match !== null && (pullRequestNumber === undefined || Number(match[1]) === pullRequestNumber);
+  }
+  const checksMatch = nextAction.match(/^gh pr checks (\d+)$/);
+  return (checksMatch !== null && (pullRequestNumber === undefined || Number(checksMatch[1]) === pullRequestNumber)) ||
+    /^gh (?:api \S+|pr view \d+(?: --web)?|run view \d+(?: --log)?|variable get \S+(?: -R \S+)?)$/.test(nextAction);
+}
+
+function parseGateBody(body: string, commentedAt?: string, options: ParseGateOptions = {}): Omit<GateComment, "commentedAt"> | null {
   if (!body.startsWith("## review-gate:")) return null;
 
   const verdictMatch = body.match(/^## review-gate:\s*(\S+)/);
@@ -58,33 +81,58 @@ function parseGateBody(body: string): Omit<GateComment, "commentedAt"> | null {
   const reviewedFiles = parseIntegerField(body, "reviewed-files");
   if (reviewedFiles === null) return null;
 
+  const blockingSetMatches = [...body.matchAll(/^blocking-set:[ \t]*(.*?)\s*$/gm)];
+  if (blockingSetMatches.length > 1) return null;
+  if (blockingSetMatches.length === 0) {
+    if (!commentedAt || !Number.isFinite(Date.parse(commentedAt)) || Date.parse(commentedAt) >= Date.parse(BLOCKING_SET_REQUIRED_SINCE)) return null;
+  } else {
+    const blockingSet = blockingSetMatches[0][1].trim();
+    const blockingTargets = blockingSet === "" ? [] : blockingSet.split(",").map((target) => target.trim());
+    if (blockingTargets.some((target) => target.length === 0)) return null;
+    if (verdict === "needs-fix" && blockingTargets.length === 0) return null;
+    if ((verdict === "merge-candidate" || verdict === "needs-human") && blockingTargets.length > 0) return null;
+  }
+
+  const nextActionMatches = [...body.matchAll(/^next-action:[ \t]*(.*?)\s*$/gm)];
+  if (nextActionMatches.length > 1) return null;
+  if (nextActionMatches.length === 0) {
+    if (!commentedAt || !Number.isFinite(Date.parse(commentedAt)) || Date.parse(commentedAt) >= Date.parse(NEXT_ACTION_REQUIRED_SINCE)) return null;
+  } else if (!validNextAction(verdict, nextActionMatches[0][1].trim(), headShaMatch[1], options.pullRequestNumber)) {
+    return null;
+  }
+
   return { verdict, headSha: headShaMatch[1], reviewRound, reviewedFiles };
 }
 
-function parseGateComment(comments: Comment[]): ParseGateCommentResult {
-  let latestMarked: Comment | null = null;
+function parseGateComment(comments: Comment[], options: ParseGateOptions = {}): ParseGateCommentResult {
+  const trusted = trustedComments(comments);
+  let latestConforming: GateComment | null = null;
 
-  for (const comment of trustedComments(comments)) {
+  for (const comment of trusted) {
+    const parsed = parseGateBody(comment.body, comment.createdAt, options);
+    if (!parsed) continue;
 
-    if (!latestMarked || comment.createdAt >= latestMarked.createdAt) {
-      latestMarked = comment;
+    if (!latestConforming || comment.createdAt >= latestConforming.commentedAt) {
+      latestConforming = { ...parsed, commentedAt: comment.createdAt };
     }
   }
 
+  if (latestConforming) return { kind: "parsed", verdict: latestConforming };
+
+  let latestMarked: Comment | null = null;
+  for (const comment of trusted) {
+    if (!latestMarked || comment.createdAt >= latestMarked.createdAt) latestMarked = comment;
+  }
   if (!latestMarked) return { kind: "none" };
-
-  const parsed = parseGateBody(latestMarked.body);
-  if (!parsed) return { kind: "invalid", comment: latestMarked };
-
-  return { kind: "parsed", verdict: { ...parsed, commentedAt: latestMarked.createdAt } };
+  return { kind: "invalid", comment: latestMarked };
 }
 
-function latestConformingGateComment(comments: Comment[]): GateComment | null {
+function latestConformingGateComment(comments: Comment[], options: ParseGateOptions = {}): GateComment | null {
   let latest: GateComment | null = null;
 
   for (const comment of trustedComments(comments)) {
 
-    const parsed = parseGateBody(comment.body);
+    const parsed = parseGateBody(comment.body, comment.createdAt, options);
     if (!parsed) continue;
 
     if (!latest || comment.createdAt >= latest.commentedAt) {
@@ -95,5 +143,5 @@ function latestConformingGateComment(comments: Comment[]): GateComment | null {
   return latest;
 }
 
-export type { Verdict, GateComment, Comment };
+export type { Verdict, GateComment, Comment, ParseGateOptions };
 export { latestConformingGateComment, parseGateBody, parseGateComment, reviewerLogins };

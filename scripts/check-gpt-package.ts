@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { formatCheckDiagnostic } from "./check-diagnostic";
+
 // Custom GPT Instructions field limit, counted in characters.
 export const INSTRUCTIONS_LIMIT = 8000;
 
@@ -44,14 +46,14 @@ export function checkPackage(
   const errors: string[] = [];
   const length = countCharacters(instructions);
   if (length > INSTRUCTIONS_LIMIT) {
-    errors.push(`custom-gpt-instructions.md is ${length} characters; the Custom GPT limit is ${INSTRUCTIONS_LIMIT}`);
+    errors.push(formatCheckDiagnostic(`custom-gpt-instructions.md is at most ${INSTRUCTIONS_LIMIT} characters`, `${length} characters`, `reduce the instruction text to ${INSTRUCTIONS_LIMIT} characters or fewer`));
   }
   const paths = readmeSourcePaths(readme);
   if (paths.length === 0) {
-    errors.push("README.md names no repository source paths in its table");
+    errors.push(formatCheckDiagnostic("at least one repository source path in the README table", "none", "add repository source paths to README.md or remove the invalid check input"));
   }
   for (const path of paths) {
-    if (!pathExists(path)) errors.push(`README.md names a missing file: ${path}`);
+    if (!pathExists(path)) errors.push(formatCheckDiagnostic(`an existing repository file named in README.md`, `missing path ${path}`, `correct or remove the stale README.md path`));
   }
   return errors;
 }
@@ -62,7 +64,7 @@ function main(): void {
     .sort(compareVersions);
   const latest = versions.at(-1);
   if (!latest) {
-    console.error(`no versioned package under ${packagesRoot}`);
+    console.error(formatCheckDiagnostic(`a versioned package under ${packagesRoot}`, "none found", "add or restore a versioned package"));
     process.exit(2);
   }
   const dir = join(packagesRoot, latest);

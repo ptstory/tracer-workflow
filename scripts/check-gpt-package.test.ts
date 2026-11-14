@@ -24,18 +24,18 @@ describe("Review Gate GPT package check", () => {
   test("fails when instructions exceed the limit", () => {
     const errors = checkPackage("x".repeat(INSTRUCTIONS_LIMIT + 1), readme, allExist);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain(`${INSTRUCTIONS_LIMIT + 1} characters`);
+    expect(errors[0]).toBe(`Expected: custom-gpt-instructions.md is at most ${INSTRUCTIONS_LIMIT} characters; found: ${INSTRUCTIONS_LIMIT + 1} characters; action: reduce the instruction text to ${INSTRUCTIONS_LIMIT} characters or fewer`);
   });
 
   test("fails when a table path is missing", () => {
     const errors = checkPackage("ok", readme, (path) => !path.startsWith("skills/"));
-    expect(errors).toEqual(["README.md names a missing file: skills/review-gate/references/verdict-contract.md"]);
+    expect(errors).toEqual(["Expected: an existing repository file named in README.md; found: missing path skills/review-gate/references/verdict-contract.md; action: correct or remove the stale README.md path"]);
   });
 
   test("fails when a repository path outside actions and skills is missing", () => {
     const missingPathReadme = `${readme}\n| Knowledge | \`docs/missing.md\` |`;
     const errors = checkPackage("ok", missingPathReadme, (path) => path !== "docs/missing.md");
-    expect(errors).toEqual(["README.md names a missing file: docs/missing.md"]);
+    expect(errors).toEqual(["Expected: an existing repository file named in README.md; found: missing path docs/missing.md; action: correct or remove the stale README.md path"]);
   });
 
   test("ignores inline code that is not a repository path", () => {
@@ -43,7 +43,7 @@ describe("Review Gate GPT package check", () => {
   });
 
   test("fails when the README table names no source paths", () => {
-    expect(checkPackage("ok", "no table here", allExist)).toEqual(["README.md names no repository source paths in its table"]);
+    expect(checkPackage("ok", "no table here", allExist)).toEqual(["Expected: at least one repository source path in the README table; found: none; action: add repository source paths to README.md or remove the invalid check input"]);
   });
 
   test("reads paths from table rows only", () => {
