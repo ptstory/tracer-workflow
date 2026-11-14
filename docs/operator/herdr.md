@@ -42,10 +42,10 @@ Both keybindings use Herdr's default `ctrl+b` prefix. The plugin READMEs documen
 4. After the implementation push and PR evidence refresh, launch the review in a fresh Review Gate session from the issue lane. The `open -g` command opens ChatGPT with the userscript's opt-in autosend query:
 
    ```sh
-   open -g "https://chatgpt.com/?autosend=1&q=<URL-encoded @review-gate and full PR URL>"
+   open -g "https://chatgpt.com/?autosend=1&q=@review-gate <PR URL>"
    ```
 
-   For example, the decoded `q` value is `@review-gate https://github.com/ptstory/tracer-workflow/pull/258`. Review Gate Auto-send only opens the browser when the PR has no trusted verdict for its current head; a matching current-head verdict is printed instead. If no userscript is installed, the prompt remains available for manual submission.
+   Replace `<PR URL>` with the full pull request URL. Review Gate Auto-send only opens the browser when the PR has no trusted verdict for its current head; a matching current-head verdict is printed instead. If no userscript is installed, the prompt remains available for manual submission.
 
 ## Read the `gate:*` verdict labels
 
