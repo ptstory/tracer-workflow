@@ -4,7 +4,7 @@ This is one operator setup, not a workflow requirement. The examples below descr
 
 ## One repo space, one issue workspace
 
-Create **one Herdr space per repository**. Start each issue lane as its own worktree workspace nested under that repository's space. Never start issue work in the repository's home checkout. The Nov 13 #241 incident is the reason for this guardrail: [issue #241](https://github.com/ptstory/tracer-workflow/issues/241). Keep each lane on its issue branch and PR; do not reuse a workspace for unrelated issue work.
+Create **one Herdr space per repository**. Start each issue lane as its own worktree workspace nested under that repository's space. Never start issue work in the repository's home checkout. The issue's acceptance criteria cite the Nov 13 #241 incident for this guardrail: [issue #241](https://github.com/ptstory/tracer-workflow/issues/241). Keep each lane on its issue branch and PR; do not reuse a workspace for unrelated issue work.
 
 | Visible element | Provided by | Operator meaning |
 |---|---|---|
