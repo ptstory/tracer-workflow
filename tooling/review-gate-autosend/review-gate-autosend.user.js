@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT review-gate autosend
 // @namespace    ptstory
-// @version      1.3
+// @version      1.4
 // @description  Auto-submits a prefilled @review-gate prompt opened via chatgpt.com/?autosend=1&q=...
 // @match        https://chatgpt.com/*
 // @run-at       document-start
@@ -31,15 +31,14 @@
     return;
   }
 
-  const prompt = (params.get('q') || '').trim();
+  const prompt = params.get('q') || '';
   const match = prompt.match(/^@review-gate https:\/\/github\.com\/([\w.-]+)\/[\w.-]+\/pull\/\d+$/);
   if (!match || !ALLOWED_OWNERS.includes(match[1])) {
     console.warn(TAG, 'refused: prompt does not match the allowed pattern or owner', JSON.stringify(prompt));
     return;
   }
 
-  // One send per prompt per tab, so a reload never sends twice.
-  const sentKey = `review-gate-autosend:${prompt}`;
+  const sentKey = 'review-gate-autosend:sent';
   if (sessionStorage.getItem(sentKey)) {
     console.info(TAG, 'already sent in this tab; doing nothing');
     return;
@@ -49,7 +48,7 @@
   const composerText = () => {
     const el = find(COMPOSER_SELECTORS);
     if (!el) return '';
-    return (el.value ?? el.innerText ?? '').trim();
+    return el.value ?? el.innerText ?? '';
   };
 
   const started = Date.now();
@@ -66,13 +65,17 @@
       console.info(TAG, 'waiting', { buttonFound: !!button, buttonDisabled: button?.disabled, composerText: text });
     }
 
-    if (!button || button.disabled || !text) {
+    if (!button || button.disabled || text !== prompt) {
       readySince = null;
     } else if (text !== lastText) {
       // Composer changed (e.g. the mention resolving); restart the settle window.
       readySince = Date.now();
     } else if (readySince && Date.now() - readySince >= SETTLE_MS) {
       clearInterval(timer);
+      if (sessionStorage.getItem(sentKey)) {
+        console.info(TAG, 'already sent in this tab; doing nothing');
+        return;
+      }
       sessionStorage.setItem(sentKey, String(Date.now()));
       button.click();
       console.info(TAG, 'sent', prompt);
