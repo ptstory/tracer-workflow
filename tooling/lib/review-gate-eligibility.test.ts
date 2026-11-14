@@ -4,6 +4,7 @@ import type { Comment, Verdict } from "./verdict";
 import {
   evaluateFixPassCompletion,
   evaluateReviewGateEligibility,
+  countCorrectiveRounds,
   hasNewDurableDisposition,
   recordFailedAttempt,
   retryDelayMs,
@@ -39,6 +40,7 @@ function input(overrides: Partial<EligibilityInput> = {}): EligibilityInput {
     currentLabels: ["gate:needs-fix"],
     comments: [makeComment("needs-fix")],
     trustedReviewerLogins,
+    correctiveReviewHistory: [],
     priorAttempt: null,
     now,
     ...overrides,
@@ -122,12 +124,40 @@ describe("evaluateReviewGateEligibility", () => {
     }))).toMatchObject({ kind: "stop", reason: "non-actionable-verdict" });
   });
 
-  test("stops needs-fix after two corrective rounds", () => {
-    expect(evaluateReviewGateEligibility(input({ comments: [makeComment("needs-fix", headSha, 2)] })).kind).toBe("dispatch");
-    expect(evaluateReviewGateEligibility(input({ comments: [makeComment("needs-fix", headSha, 3)] }))).toMatchObject({
-      kind: "stop",
-      reason: "circuit-breaker",
-    });
+  test("counts corrective rounds from changed files intersecting prior blocking targets", () => {
+    const baseline = { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: [], rebaseline: true };
+    const nonCorrectiveReviews = [
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: ["README.md"], rebaseline: false },
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: ["docs/guide.md"], rebaseline: false },
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: ["tooling/other.ts"], rebaseline: false },
+    ];
+    expect(countCorrectiveRounds([baseline, ...nonCorrectiveReviews])).toBe(0);
+    expect(countCorrectiveRounds([
+      { blockingTargets: [], changedFilesSincePrevious: [], rebaseline: true },
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: [], rebaseline: false },
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: ["src/api.ts"], rebaseline: false },
+    ])).toBe(1);
+    expect(evaluateReviewGateEligibility(input({
+      comments: [makeComment("needs-fix", headSha, 3)],
+      correctiveReviewHistory: [baseline, ...nonCorrectiveReviews],
+    })).kind).toBe("dispatch");
+
+    const correctiveReviews = [
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: ["src/api.ts"], rebaseline: false },
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: ["src/api.ts"], rebaseline: false },
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: ["src/api.ts"], rebaseline: false },
+    ];
+    expect(countCorrectiveRounds([baseline, ...correctiveReviews])).toBe(3);
+    expect(countCorrectiveRounds([
+      baseline,
+      ...correctiveReviews.slice(0, 2),
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: ["README.md"], rebaseline: true },
+      { blockingTargets: ["src/api.ts"], changedFilesSincePrevious: ["src/api.ts"], rebaseline: false },
+    ])).toBe(1);
+    expect(evaluateReviewGateEligibility(input({
+      comments: [makeComment("needs-fix", headSha, 3)],
+      correctiveReviewHistory: [baseline, ...correctiveReviews],
+    }))).toMatchObject({ kind: "stop", reason: "circuit-breaker" });
   });
 
   test("keeps needs-human notify-only when the corrective-round breaker has been reached", () => {
@@ -199,17 +229,35 @@ describe("evaluateFixPassCompletion", () => {
     expect(evaluateFixPassCompletion({ exitCode: 0, verifiedPrProgress: false, durableDispositionRecorded: true })).toEqual({ kind: "completed" });
   });
 
-  test("requires a new structured durable disposition", () => {
-    const previous: Comment[] = [];
-    const next: Comment[] = [{
+  test("requires an attributable PR-specific ledger covering every needs-fix target", () => {
+    const context = {
+      repository: "acme/repo",
+      pullRequestNumber,
+      authorLogin: "agent",
+      headSha,
+      resultingHeadSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      changedFilesSinceHead: ["tooling/lib/review-gate-eligibility.ts"],
+      blockingTargets: ["tooling/lib/review-gate-eligibility.ts", "tooling/review-gate-poller/poller.ts"],
+    };
+    const comment: Comment = {
       author: { login: "agent" },
       createdAt: "2026-09-28T00:00:00Z",
-      body: "Disposition ledger:\nthread 1 | src/api.ts | finding: example | severity: medium | disposition: defer | reasoning: out of scope | left open: tracked\nNext action: review-gate https://github.com/acme/repo/pull/98",
-    }];
-    expect(hasNewDurableDisposition(previous, next)).toBe(true);
-    expect(hasNewDurableDisposition(next, next)).toBe(false);
-    expect(hasNewDurableDisposition(previous, [{ ...next[0], body: "done" }])).toBe(false);
-    expect(hasNewDurableDisposition(previous, [{ ...next[0], body: next[0].body.replace("disposition: defer", "disposition: maybe") }])).toBe(false);
+      body: `PR: acme/repo#${pullRequestNumber}\nhead SHA (before → after): ${headSha} → bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n\nDisposition ledger:\nthread 1 | tooling/lib/review-gate-eligibility.ts | finding: eligibility | severity: high | disposition: defer | reasoning: out of scope | left open: tracked\nthread 2 | tooling/review-gate-poller/poller.ts | finding: progress | severity: high | disposition: follow-up-issue | reasoning: tracked separately | issue: #123\n\nNext action: review-gate https://github.com/acme/repo/pull/${pullRequestNumber}`,
+    };
+    expect(hasNewDurableDisposition([], [comment], context)).toBe(true);
+    expect(hasNewDurableDisposition([comment], [comment], context)).toBe(false);
+    expect(hasNewDurableDisposition([], [{ ...comment, author: { login: "bystander" } }], context)).toBe(false);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("acme/repo#98", "acme/other#98") }], context)).toBe(false);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("head SHA (before → after):", "repeated\nhead SHA (before → after):") }], context)).toBe(true);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: `${comment.body}\nPR: acme/repo#${pullRequestNumber}\nhead SHA (before → after): ${headSha} → bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nDisposition ledger:\nthread 3 | src/api.ts | finding: second report | severity: high | disposition: defer | reasoning: conflicts | left open: tracked` }], context)).toBe(false);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("thread 2 | tooling/review-gate-poller/poller.ts | finding: progress | severity: high | disposition: follow-up-issue | reasoning: tracked separately | issue: #123\n", "") }], context)).toBe(false);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("head SHA (before → after):", "head SHA:") }], context)).toBe(false);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("disposition: defer | reasoning: out of scope | left open: tracked", "disposition: fix-now | reasoning: applied | done: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") }], context)).toBe(true);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("Disposition ledger:", "Disposition ledger:\nunexpected chatter") }], context)).toBe(false);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("disposition: defer | reasoning: out of scope | left open: tracked", "disposition: fix-now | reasoning: applied | done: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") }], { ...context, changedFilesSinceHead: [] })).toBe(false);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("disposition: defer | reasoning: out of scope | left open: tracked", "disposition: fix-now | reasoning: applied | done: cccccccccccccccccccccccccccccccccccccccc") }], context)).toBe(false);
+    expect(hasNewDurableDisposition([], [comment], { ...context, resultingHeadSha: "invalid" })).toBe(false);
+    expect(hasNewDurableDisposition([], [{ ...comment, body: comment.body.replace("PR: acme/repo#98", "PR: acme/repo#99") }], context)).toBe(false);
   });
 
   test("preserves worker failure regardless of progress", () => {

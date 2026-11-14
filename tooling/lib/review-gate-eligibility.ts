@@ -21,12 +21,19 @@ export type AttemptState = {
   nextRetryAt: number | null;
 };
 
+export type CorrectiveReview = {
+  blockingTargets: readonly string[];
+  changedFilesSincePrevious: readonly string[];
+  rebaseline: boolean;
+};
+
 export type EligibilityInput = {
   pullRequestNumber: number;
   currentHeadSha: string;
   currentLabels: readonly string[];
   comments: Comment[];
   trustedReviewerLogins: readonly string[];
+  correctiveReviewHistory: readonly CorrectiveReview[];
   priorAttempt: AttemptState | null;
   now: number;
   staleInProgressTimeoutMs?: number;
@@ -43,9 +50,37 @@ export type CompletionInput = {
   durableDispositionRecorded: boolean;
 };
 
+export type DurableDispositionContext = {
+  repository: string;
+  pullRequestNumber: number;
+  authorLogin: string;
+  headSha: string;
+  resultingHeadSha: string;
+  changedFilesSinceHead: readonly string[];
+  blockingTargets: readonly string[];
+};
+
 export type CompletionDecision =
   | { kind: "completed" }
   | { kind: "failed"; reason: "worker-failed" | "no-progress" };
+
+function countCorrectiveRounds(history: readonly CorrectiveReview[]): number {
+  let correctiveRounds = 0;
+  let previousTargets: readonly string[] = [];
+  let hasBaseline = false;
+
+  for (const review of history) {
+    if (review.rebaseline) {
+      correctiveRounds = 0;
+      hasBaseline = true;
+    } else if (hasBaseline && review.changedFilesSincePrevious.some((file) => previousTargets.includes(file))) {
+      correctiveRounds += 1;
+    }
+    previousTargets = review.blockingTargets;
+  }
+
+  return correctiveRounds;
+}
 
 function retryDelayMs(attempts: number): number {
   return Math.min(BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attempts - 1), MAX_RETRY_DELAY_MS);
@@ -132,16 +167,61 @@ function evaluateReviewGateEligibility(input: EligibilityInput): EligibilityDeci
       : stop("missing-next-action", verdict);
   }
   if (verdict.verdict !== "needs-fix") return stop("non-actionable-verdict", verdict);
-  if (verdict.reviewRound > MAX_CORRECTIVE_ROUNDS) return stop("circuit-breaker", verdict);
+  if (countCorrectiveRounds(input.correctiveReviewHistory) > MAX_CORRECTIVE_ROUNDS) return stop("circuit-breaker", verdict);
   return attemptDecision(input, verdict);
 }
 
-function hasNewDurableDisposition(before: readonly Comment[], after: readonly Comment[]): boolean {
+function hasNewDurableDisposition(
+  before: readonly Comment[],
+  after: readonly Comment[],
+  context: DurableDispositionContext,
+): boolean {
   const prior = new Set(before.map((comment) => `${comment.createdAt}\u0000${comment.author?.login ?? ""}\u0000${comment.body}`));
+  const requiredTargets = new Set(context.blockingTargets);
+  if (requiredTargets.size === 0) return false;
+
   return after.some((comment) => {
     const key = `${comment.createdAt}\u0000${comment.author?.login ?? ""}\u0000${comment.body}`;
-    return !prior.has(key) && comment.body.includes("Disposition ledger:") && comment.body.includes("Next action:") &&
-      /(?:disposition: (?:fix-now|follow-up-issue|defer|reject|needs-human))/.test(comment.body);
+    if (prior.has(key) || comment.author?.login.toLowerCase() !== context.authorLogin.toLowerCase() ||
+      !/^[0-9a-f]{40}$/.test(context.resultingHeadSha)) return false;
+
+    const lines = comment.body.split(/\r?\n/);
+    const prLines = lines.filter((line) => /^PR: /.test(line));
+    const shaLines = lines.filter((line) => /^head SHA \(before → after\): /.test(line));
+    const nextActionLines = lines.filter((line) => /^Next action:/.test(line));
+    const prValid = prLines.length === 1 && prLines[0] === `PR: ${context.repository}#${context.pullRequestNumber}`;
+    const shaValid = shaLines.length === 1 && new RegExp(`^head SHA \\(before → after\\): ${context.headSha} → ${context.resultingHeadSha}$`).test(shaLines[0]);
+    const nextActionValid = nextActionLines.length === 1 && /^Next action:\s*\S/.test(nextActionLines[0]);
+    if (!prValid || !lines.includes("Disposition ledger:") || !shaValid || !nextActionValid) return false;
+    const ledgerStart = lines.indexOf("Disposition ledger:");
+    const nextActionIndex = lines.indexOf(nextActionLines[0]);
+    const shaIndex = lines.indexOf(shaLines[0]);
+    const prIndex = lines.indexOf(prLines[0]);
+    const ledgerBoundary = Math.min(...[prIndex, shaIndex, nextActionIndex].filter((index) => index > ledgerStart));
+    const ledgerLines = lines.slice(ledgerStart + 1, ledgerBoundary).filter((line) => line.trim());
+    if (prIndex !== 0 || shaIndex <= prIndex || shaIndex >= ledgerStart || ledgerBoundary === Infinity || ledgerLines.length === 0 || ledgerLines.some((line) => !/^\s*thread [^|]+\|/.test(line))) return false;
+
+    const ledgerRows = ledgerLines.flatMap((line) => {
+      const match = line.match(/^\s*thread [^|]+\| ([^|]+) \| finding: [^|]+ \| severity: [^|]+ \| disposition: (fix-now|follow-up-issue|defer|reject|needs-human) \| reasoning: [^|]+ \| (done: ([0-9a-f]{40})|issue: #\d+|left open: .+|reply posted|handed back)\s*$/);
+      return match ? [{ area: match[1].trim(), disposition: match[2], doneSha: match[3] ? match[4] : null }] : [];
+    });
+    if (ledgerRows.length === 0) return false;
+
+    const dispositionsByTarget = new Map<string, Set<string>>();
+    for (const row of ledgerRows) {
+      for (const target of row.area.split(/,\s*/)) {
+        const dispositions = dispositionsByTarget.get(target) ?? new Set<string>();
+        dispositions.add(row.disposition);
+        dispositionsByTarget.set(target, dispositions);
+      }
+    }
+    return [...requiredTargets].every((target) => {
+      const dispositions = dispositionsByTarget.get(target);
+      if (!dispositions || dispositions.size !== 1) return false;
+      const findingRows = ledgerRows.filter((row) => row.area.split(/,\s*/).includes(target));
+      return findingRows.every((row) => row.disposition !== "fix-now" ||
+        (row.doneSha === context.resultingHeadSha && row.doneSha !== context.headSha && context.changedFilesSinceHead.includes(target)));
+    });
   });
 }
 
@@ -153,4 +233,4 @@ function evaluateFixPassCompletion(input: CompletionInput): CompletionDecision {
   return { kind: "completed" };
 }
 
-export { evaluateFixPassCompletion, evaluateReviewGateEligibility, hasNewDurableDisposition, recordFailedAttempt, retryDelayMs };
+export { countCorrectiveRounds, evaluateFixPassCompletion, evaluateReviewGateEligibility, hasNewDurableDisposition, recordFailedAttempt, retryDelayMs };

@@ -17,8 +17,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { evaluateFixPassCompletion, evaluateReviewGateEligibility, hasNewDurableDisposition, recordFailedAttempt, type AttemptState } from "../lib/review-gate-eligibility";
-import { parseGateComment, reviewerLogins } from "../lib/verdict";
+import { evaluateFixPassCompletion, evaluateReviewGateEligibility, hasNewDurableDisposition, recordFailedAttempt, type AttemptState, type CorrectiveReview } from "../lib/review-gate-eligibility";
+import { parseGateComment, parseGateReviewMetadata, reviewerLogins, type Comment, type GateComment } from "../lib/verdict";
 
 // --- config -------------------------------------------------------------------
 
@@ -47,6 +47,7 @@ function gh(args: string[]): string {
 }
 
 type PR = { number: number; headRefOid: string };
+type CompareResult = { status: string; ahead_by: number; files: { filename: string }[] };
 
 function openPRs(): PR[] {
   const out = gh([
@@ -62,10 +63,10 @@ function openPRs(): PR[] {
   return JSON.parse(out);
 }
 
-type Comment = { author: { login: string }; body: string; createdAt: string };
-type PRDetails = { comments: Comment[]; labels: { name: string }[] };
+type PRDetails = { labels: { name: string }[]; headRefOid: string };
+type ReviewComment = { user: { login: string } | null; body: string; created_at: string };
 
-function prDetails(n: number): PRDetails {
+function prDetails(n: number, includeComments = false): PRDetails & { comments?: Comment[] } {
   const out = gh([
     "pr",
     "view",
@@ -73,9 +74,96 @@ function prDetails(n: number): PRDetails {
     "--repo",
     repo,
     "--json",
-    "comments,labels",
+    includeComments ? "labels,headRefOid,comments" : "labels,headRefOid",
   ]);
-  return JSON.parse(out) as PRDetails;
+  return JSON.parse(out) as PRDetails & { comments?: Comment[] };
+}
+
+function reviewThreadComments(pullRequestNumber: number): Comment[] {
+  const out = gh(["api", `repos/${repo}/issues/${pullRequestNumber}/comments`, "--paginate", "--slurp"]);
+  const pages = JSON.parse(out) as ReviewComment[][];
+  return pages.flatMap((page) => page.map((comment) => ({
+    author: comment.user ? { login: comment.user.login } : null,
+    body: comment.body,
+    createdAt: comment.created_at,
+  })));
+}
+
+function reviewComments(pullRequestNumber: number): ReviewComment[] {
+  const out = gh(["api", `repos/${repo}/pulls/${pullRequestNumber}/comments`, "--paginate", "--slurp"]);
+  const pages = JSON.parse(out) as ReviewComment[][];
+  return pages.flatMap((page) => page);
+}
+
+function compareCommits(baseSha: string, headSha: string): CompareResult {
+  if (baseSha === headSha) return { status: "identical", ahead_by: 0, files: [] };
+  const out = gh(["api", `repos/${repo}/compare/${baseSha}...${headSha}`, "--paginate", "--slurp"]);
+  const parsed = JSON.parse(out) as Partial<CompareResult> | Partial<CompareResult>[];
+  const pages = Array.isArray(parsed) ? parsed : [parsed];
+  const firstPage = pages[0];
+  const files = pages.flatMap((page) => page.files ?? []);
+  if (!firstPage || typeof firstPage.status !== "string" || typeof firstPage.ahead_by !== "number" || files.length >= 300 ||
+    files.some((file) => typeof file.filename !== "string")) {
+    throw new Error(`Unable to establish complete changed-file comparison from ${baseSha} to ${headSha}`);
+  }
+  return { status: firstPage.status, ahead_by: firstPage.ahead_by, files };
+}
+
+function correctiveReviewHistory(comments: Comment[], pullRequestNumber: number, trustedLogins: readonly string[]): CorrectiveReview[] {
+  const reviews = comments
+    .filter((comment) => comment.body.startsWith("## review-gate:") && comment.author?.login &&
+      trustedLogins.some((login) => login.trim().toLowerCase() === comment.author?.login.toLowerCase()))
+    .map((comment) => {
+      const parsed = parseGateComment([comment], { pullRequestNumber, trustedReviewerLogins: trustedLogins });
+      const metadata = parseGateReviewMetadata(comment.body);
+      return parsed.kind === "parsed" && metadata
+        ? { commentedAt: parsed.verdict.commentedAt, headSha: parsed.verdict.headSha, blockingTargets: metadata.blockingTargets, rebaseline: metadata.rebaseline }
+        : null;
+    })
+    .filter((review): review is NonNullable<typeof review> => review !== null)
+    .sort((left, right) => left.commentedAt.localeCompare(right.commentedAt));
+
+  const history: CorrectiveReview[] = [];
+  let previousSha: string | null = null;
+  let previousTargetsKnown = true;
+  for (const review of reviews) {
+    if (previousSha !== null && !review.rebaseline && !previousTargetsKnown) {
+      throw new Error(`Cannot derive corrective-round history for PR #${pullRequestNumber}: prior verdict has no blocking set`);
+    }
+    if (review.blockingTargets === null && previousSha !== null) {
+      throw new Error(`Cannot derive corrective-round history for PR #${pullRequestNumber}: prior verdict has no blocking set`);
+    }
+    const comparison = previousSha === null || review.rebaseline || previousSha === review.headSha
+      ? null
+      : compareCommits(previousSha, review.headSha);
+    if (comparison && (comparison.status !== "ahead" || comparison.ahead_by < 1)) {
+      throw new Error(`Cannot derive corrective-round history for PR #${pullRequestNumber}: non-linear history between ${previousSha} and ${review.headSha}`);
+    }
+    const changedFilesSincePrevious = comparison?.files.map((file) => file.filename) ?? [];
+    history.push({
+      blockingTargets: review.blockingTargets ?? [],
+      changedFilesSincePrevious,
+      rebaseline: review.rebaseline || previousSha === null,
+    });
+    previousSha = review.headSha;
+    previousTargetsKnown = review.blockingTargets !== null;
+  }
+  return history;
+}
+
+function blockingTargetsForVerdict(comments: Comment[], verdict: GateComment, pullRequestNumber: number, trustedLogins: readonly string[]): string[] {
+  const matches = comments.flatMap((comment) => {
+    if (!comment.author?.login || !trustedLogins.some((login) => login.trim().toLowerCase() === comment.author?.login.toLowerCase())) return [];
+    const parsed = parseGateComment([comment], { pullRequestNumber, trustedReviewerLogins: trustedLogins });
+    const metadata = parseGateReviewMetadata(comment.body);
+    if (parsed.kind !== "parsed" || !metadata || parsed.verdict.headSha !== verdict.headSha || parsed.verdict.verdict !== "needs-fix") return [];
+    return [{ commentedAt: parsed.verdict.commentedAt, blockingTargets: metadata.blockingTargets }];
+  }).sort((left, right) => left.commentedAt.localeCompare(right.commentedAt));
+  return matches.at(-1)?.blockingTargets ?? [];
+}
+
+function authenticatedLogin(): string {
+  return gh(["api", "user", "--jq", ".login"]).trim();
 }
 
 // --- state --------------------------------------------------------------------
@@ -235,13 +323,6 @@ function triggerFixPass(pr: PR): void {
   console.log(out);
 }
 
-function currentGitHeadSha(): string {
-  return execFileSync("git", ["rev-parse", "HEAD"], {
-    encoding: "utf8",
-    cwd: process.env.RG_WORKDIR ?? process.cwd(),
-  }).trim();
-}
-
 // --- main ---------------------------------------------------------------------
 
 function main(): void {
@@ -251,14 +332,27 @@ function main(): void {
 
   for (const pr of openPRs()) {
     const details = prDetails(pr.number);
+    const comments = [...reviewThreadComments(pr.number), ...reviewComments(pr.number).map((comment) => ({
+      author: comment.user,
+      body: comment.body,
+      createdAt: comment.created_at,
+    }))];
     const existing = state[String(pr.number)];
-    const previousComments = details.comments;
+    const previousComments = comments;
+    let reviewHistory: CorrectiveReview[];
+    try {
+      reviewHistory = correctiveReviewHistory(comments, pr.number, (process.env.TRACER_REVIEWER_LOGINS ?? "").split(","));
+    } catch (error) {
+      console.warn(`PR #${pr.number}: unable to establish corrective-round history: ${sanitizeError(error)}`);
+      continue;
+    }
     const decision = evaluateReviewGateEligibility({
       pullRequestNumber: pr.number,
       currentHeadSha: pr.headRefOid,
       currentLabels: details.labels.map((label) => label.name),
-      comments: details.comments,
+      comments,
       trustedReviewerLogins: (process.env.TRACER_REVIEWER_LOGINS ?? "").split(","),
+      correctiveReviewHistory: reviewHistory,
       priorAttempt: parseAttempt(existing),
       now,
       staleInProgressTimeoutMs: staleInProgressTimeoutMs(),
@@ -292,16 +386,30 @@ function main(): void {
 
     console.log(`PR #${pr.number}: needs-fix on ${pr.headRefOid}, triggering fix pass`);
     try {
-      const initialSha = currentGitHeadSha();
+      const actingLogin = authenticatedLogin();
       triggerFixPass(pr);
       const finishedAt = nowMs();
-      const resultingSha = currentGitHeadSha();
-      const updatedComments = prDetails(pr.number).comments;
-      const completion = evaluateFixPassCompletion({
-        exitCode: 0,
-        verifiedPrProgress: resultingSha !== initialSha,
-        durableDispositionRecorded: hasNewDurableDisposition(previousComments, updatedComments),
+      const updatedDetails = prDetails(pr.number, true);
+      const updatedComments = [
+        ...(updatedDetails.comments ?? []),
+        ...reviewThreadComments(pr.number),
+        ...reviewComments(pr.number).map((comment) => ({ author: comment.user, body: comment.body, createdAt: comment.created_at })),
+      ];
+      const resultingSha = updatedDetails.headRefOid;
+      const progressComparison = resultingSha === decision.verdict.headSha
+        ? null
+        : compareCommits(decision.verdict.headSha, resultingSha);
+      const verifiedPrProgress = progressComparison?.status === "ahead" && progressComparison.ahead_by > 0;
+      const durableDispositionRecorded = hasNewDurableDisposition(previousComments, updatedComments, {
+        repository: repo,
+        pullRequestNumber: pr.number,
+        authorLogin: actingLogin,
+        headSha: decision.verdict.headSha,
+        resultingHeadSha: resultingSha,
+        changedFilesSinceHead: progressComparison?.files.map((file) => file.filename) ?? [],
+        blockingTargets: blockingTargetsForVerdict(previousComments, decision.verdict, pr.number, (process.env.TRACER_REVIEWER_LOGINS ?? "").split(",")),
       });
+      const completion = evaluateFixPassCompletion({ exitCode: 0, verifiedPrProgress, durableDispositionRecorded });
       if (completion.kind === "failed") {
         state[key] = {
           ...state[key],

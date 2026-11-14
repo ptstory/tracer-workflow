@@ -97,6 +97,10 @@ function parseGateBody(body: string, commentedAt?: string, options: ParseGateOpt
     if ((verdict === "merge-candidate" || verdict === "needs-human") && blockingTargets.length > 0) return null;
   }
 
+  const rebaselineMatches = [...body.matchAll(/^rebaseline:[ \t]*(.*?)\s*$/gm)];
+  if (rebaselineMatches.length > 1 || (rebaselineMatches.length === 1 &&
+    (rebaselineMatches[0][1] !== "yes" || reviewRound !== 0))) return null;
+
   const nextActionMatches = [...body.matchAll(/^next-action:[ \t]*(.*?)\s*$/gm)];
   if (nextActionMatches.length > 1) return null;
   if (nextActionMatches.length === 0) {
@@ -107,6 +111,19 @@ function parseGateBody(body: string, commentedAt?: string, options: ParseGateOpt
 
   const nextAction = nextActionMatches[0]?.[1].trim();
   return { verdict, headSha: headShaMatch[1], reviewRound, reviewedFiles, ...(nextAction === undefined ? {} : { nextAction }) };
+}
+
+function parseGateReviewMetadata(body: string): { blockingTargets: string[] | null; rebaseline: boolean } | null {
+  const blockingSetMatches = [...body.matchAll(/^blocking-set:[ \t]*(.*?)\s*$/gm)];
+  const rebaselineMatches = [...body.matchAll(/^rebaseline:[ \t]*(.*?)\s*$/gm)];
+  const reviewRound = body.match(/^review-round:[ \t]*(\d+)\s*$/m)?.[1];
+  if (blockingSetMatches.length > 1 || rebaselineMatches.length > 1 ||
+    (rebaselineMatches.length === 1 && (rebaselineMatches[0][1] !== "yes" || reviewRound !== "0"))) return null;
+  const blockingSet = blockingSetMatches[0]?.[1].trim();
+  return {
+    blockingTargets: blockingSet === undefined ? null : blockingSet === "" ? [] : blockingSet.split(",").map((target) => target.trim()),
+    rebaseline: rebaselineMatches.length === 1,
+  };
 }
 
 function parseGateComment(comments: Comment[], options: ParseGateOptions = {}, onUntrustedComment?: (login: string) => void): ParseGateCommentResult {
@@ -149,4 +166,4 @@ function latestConformingGateComment(comments: Comment[], options: ParseGateOpti
 }
 
 export type { Verdict, GateComment, Comment, ParseGateOptions };
-export { latestConformingGateComment, parseGateBody, parseGateComment, reviewerLogins };
+export { latestConformingGateComment, parseGateBody, parseGateComment, parseGateReviewMetadata, reviewerLogins };

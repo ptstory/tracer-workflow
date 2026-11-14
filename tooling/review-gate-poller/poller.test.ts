@@ -15,6 +15,7 @@ type Harness = {
   workdir: string;
   ghLog: string;
   opencodeLog: string;
+  comparisonJson: string;
 };
 
 function makeHarness(): Harness {
@@ -25,6 +26,7 @@ function makeHarness(): Harness {
   mkdirSync(workdir, { recursive: true });
   writeFileSync(join(root, "gh.log"), "", "utf8");
   writeFileSync(join(root, "opencode.log"), "", "utf8");
+  writeFileSync(join(root, "compare.json"), JSON.stringify([{ status: "ahead", ahead_by: 1, files: [{ filename: "src/api.ts" }] }]), "utf8");
 
   return {
     root,
@@ -33,6 +35,7 @@ function makeHarness(): Harness {
     statePath: join(root, "state.json"),
     ghLog: join(root, "gh.log"),
     opencodeLog: join(root, "opencode.log"),
+    comparisonJson: join(root, "compare.json"),
   };
 }
 
@@ -52,7 +55,25 @@ if (cmd === "pr" && subcmd === "list") {
   process.stdout.write(${JSON.stringify(listJson)});
 } else if (cmd === "pr" && subcmd === "view") {
   const details = JSON.parse(${JSON.stringify(viewJson)});
-  process.stdout.write(JSON.stringify({ ...details, labels: details.labels ?? [{ name: "gate:needs-fix" }] }));
+  const prs = JSON.parse(${JSON.stringify(listJson)});
+  const pr = prs.find((item) => item.number === Number(args[0]));
+  const targetHeadPath = ${JSON.stringify(join(h.workdir, "target-head"))};
+  const headRefOid = fs.existsSync(targetHeadPath) ? fs.readFileSync(targetHeadPath, "utf8").trim() : pr.headRefOid;
+  if (args[0] === "26" && args.includes("labels,headRefOid,comments") && fs.existsSync(${JSON.stringify(join(h.workdir, "disposition.json"))})) {
+    details.comments.push(JSON.parse(fs.readFileSync(${JSON.stringify(join(h.workdir, "disposition.json"))}, "utf8")));
+  }
+  process.stdout.write(JSON.stringify({ ...details, headRefOid, labels: details.labels ?? [{ name: "gate:needs-fix" }] }));
+} else if (cmd === "api" && subcmd === "user") {
+  process.stdout.write("ptstory\\n");
+} else if (cmd === "api" && subcmd.includes("/issues/") && subcmd.includes("/comments")) {
+  const comments = JSON.parse(${JSON.stringify(viewJson)}).comments ?? [];
+  process.stdout.write(JSON.stringify([comments.map((comment) => ({ user: comment.author, body: comment.body, created_at: comment.createdAt }))]));
+} else if (cmd === "api" && subcmd.includes("/pulls/") && subcmd.endsWith("/comments")) {
+  process.stdout.write("[[]]");
+} else if (cmd === "api" && subcmd.includes("/compare/")) {
+  const [baseSha, headSha] = subcmd.split("/compare/")[1].split("...");
+  const comparison = JSON.parse(fs.readFileSync(${JSON.stringify(h.comparisonJson)}, "utf8"));
+  process.stdout.write(JSON.stringify(comparison));
 } else {
   process.stderr.write("unexpected gh args: " + process.argv.slice(2).join(" ") + "\\n");
   process.exit(64);
@@ -73,7 +94,10 @@ function writeOpencodeStub(
 set -eu
 printf '%s\n' "$*" >> "${h.opencodeLog}"
 ${body}
-if [ "${verifiedProgress}" = "true" ]; then : > "${h.workdir}/finished"; fi
+if [ "${verifiedProgress}" = "true" ]; then
+  : > "${h.workdir}/finished"
+  printf '%s\\n' '2222222222222222222222222222222222222222' > "${h.workdir}/target-head"
+fi
 exit ${exitCode}
 `,
   );
@@ -214,7 +238,7 @@ esac
         headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         status: "completed",
         attempts: 1,
-        resultingSha: defaultGitHeadSha,
+        resultingSha: "2222222222222222222222222222222222222222",
       }),
     });
   });
@@ -242,7 +266,7 @@ esac
     expect(result.stderr).toBe("");
     expect(readFileSync(harness.opencodeLog, "utf8")).toBe("");
     expect(existsSync(harness.statePath)).toBe(false);
-    expect(readFileSync(harness.ghLog, "utf8")).toContain("comments,labels");
+    expect(readFileSync(harness.ghLog, "utf8")).toContain("labels,headRefOid");
   });
 
   test("persists state even when opencode exits nonzero", () => {
@@ -291,7 +315,7 @@ esac
           {
             author: { login: "review-bot" },
             body: "## review-gate: needs-fix\nhead-sha: dddddddddddddddddddddddddddddddddddddddd\nreview-round: 0\nreviewed-files: 1\n",
-            createdAt: "2026-08-01T00:00:00Z",
+            createdAt: "2026-10-01T00:00:00Z",
           },
         ],
       }),
@@ -304,6 +328,8 @@ esac
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
     expect(readFileSync(harness.opencodeLog, "utf8")).not.toBe("");
+    expect(readFileSync(harness.ghLog, "utf8")).toContain("repos/acme/repo/issues/14/comments --paginate --slurp");
+    expect(readFileSync(harness.ghLog, "utf8")).toContain("repos/acme/repo/pulls/14/comments --paginate --slurp");
     expect(readState(harness.statePath)).toEqual({
       14: expect.objectContaining({
         headSha: "dddddddddddddddddddddddddddddddddddddddd",
@@ -345,7 +371,7 @@ esac
     expect(stored["16"].error).not.toContain("\n");
   });
 
-  test("marks a successful fix pass as completed and stores the resulting git sha", () => {
+  test("marks a successful fix pass completed only after the GitHub PR head advances", () => {
     writeGhStub(
       harness,
       JSON.stringify([{ number: 17, headRefOid: "1111111111111111111111111111111111111111" }]),
@@ -360,7 +386,6 @@ esac
       }),
     );
 
-    writeGitStub(harness, "1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222");
     writeOpencodeStub(harness, `touch "${harness.workdir}/progress"`, 0);
 
     const result = runPoller(harness);
@@ -378,6 +403,82 @@ esac
         resultingSha: "2222222222222222222222222222222222222222",
       }),
     });
+  });
+
+  test("accepts a complete PR-linked disposition ledger for the blocking target", () => {
+    writeGhStub(
+      harness,
+      JSON.stringify([{ number: 26, headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }]),
+      JSON.stringify({
+        comments: [{
+          author: { login: "review-bot" },
+          body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/26\n",
+          createdAt: "2026-01-01T00:00:00Z",
+        }],
+      }),
+    );
+    writeOpencodeStub(harness, `node -e 'const fs=require("node:fs");fs.writeFileSync("${harness.workdir}/disposition.json", JSON.stringify({author:{login:"ptstory"},createdAt:"2026-01-02T00:00:00Z",body:${JSON.stringify(`PR: acme/repo#26\nhead SHA (before → after): aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa → aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\nDisposition ledger:\nthread 1 | src/api.ts | finding: example | severity: high | disposition: defer | reasoning: non-blocking | left open: tracked\n\nNext action: review-gate https://github.com/acme/repo/pull/26`)} }))'`, 0, false);
+
+    const result = runPoller(harness);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(readState(harness.statePath)).toEqual({
+      26: expect.objectContaining({ status: "completed", exitCode: null }),
+    });
+  });
+
+  test("does not infer verified PR progress from an unmerged or incomparable target head", () => {
+    writeGhStub(
+      harness,
+      JSON.stringify([{ number: 27, headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }]),
+      JSON.stringify({ comments: [{
+        author: { login: "review-bot" },
+        body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/27\n",
+        createdAt: "2026-01-01T00:00:00Z",
+      }] }),
+    );
+    writeFileSync(harness.comparisonJson, JSON.stringify([{ status: "diverged", ahead_by: 0, files: [{ filename: "src/api.ts" }] }]), "utf8");
+    writeOpencodeStub(harness, `:`, 0, false);
+
+    const result = runPoller(harness);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(readState(harness.statePath)).toEqual({
+      27: expect.objectContaining({ status: "failed", exitCode: 0, error: "no-progress" }),
+    });
+  });
+
+  test("marks a zero-exit worker with only a local commit as no-progress", () => {
+    writeGhStub(
+      harness,
+      JSON.stringify([{ number: 25, headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }]),
+      JSON.stringify({
+        comments: [{
+          author: { login: "review-bot" },
+          body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/repo/pull/25\n",
+          createdAt: "2026-01-01T00:00:00Z",
+        }],
+      }),
+    );
+    writeOpencodeStub(harness, `:`, 0, false);
+
+    const result = runPoller(harness, { RG_NOW_MS: "100000" });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(readState(harness.statePath)).toEqual({
+      25: expect.objectContaining({
+        headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        status: "failed",
+        attempts: 1,
+        exitCode: 0,
+        error: "no-progress",
+        nextRetryAt: 160000,
+      }),
+    });
+    expect(readFileSync(harness.ghLog, "utf8")).toContain("labels,headRefOid");
   });
 
   test("migrates legacy string state to completed without relaunching", () => {
@@ -449,7 +550,6 @@ esac
       ),
     );
 
-    writeGitStub(harness, "4444444444444444444444444444444444444444", "5555555555555555555555555555555555555555");
     writeOpencodeStub(harness, `:`, 0);
 
     const backoffOnlyResult = runPoller(harness, { RG_NOW_MS: "60001" });
@@ -501,7 +601,7 @@ esac
       19: expect.objectContaining({
         status: "completed",
         attempts: 2,
-        resultingSha: "5555555555555555555555555555555555555555",
+        resultingSha: "2222222222222222222222222222222222222222",
       }),
     });
   });
@@ -565,7 +665,6 @@ esac
     );
 
     writeInProgressState(harness, 23, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 1);
-    writeGitStub(harness, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     writeOpencodeStub(harness, `:`, 0);
 
     const result = runPoller(harness, {
@@ -581,7 +680,7 @@ esac
         headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         status: "completed",
         attempts: 2,
-        resultingSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        resultingSha: "2222222222222222222222222222222222222222",
       }),
     });
   });
@@ -602,7 +701,6 @@ esac
     );
 
     writeInProgressState(harness, 24, "cccccccccccccccccccccccccccccccccccccccc", 1);
-    writeGitStub(harness, "cccccccccccccccccccccccccccccccccccccccc", "dddddddddddddddddddddddddddddddddddddddd");
     writeOpencodeStub(harness, `:`, 0);
     const result = runPoller(harness, {
       RG_NOW_MS: "300001",
@@ -617,7 +715,7 @@ esac
         headSha: "cccccccccccccccccccccccccccccccccccccccc",
         status: "completed",
         attempts: 2,
-        resultingSha: "dddddddddddddddddddddddddddddddddddddddd",
+        resultingSha: "2222222222222222222222222222222222222222",
       }),
     });
   });
@@ -765,7 +863,6 @@ esac
       ),
     );
 
-    writeGitStub(harness, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", defaultGitHeadSha, "dddddddddddddddddddddddddddddddddddddddd");
     writeOpencodeStub(
       harness,
       `if ! [ -f "${harness.statePath}" ]; then
@@ -786,7 +883,7 @@ fi
         headSha: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         status: "completed",
         attempts: 1,
-        resultingSha: defaultGitHeadSha,
+        resultingSha: "2222222222222222222222222222222222222222",
       }),
     });
   });

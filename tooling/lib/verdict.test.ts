@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { latestConformingGateComment, parseGateBody, parseGateComment } from "./verdict";
+import { latestConformingGateComment, parseGateBody, parseGateComment, parseGateReviewMetadata } from "./verdict";
 import type { Comment } from "./verdict";
 import type { Verdict } from "./verdict";
 
@@ -16,6 +16,26 @@ function extractVerdictBlocks(text: string): string[] {
 }
 
 beforeEach(() => { process.env.TRACER_REVIEWER_LOGINS = "reviewer"; });
+
+describe("parseGateReviewMetadata", () => {
+  test("returns trusted blocking targets and an explicit round-zero rebaseline", () => {
+    expect(parseGateReviewMetadata("review-round: 0\nblocking-set: src/api.ts, tooling/poller.ts\nrebaseline: yes\n")).toEqual({
+      blockingTargets: ["src/api.ts", "tooling/poller.ts"],
+      rebaseline: true,
+    });
+  });
+
+  test("fails closed on invalid rebaseline markers", () => {
+    expect(parseGateReviewMetadata("review-round: 1\nblocking-set: src/api.ts\nrebaseline: yes\n")).toBeNull();
+    expect(parseGateComment([{
+      author: { login: "reviewer" },
+      createdAt: "2026-10-01T00:00:00Z",
+      body: "## review-gate: needs-fix\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 1\nreviewed-files: 1\nblocking-set: src/api.ts\nrebaseline: yes\nnext-action: from-pr-review https://github.com/acme/repo/pull/98\n",
+    }], { pullRequestNumber: 98 }).kind).toBe("invalid");
+    expect(parseGateReviewMetadata("review-round: 0\nblocking-set: src/api.ts\nrebaseline: no\n")).toBeNull();
+    expect(parseGateReviewMetadata("review-round: 0\nblocking-set: src/api.ts\nrebaseline: yes\nrebaseline: yes\n")).toBeNull();
+  });
+});
 
 describe("parseGateComment", () => {
   test("parses a conforming verdict with its round", () => {
