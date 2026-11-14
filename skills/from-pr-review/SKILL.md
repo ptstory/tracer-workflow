@@ -136,9 +136,19 @@ against actual check-run state, and hand back.
     checks or open deferrals. Never "looks good" prose in place of the gate
     result. Every report, including blocked and unresolved-PR reports, ends
     with `Next action:` followed by one copy-pasteable command or invocation,
-    or `nothing — done` when no action remains. For a pushed fix, name the
-    fresh-session `review-gate <PR_URL>` invocation; never instruct a merge
-    from this skill.
+    or `nothing — done` when no action remains. For a pushed fix, resolve the
+    helper from this installed Tracer skill location, not the target repository:
+
+    ```sh
+    skill_dir="$(cd "$HOME/.agents/skills/from-pr-review" && pwd -P)"
+    TRACER_REVIEWER_LOGINS=<comma-separated-logins> \
+      bun "$skill_dir/../../tooling/review-gate-autosend/review-gate-autosend.ts" <PR_URL>
+    ```
+
+    Name the resulting PR URL fallback or the verdict and next action printed
+    by the guard. A current-head verdict suppresses launch; otherwise the helper
+    opens the opt-in ChatGPT Review Gate URL. Never instruct a merge from this
+    skill.
 
 ## Do not
 
