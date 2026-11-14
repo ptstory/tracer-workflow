@@ -3,6 +3,8 @@
 An issue-backed, PR-mediated AI coding workflow. GitHub holds durable state in
 issues, PRs, comments, and check runs. Chat transcripts are disposable.
 
+[Operator setup: run tracer-workflow lanes from Herdr](./docs/operator/herdr.md).
+
 The workflow exists because the record drifts from reality. Work can exist only
 on a laptop and nowhere trusted. A session can claim tests pass while the checks
 say otherwise. A review can approve code, then a later push leaves that approval
