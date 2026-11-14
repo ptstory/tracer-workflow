@@ -42,6 +42,7 @@ type Fixture = {
   branchProtected?: boolean;
   pullRequestOpen?: boolean;
   mergeToken?: string | null;
+  workflowRunConclusion?: string;
 };
 
 type HarnessResult = {
@@ -114,13 +115,21 @@ function makeHarness(fixture: Fixture): HarnessResult {
             head_sha: headSha,
             updated_at: reportUpdatedAt,
             completed_at: reportUpdatedAt,
-            conclusion: "success",
+            conclusion: fixture.workflowRunConclusion ?? "success",
             pull_requests: [{ number: 98 }],
           },
         }
       : eventName === "repository_dispatch"
         ? { action: "review-gate-readiness-completed", client_payload: { pull_request_number: 98 } }
-        : {
+        : eventName === "check_run"
+          ? {
+              check_run: {
+                head_sha: headSha,
+                completed_at: reportUpdatedAt,
+                pull_requests: [{ number: 98 }],
+              },
+            }
+          : {
             check_run: {
               head_sha: headSha,
               completed_at: reportUpdatedAt,
@@ -267,7 +276,7 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     expect(mergeIndex).toBeGreaterThan(readyIndex);
   });
 
-  test("re-evaluates after the actual Gate Readiness Reevaluate issue_comment completion", () => {
+  test("re-evaluates after Gate Readiness Reevaluate completes from a workflow_run", () => {
     const result = makeHarness({ eventName: "workflow_run" });
     expect(result.status, `${result.stderr}\n${result.stdout}\n${JSON.stringify(result.log)}`).toBe(0);
     expect(mergeCalls(result)).toHaveLength(1);
@@ -278,8 +287,9 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     const result = makeHarness({ eventName: "repository_dispatch" });
     expect(result.status, `${result.stderr}\n${result.stdout}\n${JSON.stringify(result.log)}`).toBe(0);
     expect(mergeCalls(result)).toHaveLength(1);
-    expect(reevaluateWorkflow).toContain("event_type=review-gate-readiness-completed");
+    expect(reevaluateWorkflow).toContain("name: Resolve PR for reevaluation completion");
     expect(reevaluateWorkflow).toContain("GH_TOKEN: ${{ secrets.TRACER_MERGE_TOKEN }}");
+    expect(reevaluateWorkflow).toContain("event_type=review-gate-readiness-completed");
   });
 
   test("documents the exact fine-grained merge-token permissions", () => {
@@ -344,6 +354,12 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     const result = makeHarness({ checks: [...checks] });
     expect(mergeCalls(result)).toHaveLength(0);
     expect(stopComments(result).some((entry) => entry.body?.includes(expectedReason))).toBe(true);
+  });
+
+  test("stops when the readiness-completion workflow run failed", () => {
+    const result = makeHarness({ eventName: "workflow_run", workflowRunConclusion: "failure" });
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(result.comments.some((comment) => comment.body.includes("Gate Readiness Reevaluate completed with failure"))).toBe(true);
   });
 
   test("a no-required-check branch stops without green current-head evidence", () => {

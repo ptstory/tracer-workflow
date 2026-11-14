@@ -313,11 +313,6 @@ jobs:
           }
 
           refresh_pr_state
-          if [ -z "${TRACER_MERGE_TOKEN:-}" ]; then
-            add_failure "required repository secret TRACER_MERGE_TOKEN is missing; configure the fine-grained token documented in the workflow README"
-            post_stop_comments
-            exit 0
-          fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_run" ] && [ "$gate_event_source" = "CI" ] && [ "$has_merge_candidate_label" != "true" ]; then
             exit 0
           fi
@@ -350,6 +345,11 @@ jobs:
           fi
           if [ -z "${TRACER_MERGE_TOKEN:-}" ]; then
             add_failure "required repository secret TRACER_MERGE_TOKEN is missing; configure the fine-grained token documented in the workflow README"
+            post_stop_comments
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "issue_comment" ] && [ -n "$event_comment_login" ] && ! printf '%s' "$reviewer_logins_json" | jq -e --arg login "$event_comment_login" 'index($login) != null' >/dev/null; then
+            add_failure "verdict author $event_comment_login is not allowlisted"
             post_stop_comments
             exit 0
           fi
