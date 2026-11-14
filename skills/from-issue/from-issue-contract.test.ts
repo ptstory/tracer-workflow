@@ -80,8 +80,14 @@ describe("from-issue contract", () => {
     const skillDoc = read("SKILL.md");
     const contract = normalize(readSection(skillDoc, "Contract")).toLowerCase();
     const steps = normalize(readSection(skillDoc, "Steps")).toLowerCase();
+    const issueStandard = read("../../docs/ISSUE_STANDARD.md");
+    const issueTemplate = read("../../.github/ISSUE_TEMPLATE/standard.md");
+    const agentBriefPrompt = read("../../prompts/agent-brief.md");
 
     expect(contract).toContain("settled facts");
+    expect(issueStandard).toContain("## Settled facts");
+    expect(issueTemplate).toContain("## Settled facts");
+    expect(agentBriefPrompt).toContain("**Settled facts:**");
     expect(steps).toContain("more than one pr");
     expect(steps).toContain("any acceptance criterion cannot be mapped to a concrete change");
     expect(steps).toContain("outside this repository");

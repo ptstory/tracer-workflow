@@ -5,7 +5,10 @@ Paste into a ChatGPT/Claude web session with GitHub connector access. Replace
 
 This is a plain reusable prompt, not an auto-triggered skill or slash command.
 GitHub is the source of truth: read the issue or PR body, comments, labels,
-linked context, and repository workflow docs before writing the brief.
+linked context, and repository workflow docs before writing the brief. Follow
+[the issue standard](../docs/ISSUE_STANDARD.md), including its `Settled facts`
+section; cite sources for verified facts and do not ask the executing agent to
+re-verify them unless repository evidence contradicts them.
 
 ---
 
@@ -97,6 +100,12 @@ written-against: <default-branch>@<full 40-char SHA>
 **Current behavior:**
 Describe what happens now. For a PR, describe the current state of the diff and
 what remains incomplete.
+
+**Settled facts:**
+List verified facts the executing agent should treat as settled, with a source
+for every fact (repository path and symbol/section, GitHub issue/PR/comment URL,
+or external source URL). The executing agent must not re-verify these unless
+repository evidence contradicts them. Write `None recorded` if there are none.
 
 **Desired behavior:**
 Describe what should happen after the work is complete. Include edge cases and
