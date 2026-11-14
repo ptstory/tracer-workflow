@@ -8,6 +8,7 @@ on:
     types: [created, edited]
 
 permissions:
+  actions: read
   issues: write
   pull-requests: write
   checks: read
@@ -71,36 +72,13 @@ jobs:
       pr-number: ${{ github.event.issue.number }}
     secrets: inherit
 
-  resolve-notification-pr:
-    if: github.event_name == 'workflow_run'
-    runs-on: ubuntu-latest
-    outputs:
-      pr-number: ${{ steps.resolve.outputs.pr-number }}
-    steps:
-      - id: resolve
-        name: Resolve PR for reevaluation completion
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          EVENT_PATH: ${{ github.event_path }}
-        run: |
-          set -euo pipefail
-          pr_number="$(jq -r '.workflow_run.pull_requests[0].number // empty' "$EVENT_PATH")"
-          if [ -z "$pr_number" ]; then
-            head_sha="$(jq -r '.workflow_run.head_sha // empty' "$EVENT_PATH")"
-            if [ -n "$head_sha" ]; then
-              pr_number="$(gh api "repos/$REPOSITORY/commits/$head_sha/pulls" --jq '[.[] | select(.state == "open")] | sort_by(.number) | first | .number // empty')"
-            fi
-          fi
-          printf 'pr-number=%s\n' "$pr_number" >> "$GITHUB_OUTPUT"
-
   notify-auto-merge:
-    needs: [after-review-gate, resolve-notification-pr]
+    needs: [after-ci, after-review-gate, resolve-ci-pr]
     if: >-
       always() &&
       ((github.event_name == 'issue_comment' && needs.after-review-gate.result == 'success') ||
-       (github.event_name == 'workflow_run' && needs.resolve-notification-pr.outputs.pr-number != '')) &&
+       (github.event_name == 'workflow_run' && needs.after-ci.result == 'success' &&
+        needs.resolve-ci-pr.outputs.pr-number != '')) &&
       (github.event_name != 'issue_comment' ||
        (github.event.issue.pull_request && startsWith(github.event.comment.body, '## review-gate:')))
     runs-on: ubuntu-latest
@@ -109,7 +87,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TRACER_MERGE_TOKEN }}
           REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.issue.number || needs.resolve-notification-pr.outputs.pr-number }}
+          PR_NUMBER: ${{ github.event.issue.number || needs.resolve-ci-pr.outputs.pr-number }}
         run: |
           if [ -z "${GH_TOKEN:-}" ]; then
             printf 'TRACER_MERGE_TOKEN is required to notify the auto-merge workflow\n' >&2

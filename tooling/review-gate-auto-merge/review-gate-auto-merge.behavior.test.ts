@@ -287,7 +287,7 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     const result = makeHarness({ eventName: "repository_dispatch" });
     expect(result.status, `${result.stderr}\n${result.stdout}\n${JSON.stringify(result.log)}`).toBe(0);
     expect(mergeCalls(result)).toHaveLength(1);
-    expect(reevaluateWorkflow).toContain("name: Resolve PR for reevaluation completion");
+    expect(reevaluateWorkflow).toContain("name: Resolve PR for completed CI run");
     expect(reevaluateWorkflow).toContain("GH_TOKEN: ${{ secrets.TRACER_MERGE_TOKEN }}");
     expect(reevaluateWorkflow).toContain("event_type=review-gate-readiness-completed");
   });

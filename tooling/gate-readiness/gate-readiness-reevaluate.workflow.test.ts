@@ -33,6 +33,16 @@ describe("gate-readiness reevaluation workflow", () => {
     expect(workflow).not.toContain("gate-readiness:bot");
   });
 
+  test("notifies auto-merge after successful review-comment and reevaluation runs", () => {
+    expect(workflow).toContain("notify-auto-merge:");
+    expect(workflow).toContain("needs.after-review-gate.result == 'success'");
+    expect(workflow).toContain("needs.after-ci.result == 'success'");
+    expect(workflow).toContain("needs.resolve-ci-pr.outputs.pr-number != ''");
+    expect(workflow).toContain("GH_TOKEN: ${{ secrets.TRACER_MERGE_TOKEN }}");
+    expect(workflow).toContain("event_type=review-gate-readiness-completed");
+    expect(workflow).toContain("actions: read");
+  });
+
   test("preserves the called workflow permissions", () => {
     expect(workflow).toContain("issues: write");
     expect(workflow).toContain("pull-requests: write");
