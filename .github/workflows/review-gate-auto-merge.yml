@@ -248,7 +248,7 @@ jobs:
           }
 
           check_required_checks() {
-            local branch_path branch_json branch_protected required_checks rules_error rules_json check_runs_raw check_runs_json statuses_raw statuses_json changed_files_raw changed_file_count test_node_count test_run
+            local branch_path branch_json branch_protected required_checks rules_error rules_json check_runs_raw check_runs_json statuses_raw statuses_json changed_files_raw changed_test_file_count test_node_count test_run
             branch_path="$(printf '%s' "$base_ref" | jq -sRr @uri)"
             if ! branch_json="$(GH_TOKEN="$TRACER_MERGE_TOKEN" gh api "repos/$repo/branches/$branch_path" 2>/dev/null)"; then
               add_failure "could not read required-check configuration for base branch $base_ref using TRACER_MERGE_TOKEN"
@@ -282,10 +282,10 @@ jobs:
             statuses_json="$(printf '%s' "$statuses_raw" | jq -s 'add // [] | sort_by(.context, .created_at) | group_by(.context) | map(last)')"
             if [ "$(printf '%s' "$required_checks" | jq 'length')" -eq 0 ]; then
               changed_files_raw="$(gh api --paginate "repos/$repo/pulls/$pr_number/files?per_page=100")"
-              changed_file_count="$(printf '%s' "$changed_files_raw" | jq -s 'add // [] | length')"
+              changed_test_file_count="$(printf '%s' "$changed_files_raw" | jq -s '[add // [] | .[].filename | select(test("(^|/)tests?/.*\\.(test|spec)\\.[jt]sx?$|\\.(test|spec)\\.[jt]sx?$"))] | length')"
               test_node_count="$(printf '%s' "$live_pr_json" | jq '[.body // "" | split("Test node IDs exercising changed paths:") | if length > 1 then .[1] | split("\\n## ") | first | split("\\n- Verification:") | first | [scan("(?m)^\\s+-\\s+`([^`]+)`")] | flatten else [] end] | flatten | length')"
               test_run="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.name == "test" and .status == "completed" and .conclusion == "success") | select(((.app.slug // "") == "github-actions") or ((.app.name // "") == "GitHub Actions"))] | last // null')"
-              if [ "$changed_file_count" -eq 0 ] || [ "$test_node_count" -eq 0 ] || [ "$test_run" = "null" ]; then
+              if [ "$changed_test_file_count" -eq 0 ] || [ "$test_node_count" -eq 0 ] || [ "$test_run" = "null" ]; then
                 add_failure "base branch $base_ref has no required checks and no green current-head CI/check run exercises the changed paths"
               fi
               return
