@@ -103,7 +103,12 @@ artifact is the execution input.
    readiness. Create or update the draft PR with the closing issue reference.
    Stop there; review, check-run, and merge remain downstream. Use
    `references/pr-body-contract.md` when creating or updating the PR body.
-10. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the recovery attempted, why it failed, and the next required recovery contract.
+10. After pushing the final implementation commit and updating the PR Evidence,
+    run `bun tooling/review-gate-autosend/review-gate-autosend.ts <PR_URL>` with
+    `TRACER_REVIEWER_LOGINS` configured. It prints the PR URL as a fallback. A
+    trusted verdict for the current head suppresses launch and prints its verdict
+    and next action; otherwise it opens the opt-in ChatGPT Review Gate URL.
+11. If blocked or a verified failure cannot be recovered locally, first persist the exact blocker or recovery state durably in the linked GitHub issue or PR comment, then stop with a blocker handoff that names the blocker, the recovery attempted, why it failed, and the next required recovery contract.
 
 ## Do not
 
