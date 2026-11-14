@@ -6,23 +6,29 @@ type GateComment = {
   reviewRound: number;
   reviewedFiles: number;
   commentedAt: string;
+  nextAction?: string;
 };
 
 type Comment = { author: { login: string } | null; body: string; createdAt: string };
-type ParseGateOptions = { pullRequestNumber?: number };
+type ParseGateOptions = {
+  pullRequestNumber?: number;
+  trustedReviewerLogins?: readonly string[];
+  onUntrustedComment?: (login: string) => void;
+};
 
-function reviewerLogins(): Set<string> {
-  const logins = new Set((process.env.TRACER_REVIEWER_LOGINS ?? "").split(",").map((login) => login.trim().toLowerCase()).filter(Boolean));
+function reviewerLogins(allowedLogins = (process.env.TRACER_REVIEWER_LOGINS ?? "").split(",")): Set<string> {
+  const logins = new Set(allowedLogins.map((login) => login.trim().toLowerCase()).filter(Boolean));
   if (logins.size === 0) throw new Error("TRACER_REVIEWER_LOGINS must contain at least one reviewer login");
   return logins;
 }
 
-function trustedComments(comments: Comment[]): Comment[] {
-  const logins = reviewerLogins();
+function trustedComments(comments: Comment[], options: ParseGateOptions = {}): Comment[] {
+  const logins = reviewerLogins(options.trustedReviewerLogins);
+  const onUntrustedComment = options.onUntrustedComment ?? ((login) => console.warn(`Ignoring review-gate comment from non-allowlisted author ${login}`));
   return comments.filter((comment) => {
     if (!comment.body.startsWith("## review-gate:")) return false;
     if (comment.author?.login && logins.has(comment.author.login.toLowerCase())) return true;
-    console.warn(`Ignoring review-gate comment from non-allowlisted author ${comment.author?.login ?? "unknown"}`);
+    onUntrustedComment(comment.author?.login ?? "unknown");
     return false;
   });
 }
@@ -101,11 +107,12 @@ function parseGateBody(body: string, commentedAt?: string, options: ParseGateOpt
     return null;
   }
 
-  return { verdict, headSha: headShaMatch[1], reviewRound, reviewedFiles };
+  const nextAction = nextActionMatches[0]?.[1].trim();
+  return { verdict, headSha: headShaMatch[1], reviewRound, reviewedFiles, ...(nextAction === undefined ? {} : { nextAction }) };
 }
 
 function parseGateComment(comments: Comment[], options: ParseGateOptions = {}): ParseGateCommentResult {
-  const trusted = trustedComments(comments);
+  const trusted = trustedComments(comments, options);
   let latestConforming: GateComment | null = null;
 
   for (const comment of trusted) {
@@ -130,7 +137,7 @@ function parseGateComment(comments: Comment[], options: ParseGateOptions = {}): 
 function latestConformingGateComment(comments: Comment[], options: ParseGateOptions = {}): GateComment | null {
   let latest: GateComment | null = null;
 
-  for (const comment of trustedComments(comments)) {
+  for (const comment of trustedComments(comments, options)) {
 
     const parsed = parseGateBody(comment.body, comment.createdAt, options);
     if (!parsed) continue;

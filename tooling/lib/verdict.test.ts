@@ -95,6 +95,26 @@ describe("parseGateComment", () => {
     expect(parseGateComment([currentComment], { pullRequestNumber: 99 }).kind).toBe("invalid");
   });
 
+  test("returns a validated next action and supports explicit trusted reviewer logins", () => {
+    const comment: Comment = {
+      author: { login: "Review-Bot" },
+      body: "## review-gate: needs-human\nhead-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nreview-round: 0\nreviewed-files: 1\nblocking-set:\nnext-action: gh pr view 98 --web\n",
+      createdAt: "2026-09-26T20:18:26Z",
+    };
+
+    expect(parseGateComment([comment], { pullRequestNumber: 98, trustedReviewerLogins: ["review-bot"] })).toEqual({
+      kind: "parsed",
+      verdict: {
+        verdict: "needs-human",
+        headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        reviewRound: 0,
+        reviewedFiles: 1,
+        commentedAt: "2026-09-26T20:18:26Z",
+        nextAction: "gh pr view 98 --web",
+      },
+    });
+  });
+
   test("fails closed without an allowlist", () => {
     delete process.env.TRACER_REVIEWER_LOGINS;
     expect(() => parseGateComment([])).toThrow("TRACER_REVIEWER_LOGINS");
