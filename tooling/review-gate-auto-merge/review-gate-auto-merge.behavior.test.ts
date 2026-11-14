@@ -45,6 +45,7 @@ type Fixture = {
   workflowRunConclusion?: string;
   changedFiles?: string[];
   prBody?: string;
+  requiredCheckContext?: string;
 };
 
 type HarnessResult = {
@@ -82,7 +83,7 @@ function makeHarness(fixture: Fixture): HarnessResult {
   const reportHead = fixture.reportHeadSha ?? verdictHead;
   const readinessState = fixture.reportHeadSha && fixture.reportHeadSha !== headSha ? "stale" : reportHead === headSha ? "current" : "stale";
   const checks = fixture.requiredChecks ?? [{ context: "required-check", app_id: 1 }];
-  const checkRuns = fixture.checks ?? (checks.length ? checks.map(({ context, app_id }) => ({ name: context, status: "completed", conclusion: "success", app: { id: app_id } })) : [{ name: "test", status: "completed", conclusion: "success", app: { id: 1, slug: "github-actions", name: "GitHub Actions" } }]);
+  const checkRuns = fixture.checks ?? (checks.length ? checks.map(({ context, app_id }) => ({ name: context, status: "completed", conclusion: "success", app: { id: app_id } })) : [{ name: fixture.requiredCheckContext ?? "test", status: "completed", conclusion: "success", app: { id: 1, slug: "github-actions", name: "GitHub Actions" } }]);
   const verdict = `## review-gate: ${verdictState}\nhead-sha: ${verdictHead}\nreview-round: 0\nreviewed-files: 1\nblocking-set:${verdictState === "needs-fix" ? " tooling/file.ts" : ""}\nnext-action: ${verdictState === "merge-candidate" ? `gh pr merge 98 --squash --match-head-commit ${verdictHead}` : verdictState === "needs-fix" ? "from-pr-review https://github.com/acme/repo/pull/98" : "gh pr view 98 --web"}\n`;
   const comments = [{
     id: 901,
@@ -145,7 +146,7 @@ function makeHarness(fixture: Fixture): HarnessResult {
       base: { ref: "main" },
       draft: fixture.draft ?? false,
       html_url: "https://github.com/acme/repo/pull/98",
-      body: fixture.prBody ?? `## Evidence\n\n- Head SHA: ${headSha}\n- Test node IDs exercising changed paths:\n  - \`test exercises changed paths\`\n`,
+      body: fixture.prBody ?? `## Evidence\n\n- Head SHA: ${headSha}\n- Test node IDs exercising changed paths:\n  - \`tooling/review-gate-auto-merge/review-gate-auto-merge.behavior.test.ts :: test exercises changed paths\`\n`,
       labels: (fixture.labels ?? ["gate:merge-candidate"]).map((name) => ({ name })),
       merged: false,
       merge_commit_sha: null as string | null,
@@ -400,8 +401,14 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     expect(stopComments(result).some((entry) => entry.body?.includes("no green current-head CI/check run"))).toBe(true);
   });
 
-  test("a no-required-check branch merges after green current-head check evidence", () => {
-    const result = makeHarness({ requiredChecks: [], branchProtected: false, rulesAvailable: false });
+  test("a no-required-check branch merges after green current-head check evidence for a changed path", () => {
+    const result = makeHarness({
+      requiredChecks: [],
+      branchProtected: false,
+      rulesAvailable: false,
+      requiredCheckContext: "test",
+      prBody: `## Evidence\n\n- Test node IDs exercising changed paths:\n  - \`tooling/review-gate-auto-merge/review-gate-auto-merge.behavior.test.ts > targeted test\`\n- Verification: full test suite`,
+    });
     expect(mergeCalls(result)).toHaveLength(1);
   });
 
@@ -411,6 +418,8 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
       branchProtected: false,
       rulesAvailable: false,
       checks: [{ name: "unrelated-job", status: "completed", conclusion: "success", app: { id: 1, slug: "github-actions", name: "GitHub Actions" } }],
+      changedFiles: ["tooling/lib/verdict.test.ts"],
+      prBody: `## Evidence\n\n- Test node IDs exercising changed paths:\n  - \`tooling/review-gate-auto-merge/review-gate-auto-merge.behavior.test.ts > unrelated test\`\n- Verification: full test suite`,
     });
     expect(mergeCalls(result)).toHaveLength(0);
     expect(stopComments(result).some((entry) => entry.body?.includes("no green current-head CI/check run exercises the changed paths"))).toBe(true);
