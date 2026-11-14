@@ -60,12 +60,12 @@ The pane-issue plugin's PR status markers are separate from the Review Gate labe
 
 ## Close the lane and remove its worktree
 
-When the issue lane is finished and its work is safely on GitHub, close the Herdr workspace, then explicitly remove its worktree. Closing only the workspace leaves the checkout on disk.
+When the issue lane is finished and its work is safely on GitHub, remove its linked worktree while the Herdr workspace is still open. Herdr resolves the workspace ID for removal and closes the associated workspace after successfully removing the worktree. Closing the workspace first makes that ID unavailable to the removal command and leaves the checkout on disk.
 
 ```sh
-herdr workspace close <workspace-id>
 herdr worktree list
+git -C <worktree-path> status --short
 herdr worktree remove --workspace <workspace-id>
 ```
 
-Use the workspace ID reported by Herdr, not a guessed path or ID. Check that the worktree is no longer needed and has no uncommitted work before removing it. Do not use `--force` to discard work. Keep the repository's home checkout and the repository space; remove only the completed issue's worktree.
+Use the workspace ID and path reported by Herdr, not guessed values. Run the removal only when `git status --short` is empty. Do not use `--force` to discard work. `herdr workspace close <workspace-id>` closes a workspace without removing its checkout; use it only when the worktree should remain on disk, not before removing a linked worktree. Keep the repository's home checkout and the repository space; remove only the completed issue's worktree.
