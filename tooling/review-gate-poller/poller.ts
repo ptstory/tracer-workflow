@@ -17,7 +17,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { parseGateComment, reviewerLogins, type GateComment } from "../lib/verdict";
+import { evaluateFixPassCompletion, evaluateReviewGateEligibility, hasNewDurableDisposition, recordFailedAttempt, type AttemptState, type BlockingFinding, type CorrectiveReview } from "../lib/review-gate-eligibility";
+import { parseGateComment, parseGateReviewMetadata, reviewerLogins, type Comment, type GateComment } from "../lib/verdict";
 
 // --- config -------------------------------------------------------------------
 
@@ -26,9 +27,6 @@ const STATE_PATH =
   process.env.RG_STATE_PATH ??
   `${process.env.HOME}/.local/state/review-gate/actioned.json`;
 
-const MAX_ATTEMPTS = 5;
-const BASE_RETRY_DELAY_MS = 60_000;
-const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
 const DEFAULT_STALE_IN_PROGRESS_TIMEOUT_MS = 30 * 60 * 1000;
 const MIN_STALE_IN_PROGRESS_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_STALE_IN_PROGRESS_TIMEOUT_MS = 24 * 60 * 60 * 1000;
@@ -49,6 +47,7 @@ function gh(args: string[]): string {
 }
 
 type PR = { number: number; headRefOid: string };
+type CompareResult = { status: string; ahead_by: number; files: { filename: string }[] };
 
 function openPRs(): PR[] {
   const out = gh([
@@ -64,9 +63,10 @@ function openPRs(): PR[] {
   return JSON.parse(out);
 }
 
-type Comment = { author: { login: string }; body: string; createdAt: string };
+type PRDetails = { labels: { name: string }[]; headRefOid: string };
+type ReviewComment = { user: { login: string } | null; body: string; created_at: string };
 
-function prComments(n: number): Comment[] {
+function prDetails(n: number, includeComments = false): PRDetails & { comments?: Comment[] } {
   const out = gh([
     "pr",
     "view",
@@ -74,41 +74,126 @@ function prComments(n: number): Comment[] {
     "--repo",
     repo,
     "--json",
-    "comments",
+    includeComments ? "labels,headRefOid,comments" : "labels,headRefOid",
   ]);
-  return JSON.parse(out).comments as Comment[];
+  return JSON.parse(out) as PRDetails & { comments?: Comment[] };
 }
 
-/** Latest gate verdict on a PR, or null. Latest by comment creation time. */
-function latestVerdict(n: number): GateComment | null {
-  const comments = prComments(n);
-  const parsed = parseGateComment(comments, { pullRequestNumber: n });
-  if (parsed.kind === "parsed") return parsed.verdict;
-  if (parsed.kind === "invalid") {
-    const reason = parsed.comment.body.split(/\r?\n/).find((line) => line.trim()) ?? parsed.comment.body;
-    console.warn(`PR #${n}: review-gate comment is unparseable (${reason.trim()}); skipping`);
+function reviewThreadComments(pullRequestNumber: number): Comment[] {
+  const out = gh(["api", `repos/${repo}/issues/${pullRequestNumber}/comments`, "--paginate", "--slurp"]);
+  const pages = JSON.parse(out) as ReviewComment[][];
+  return pages.flatMap((page) => page.map((comment) => ({
+    author: comment.user ? { login: comment.user.login } : null,
+    body: comment.body,
+    createdAt: comment.created_at,
+  })));
+}
+
+function inlineReviewComments(pullRequestNumber: number): Comment[] {
+  const out = gh(["api", `repos/${repo}/pulls/${pullRequestNumber}/comments`, "--paginate", "--slurp"]);
+  const pages = JSON.parse(out) as ReviewComment[][];
+  return pages.flatMap((page) => page.map((comment) => ({
+    author: comment.user ? { login: comment.user.login } : null,
+    body: comment.body,
+    createdAt: comment.created_at,
+  })));
+}
+
+function compareCommits(baseSha: string, headSha: string): CompareResult {
+  if (baseSha === headSha) return { status: "identical", ahead_by: 0, files: [] };
+  const out = gh(["api", `repos/${repo}/compare/${baseSha}...${headSha}`, "--paginate", "--slurp"]);
+  const parsed = JSON.parse(out) as Partial<CompareResult> | Partial<CompareResult>[];
+  const pages = Array.isArray(parsed) ? parsed : [parsed];
+  const firstPage = pages[0];
+  const files = pages.flatMap((page) => page.files ?? []);
+  if (!firstPage || typeof firstPage.status !== "string" || typeof firstPage.ahead_by !== "number" || files.length >= 300 ||
+    files.some((file) => typeof file.filename !== "string")) {
+    throw new Error(`Unable to establish complete changed-file comparison from ${baseSha} to ${headSha}`);
   }
-  return null;
+  return { status: firstPage.status, ahead_by: firstPage.ahead_by, files };
+}
+
+function correctiveReviewHistory(comments: Comment[], pullRequestNumber: number, trustedLogins: readonly string[]): CorrectiveReview[] {
+  const reviews = comments
+    .filter((comment) => comment.body.startsWith("## review-gate:") && comment.author?.login &&
+      trustedLogins.some((login) => login.trim().toLowerCase() === comment.author?.login.toLowerCase()))
+    .map((comment) => {
+      const parsed = parseGateComment([comment], { pullRequestNumber, trustedReviewerLogins: trustedLogins });
+      const metadata = parseGateReviewMetadata(comment.body);
+      return parsed.kind === "parsed" && metadata
+        ? { commentedAt: parsed.verdict.commentedAt, headSha: parsed.verdict.headSha, blockingTargets: metadata.blockingTargets, rebaseline: metadata.rebaseline }
+        : null;
+    })
+    .filter((review): review is NonNullable<typeof review> => review !== null)
+    .sort((left, right) => left.commentedAt.localeCompare(right.commentedAt));
+
+  const history: CorrectiveReview[] = [];
+  let previousSha: string | null = null;
+  let previousTargetsKnown = true;
+  for (const review of reviews) {
+    if (previousSha !== null && !review.rebaseline && !previousTargetsKnown) {
+      throw new Error(`Cannot derive corrective-round history for PR #${pullRequestNumber}: prior verdict has no blocking set`);
+    }
+    if (review.blockingTargets === null && previousSha !== null) {
+      throw new Error(`Cannot derive corrective-round history for PR #${pullRequestNumber}: prior verdict has no blocking set`);
+    }
+    const comparison = previousSha === null || review.rebaseline || previousSha === review.headSha
+      ? null
+      : compareCommits(previousSha, review.headSha);
+    if (comparison && (comparison.status !== "ahead" || comparison.ahead_by < 1)) {
+      throw new Error(`Cannot derive corrective-round history for PR #${pullRequestNumber}: non-linear history between ${previousSha} and ${review.headSha}`);
+    }
+    const changedFilesSincePrevious = comparison?.files.map((file) => file.filename) ?? [];
+    history.push({
+      blockingTargets: review.blockingTargets ?? [],
+      changedFilesSincePrevious,
+      rebaseline: review.rebaseline || previousSha === null,
+    });
+    previousSha = review.headSha;
+    previousTargetsKnown = review.blockingTargets !== null;
+  }
+  return history;
+}
+
+function blockingFindingsForVerdict(comments: Comment[], verdict: GateComment, pullRequestNumber: number, trustedLogins: readonly string[]): BlockingFinding[] | null {
+  const matches = comments.flatMap((comment) => {
+    if (!comment.author?.login || !trustedLogins.some((login) => login.trim().toLowerCase() === comment.author?.login.toLowerCase())) return [];
+    const parsed = parseGateComment([comment], { pullRequestNumber, trustedReviewerLogins: trustedLogins });
+    const metadata = parseGateReviewMetadata(comment.body);
+    if (parsed.kind !== "parsed" || !metadata || parsed.verdict.headSha !== verdict.headSha || parsed.verdict.verdict !== "needs-fix") return [];
+    return [{ commentedAt: parsed.verdict.commentedAt, blockingFindings: metadata.blockingFindings, blockingFindingsComplete: metadata.blockingFindingsComplete }];
+  }).sort((left, right) => left.commentedAt.localeCompare(right.commentedAt));
+  const latest = matches.at(-1);
+  if (!latest || !latest.blockingFindingsComplete) return null;
+  return latest.blockingFindings;
+}
+
+function authenticatedLogin(): string {
+  return gh(["api", "user", "--jq", ".login"]).trim();
 }
 
 // --- state --------------------------------------------------------------------
 
-type RecordStatus = "in-progress" | "completed" | "failed" | "escalated";
-
-type StateRecord = {
-  headSha: string;
-  status: RecordStatus;
-  attempts: number;
+type StateRecord = AttemptState & {
   createdAt: number;
-  lastAttemptAt: number;
   updatedAt: number;
-  nextRetryAt: number | null;
   exitCode: number | null;
   error: string | null;
   resultingSha: string | null;
 };
 
 type State = Record<string, StateRecord>;
+
+function parseAttempt(record: StateRecord | null): AttemptState | null {
+  if (!record) return null;
+  return {
+    headSha: record.headSha,
+    status: record.status,
+    attempts: record.attempts,
+    lastAttemptAt: record.lastAttemptAt,
+    nextRetryAt: record.nextRetryAt,
+  };
+}
 
 function nowMs(): number {
   const raw = process.env.RG_NOW_MS;
@@ -117,21 +202,6 @@ function nowMs(): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return Date.now();
-}
-
-function freshRecord(headSha: string, now: number): StateRecord {
-  return {
-    headSha,
-    status: "in-progress",
-    attempts: 1,
-    createdAt: now,
-    lastAttemptAt: now,
-    updatedAt: now,
-    nextRetryAt: null,
-    exitCode: null,
-    error: null,
-    resultingSha: null,
-  };
 }
 
 function sanitizeText(value: string): string {
@@ -161,11 +231,6 @@ function exitCodeFrom(error: unknown): number | null {
   const code = (error as { code?: unknown }).code;
   if (typeof code === "number") return code;
   return null;
-}
-
-function retryDelayMs(attempts: number): number {
-  const delay = BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attempts - 1);
-  return Math.min(delay, MAX_RETRY_DELAY_MS);
 }
 
 function staleInProgressTimeoutMs(): number {
@@ -264,53 +329,6 @@ function triggerFixPass(pr: PR): void {
   console.log(out);
 }
 
-function currentGitHeadSha(): string {
-  return execFileSync("git", ["rev-parse", "HEAD"], {
-    encoding: "utf8",
-    cwd: process.env.RG_WORKDIR ?? process.cwd(),
-  }).trim();
-}
-
-function prepareAttempt(record: StateRecord, headSha: string, now: number): StateRecord {
-  if (record.headSha !== headSha) return freshRecord(headSha, now);
-  return {
-    ...record,
-    status: "in-progress",
-    attempts: record.attempts + 1,
-    lastAttemptAt: now,
-    updatedAt: now,
-    nextRetryAt: null,
-    exitCode: null,
-    error: null,
-    resultingSha: null,
-  };
-}
-
-function recordFailure(record: StateRecord, error: unknown, now: number): StateRecord {
-  const attempts = record.attempts;
-  const status: RecordStatus = attempts >= MAX_ATTEMPTS ? "escalated" : "failed";
-  return {
-    ...record,
-    status,
-    updatedAt: now,
-    exitCode: exitCodeFrom(error),
-    error: sanitizeError(error),
-    nextRetryAt: status === "failed" ? now + retryDelayMs(attempts) : record.nextRetryAt,
-  };
-}
-
-function shouldAttempt(record: StateRecord, now: number): boolean {
-  if (record.status === "escalated") return false;
-  if (record.status === "failed") {
-    if (record.attempts >= MAX_ATTEMPTS) return false;
-    return now >= (record.nextRetryAt ?? 0);
-  }
-  if (record.status === "in-progress") {
-    return now >= record.lastAttemptAt + staleInProgressTimeoutMs();
-  }
-  return false;
-}
-
 // --- main ---------------------------------------------------------------------
 
 function main(): void {
@@ -319,70 +337,109 @@ function main(): void {
   const now = nowMs();
 
   for (const pr of openPRs()) {
-    const v = latestVerdict(pr.number);
-    if (!v) continue;
-
-    if (v.verdict === "needs-human") {
-      console.log(
-        `PR #${pr.number}: needs-human for verdict SHA ${v.headSha} (current head ${pr.headRefOid}), not launching fix pass`,
-      );
+    const details = prDetails(pr.number);
+    const comments = reviewThreadComments(pr.number);
+    const inlineComments = inlineReviewComments(pr.number);
+    const existing = state[String(pr.number)];
+    const previousComments = [...comments, ...inlineComments];
+    let reviewHistory: CorrectiveReview[];
+    try {
+      reviewHistory = correctiveReviewHistory(comments, pr.number, (process.env.TRACER_REVIEWER_LOGINS ?? "").split(","));
+    } catch (error) {
+      console.warn(`PR #${pr.number}: unable to establish corrective-round history: ${sanitizeError(error)}`);
+      continue;
+    }
+    const decision = evaluateReviewGateEligibility({
+      pullRequestNumber: pr.number,
+      currentHeadSha: pr.headRefOid,
+      currentLabels: details.labels.map((label) => label.name),
+      comments,
+      trustedReviewerLogins: (process.env.TRACER_REVIEWER_LOGINS ?? "").split(","),
+      correctiveReviewHistory: reviewHistory,
+      priorAttempt: parseAttempt(existing),
+      now,
+      staleInProgressTimeoutMs: staleInProgressTimeoutMs(),
+    });
+    if (decision.kind === "notify-only") {
+      console.log(`PR #${pr.number}: needs-human; notify human with next action: ${decision.nextAction}`);
+      continue;
+    }
+    if (decision.kind === "stop") {
+      if (decision.reason === "malformed-verdict") {
+        console.warn(`PR #${pr.number}: review-gate comment is unparseable; skipping`);
+      }
+      if (decision.reason === "attempt-limit" && existing && existing.status !== "escalated") {
+        state[String(pr.number)] = { ...existing, status: "escalated", updatedAt: now };
+        saveState(state);
+      }
       continue;
     }
 
-    // SHA-staleness rule: verdict only valid on current head.
-    if (v.headSha !== pr.headRefOid) {
-      console.log(`PR #${pr.number}: verdict SHA ${v.headSha} is stale for current head ${pr.headRefOid}; skipping`);
-      continue;
-    }
-
-    // Only needs-fix triggers autonomous action. merge-candidate/blocked surface
-    // to the human — the poller does not merge or escalate.
-    if (v.verdict !== "needs-fix") continue;
-
+    const record: StateRecord = {
+      ...decision.attempt,
+      createdAt: decision.attempt.attempts === 1 ? now : existing?.createdAt ?? now,
+      updatedAt: now,
+      exitCode: null,
+      error: null,
+      resultingSha: null,
+    };
     const key = String(pr.number);
-    const existing = state[key];
-
-    let record: StateRecord;
-
-    if (!existing || existing.headSha !== pr.headRefOid) {
-      record = freshRecord(pr.headRefOid, now);
-    } else if (existing.status === "escalated") {
-      continue;
-    } else if (existing.status === "failed") {
-      if (existing.attempts >= MAX_ATTEMPTS) {
-        state[key] = { ...existing, status: "escalated", updatedAt: now };
-        saveState(state);
-        continue;
-      }
-      if (!shouldAttempt(existing, now)) continue;
-      record = prepareAttempt(existing, pr.headRefOid, now);
-    } else if (existing.status === "in-progress") {
-      if (existing.attempts >= MAX_ATTEMPTS) {
-        state[key] = { ...existing, status: "escalated", updatedAt: now };
-        saveState(state);
-        continue;
-      }
-      if (!shouldAttempt(existing, now)) continue;
-      record = prepareAttempt(existing, pr.headRefOid, now);
-    } else {
-      continue;
-    }
-
     state[key] = record;
     saveState(state);
 
     console.log(`PR #${pr.number}: needs-fix on ${pr.headRefOid}, triggering fix pass`);
     try {
+      const actingLogin = authenticatedLogin();
       triggerFixPass(pr);
-      state[key] = {
-        ...state[key],
-        status: "completed",
-        updatedAt: nowMs(),
-        resultingSha: currentGitHeadSha(),
-      };
+      const finishedAt = nowMs();
+      const updatedDetails = prDetails(pr.number, true);
+      const updatedComments = [
+        ...(updatedDetails.comments ?? []),
+        ...reviewThreadComments(pr.number),
+        ...inlineReviewComments(pr.number),
+      ];
+      const resultingSha = updatedDetails.headRefOid;
+      const progressComparison = resultingSha === decision.verdict.headSha
+        ? null
+        : compareCommits(decision.verdict.headSha, resultingSha);
+      const verifiedPrProgress = progressComparison?.status === "ahead" && progressComparison.ahead_by > 0;
+      const blockingFindings = blockingFindingsForVerdict(comments, decision.verdict, pr.number, (process.env.TRACER_REVIEWER_LOGINS ?? "").split(","));
+      const durableDispositionRecorded = blockingFindings !== null && hasNewDurableDisposition(previousComments, updatedComments, {
+        repository: repo,
+        pullRequestNumber: pr.number,
+        authorLogin: actingLogin,
+        headSha: decision.verdict.headSha,
+        resultingHeadSha: resultingSha,
+        changedFilesSinceHead: progressComparison?.files.map((file) => file.filename) ?? [],
+        blockingFindings,
+      });
+      const completion = evaluateFixPassCompletion({ exitCode: 0, verifiedPrProgress, durableDispositionRecorded });
+      if (completion.kind === "failed") {
+        state[key] = {
+          ...state[key],
+          ...recordFailedAttempt(state[key], finishedAt),
+          updatedAt: finishedAt,
+          exitCode: 0,
+          error: completion.reason,
+        };
+      } else {
+        state[key] = {
+          ...state[key],
+          status: "completed",
+          updatedAt: finishedAt,
+          resultingSha,
+        };
+      }
       saveState(state);
     } catch (error) {
-      state[key] = recordFailure(state[key], error, nowMs());
+      const failedAt = nowMs();
+      state[key] = {
+        ...state[key],
+        ...recordFailedAttempt(state[key], failedAt),
+        updatedAt: failedAt,
+        exitCode: exitCodeFrom(error),
+        error: sanitizeError(error),
+      };
       saveState(state);
     }
   }
