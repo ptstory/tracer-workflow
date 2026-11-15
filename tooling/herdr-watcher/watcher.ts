@@ -108,6 +108,16 @@ function statePath(environment: NodeJS.ProcessEnv): string {
   return resolve(environment.XDG_STATE_HOME ?? resolve(environment.HOME ?? ".", ".local/state"), "herdr/plugins/tracer.review-gate-watcher/notified.json");
 }
 
+function configuredRepositories(environment: NodeJS.ProcessEnv): WatcherConfig {
+  const configuration = loadConfig(environment);
+  const reviewers = environment.TRACER_REVIEWER_LOGINS?.split(",").map((login) => login.trim().toLowerCase()).filter(Boolean);
+  if (!reviewers?.length) throw new Error("TRACER_REVIEWER_LOGINS must contain at least one trusted reviewer");
+  if (configuration.reviewer_logins.some((login) => !reviewers.includes(login))) {
+    throw new Error("Watcher reviewer_logins must be contained in TRACER_REVIEWER_LOGINS");
+  }
+  return configuration;
+}
+
 function loadConfig(environment: NodeJS.ProcessEnv): WatcherConfig {
   const path = configPath(environment);
   if (!existsSync(path)) throw new Error(`Watcher config not found: ${path}`);
@@ -355,7 +365,7 @@ function samePullRequestIdentity(left: PullRequest, right: PullRequest): boolean
 }
 
 function actionableCandidate(repository: string, initial: PullRequest, config: WatcherConfig, environment: NodeJS.ProcessEnv, commandRunner: CommandRunner): NotificationCandidate | null {
-  if (hasHitl(initial.labels) || initial.closingIssuesReferences.length !== 1 || /^\[(?:HITL|needs-human)\]/i.test(initial.title)) return null;
+  if (hasHitl(initial.labels) || initial.closingIssuesReferences.length !== 1 || /^\[(?:HITL|needs-human|needs-fix)\]/i.test(initial.title)) return null;
   const issueNumber = initial.closingIssuesReferences[0].number;
   const issue = issueMetadata(repository, issueNumber, commandRunner);
   if (issue.state !== "OPEN" || governingIssueIsHitl(issue)) return null;
@@ -365,7 +375,7 @@ function actionableCandidate(repository: string, initial: PullRequest, config: W
   if (!candidate) return null;
 
   const current = pullRequest(repository, initial.number, commandRunner);
-  if (!samePullRequestIdentity(initial, current) || hasHitl(current.labels) || /^\[(?:HITL|needs-human)\]/i.test(current.title)) return null;
+  if (!samePullRequestIdentity(initial, current) || hasHitl(current.labels) || /^\[(?:HITL|needs-human|needs-fix)\]/i.test(current.title)) return null;
   const currentIssue = issueMetadata(repository, issueNumber, commandRunner);
   if (currentIssue.state !== "OPEN" || governingIssueIsHitl(currentIssue)) return null;
   const currentComments = reviewComments(repository, initial.number, commandRunner);
@@ -373,10 +383,10 @@ function actionableCandidate(repository: string, initial: PullRequest, config: W
   const currentCandidate = notificationCandidate(repository, current, currentDecision);
   if (!currentCandidate || currentCandidate.key !== candidate.key || currentCandidate.body !== candidate.body) return null;
   if (!pluginIsEnabled(environment, commandRunner)) throw new Error("Herdr watcher plugin is disabled or unavailable");
-  const finalPr = pullRequest(repository, initial.number, commandRunner);
-  if (!samePullRequestIdentity(current, finalPr)) return null;
   const finalIssue = issueMetadata(repository, issueNumber, commandRunner);
   if (finalIssue.state !== "OPEN" || governingIssueIsHitl(finalIssue)) return null;
+  const finalPr = pullRequest(repository, initial.number, commandRunner);
+  if (!samePullRequestIdentity(current, finalPr) || hasHitl(finalPr.labels)) return null;
   return currentCandidate;
 }
 
@@ -401,6 +411,7 @@ function reconcileRepository(repository: string, config: WatcherConfig, environm
       state.notified.push(candidate.key);
       writeNotificationState(statePath(environment), state);
       try {
+        if (!pluginIsEnabled(environment, commandRunner)) throw new Error("Herdr watcher plugin is disabled or unavailable");
         sendNotification(candidate, environment, commandRunner);
       } catch (error) {
         state.notified = state.notified.filter((key) => key !== candidate.key);
@@ -418,18 +429,20 @@ function githubRepositoryFromRemote(remote: string): string | null {
   return match?.[1].toLowerCase() ?? null;
 }
 
-function watchedRepositories(snapshot: HerdrSnapshot, config: WatcherConfig, commandRunner: CommandRunner): { repository: string; checkoutPaths: string[] }[] {
+function watchedRepositories(snapshot: HerdrSnapshot, config: WatcherConfig, commandRunner: CommandRunner): { repository: string; repositoryRoots: string[] }[] {
   return config.repositories.flatMap((repository) => {
     const expectedRepoName = repository.split("/").at(-1)?.toLowerCase();
-    const checkoutPaths = snapshot.workspaces.flatMap((workspace) => {
+    const repositoryRoots = snapshot.workspaces.flatMap((workspace) => {
       const worktree = workspace.worktree;
-      if (!worktree || typeof worktree.checkout_path !== "string" || typeof worktree.repo_name !== "string" ||
+      if (!worktree || typeof worktree.repo_root !== "string" || typeof worktree.repo_name !== "string" ||
         worktree.repo_name.toLowerCase() !== expectedRepoName) return [];
-      const result = commandRunner("git", ["-C", worktree.checkout_path, "remote", "get-url", "origin"]);
+      const result = commandRunner("git", ["-C", worktree.repo_root, "remote", "get-url", "origin"]);
       if (result.status !== 0 || githubRepositoryFromRemote(result.stdout.trim()) !== repository.toLowerCase()) return [];
-      return [worktree.checkout_path];
+      return [worktree.repo_root];
     });
-    return checkoutPaths.length ? [{ repository, checkoutPaths: [...new Set(checkoutPaths)] }] : [];
+    const uniqueRoots = [...new Set(repositoryRoots)];
+    if (uniqueRoots.length > 1) throw new Error(`Ambiguous Herdr repositories for watched repository ${repository}`);
+    return uniqueRoots.length ? [{ repository, repositoryRoots: uniqueRoots }] : [];
   });
 }
 
@@ -450,7 +463,7 @@ async function readHerdrSnapshot(environment: NodeJS.ProcessEnv, commandRunner: 
 }
 
 async function reconcile(environment: NodeJS.ProcessEnv, dependencies: WatcherDependencies = {}): Promise<void> {
-  const config = loadConfig(environment);
+  const config = configuredRepositories(environment);
   if (!config.reviewer_logins.length) throw new Error("Reviewer allowlist is empty");
   if (environment.HERDR_ENV !== "1") throw new Error("Watcher must run from an active Herdr plugin context");
   const commandRunner = dependencies.commandRunner ?? runCommand;
@@ -464,14 +477,7 @@ async function reconcile(environment: NodeJS.ProcessEnv, dependencies: WatcherDe
   const result = withStateLock(path, () => {
     const state = readNotificationState(path);
     const watched = watchedRepositories(snapshot, config, commandRunner);
-    const activeRepositories = new Set(watched.map((entry) => entry.repository.toLowerCase()));
-    for (const repository of config.repositories) {
-      if (!activeRepositories.has(repository.toLowerCase())) {
-        state.notified = state.notified.filter((key) => !key.startsWith(`${repository}#`));
-        continue;
-      }
-      reconcileRepository(repository, config, environment, state, commandRunner, logger);
-    }
+    for (const entry of watched) reconcileRepository(entry.repository, config, environment, state, commandRunner, logger);
     writeNotificationState(path, state);
   });
   if (result === null) logger("Skipped reconciliation because another watcher owns the state lock");
@@ -532,7 +538,7 @@ async function waitForHerdrEvent(socketPath: string, timeoutMs: number): Promise
 }
 
 async function watch(environment: NodeJS.ProcessEnv, dependencies: WatcherDependencies = {}): Promise<void> {
-  const config = loadConfig(environment);
+  const config = configuredRepositories(environment);
   if (environment.HERDR_ENV !== "1") throw new Error("Watcher must run from an active Herdr plugin context");
   const commandRunner = dependencies.commandRunner ?? runCommand;
   const logger = dependencies.logger ?? console.error;
@@ -560,7 +566,7 @@ async function watch(environment: NodeJS.ProcessEnv, dependencies: WatcherDepend
 
 async function runWatcher(argv: string[], environment: NodeJS.ProcessEnv, dependencies: WatcherDependencies = {}): Promise<void> {
   if (argv.includes("--check")) {
-    loadConfig(environment);
+    configuredRepositories(environment);
     return;
   }
   if (argv.includes("--once")) {
@@ -579,6 +585,7 @@ if (import.meta.main) {
 
 export {
   actionableCandidate,
+  configuredRepositories,
   correctiveReviewHistory,
   governingIssueIsHitl,
   hasHitl,

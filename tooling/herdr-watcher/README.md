@@ -14,7 +14,7 @@ The plugin runs as a Herdr startup hook. Its foreground listener subscribes to w
 
 ## Configure
 
-Create the plugin config file at the path printed by `herdr plugin config-dir tracer.review-gate-watcher`, then copy `config.example.toml` to `config.toml` there and set the watched repositories and trusted Review Gate reviewer logins:
+Create the plugin config file at the path printed by `herdr plugin config-dir tracer.review-gate-watcher`, then copy `config.example.toml` to `config.toml` there and set the watched repositories and trusted Review Gate reviewer logins. Set `TRACER_REVIEWER_LOGINS` in Herdr's process environment to the same comma-separated trusted reviewer list; the listener fails closed if it is absent:
 
 ```toml
 repositories = ["owner/repo"]

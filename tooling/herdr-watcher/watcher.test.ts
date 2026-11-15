@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  configuredRepositories,
   governingIssueIsHitl,
   parseSnapshot,
   readHerdrSnapshot,
@@ -98,6 +99,7 @@ function harness(options: { pr?: ReturnType<typeof makePullRequest>; comments?: 
     HERDR_ENV: "1",
     HERDR_BIN_PATH: "herdr-test",
     HERDR_PLUGIN_ID: "tracer.review-gate-watcher",
+    TRACER_REVIEWER_LOGINS: "review-bot",
     HERDR_PLUGIN_CONFIG_DIR: configDirectory,
     HERDR_PLUGIN_STATE_DIR: stateDirectory,
   } as NodeJS.ProcessEnv;
@@ -147,6 +149,11 @@ describe("validateConfig", () => {
     expect(() => validateConfig({ repositories: [REPOSITORY], reviewer_logins: [" "] })).toThrow("reviewer_logins");
     expect(() => validateConfig({ repositories: ["not-a-repository"], reviewer_logins: REVIEWER_LOGINS })).toThrow("owner/repo");
     expect(() => validateConfig({ repositories: [REPOSITORY], reviewer_logins: REVIEWER_LOGINS, refresh_interval_seconds: 1 })).toThrow("refresh_interval_seconds");
+    const testCase = harness();
+    testCase.environment.TRACER_REVIEWER_LOGINS = "Review-Bot, trusted-reviewer";
+    expect(configuredRepositories(testCase.environment).reviewer_logins).toEqual(["review-bot"]);
+    delete testCase.environment.TRACER_REVIEWER_LOGINS;
+    expect(() => configuredRepositories(testCase.environment)).toThrow("TRACER_REVIEWER_LOGINS");
   });
 });
 
@@ -163,10 +170,10 @@ describe("Herdr snapshot and watched repositories", () => {
       panes: [],
       agents: [],
     };
-    const commandRunner: CommandRunner = (_executable, args) => result(args[1] === "/repo-copy" ? "git@github.com:acme/repo.git\n" : "https://github.com/acme/repo.git\n");
-    expect(watchedRepositories(snapshot, CONFIG, commandRunner)).toEqual([{ repository: REPOSITORY, checkoutPaths: ["/repo"] }]);
+    const commandRunner: CommandRunner = (_executable, args) => result(args[2] === "/repo-copy" ? "git@github.com:acme/repo.git\n" : "https://github.com/acme/repo.git\n");
+    expect(watchedRepositories(snapshot, CONFIG, commandRunner)).toEqual([{ repository: REPOSITORY, repositoryRoots: ["/repo"] }]);
     expect(watchedRepositories({ ...snapshot, workspaces: [] }, CONFIG, commandRunner)).toEqual([]);
-    expect(watchedRepositories({ ...snapshot, workspaces: [...snapshot.workspaces, { worktree: { ...snapshot.workspaces[0].worktree, checkout_path: "/repo-copy" } }] }, CONFIG, commandRunner)).toHaveLength(1);
+    expect(watchedRepositories({ ...snapshot, workspaces: [...snapshot.workspaces, { worktree: { ...snapshot.workspaces[0].worktree, checkout_path: "/repo-copy", repo_root: "/repo" } }] }, CONFIG, commandRunner)).toHaveLength(1);
     const noActivity = harness();
     await reconcile(noActivity.environment, { ...noActivity.dependencies, snapshot: async () => ({ protocol: 22, workspaces: [], panes: [], agents: [] }) });
     expect(noActivity.calls.some(({ executable, args }) => executable === "gh" && args[0] === "pr")).toBe(false);
