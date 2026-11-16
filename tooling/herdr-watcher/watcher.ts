@@ -193,7 +193,7 @@ function hasHitl(labels: readonly { name: string }[], issue = false): boolean {
 
 function governingIssueIsHitl(issue: IssueMetadata): boolean {
   return hasHitl(issue.labels, true) || /\[(?:HITL|needs-human)\]/i.test(issue.title) ||
-    /(?:^|\n)\s*autonomy\s*:\s*(?:hitl|needs human|human-in-the-loop)\b/im.test(issue.body);
+    !/(?:^|\n)\s*autonomy\s*:\s*afk-safe\s*$/im.test(issue.body);
 }
 
 function correctiveReviewHistory(repository: string, pullRequestNumber: number, comments: Comment[], reviewerLogins: readonly string[], commandRunner: CommandRunner): CorrectiveReview[] {

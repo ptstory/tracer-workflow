@@ -196,6 +196,12 @@ describe("governingIssueIsHitl", () => {
   test("does not mistake an AFK-safe issue for human-owned work", () => {
     expect(governingIssueIsHitl({ state: "OPEN", title: "Task", body: "Autonomy: AFK-safe", labels: [{ name: "ready-for-agent" }] })).toBe(false);
   });
+
+  test("fails closed on missing, unknown, and hyphenated human autonomy declarations", () => {
+    expect(governingIssueIsHitl({ state: "OPEN", title: "Task", body: "", labels: [] })).toBe(true);
+    expect(governingIssueIsHitl({ state: "OPEN", title: "Task", body: "Autonomy: undecided", labels: [] })).toBe(true);
+    expect(governingIssueIsHitl({ state: "OPEN", title: "Task", body: "Autonomy: needs-human", labels: [] })).toBe(true);
+  });
 });
 
 describe("pullRequestDecision and notificationCandidate", () => {
@@ -275,6 +281,12 @@ describe("reconcile", () => {
     const hitlIssue = harness({ issue: { state: "OPEN", title: "[HITL] Change behavior", body: "", labels: [] } });
     await reconcile(hitlIssue.environment, hitlIssue.dependencies);
     expect([...hitlPr.calls, ...hitlIssue.calls].filter(({ executable, args }) => executable === "herdr-test" && args[0] === "notification")).toHaveLength(0);
+  });
+
+  test("does not notify for a governing issue with no autonomy declaration", async () => {
+    const undeclaredIssue = harness({ issue: { state: "OPEN", title: "Improve the API", body: "", labels: [] } });
+    await reconcile(undeclaredIssue.environment, undeclaredIssue.dependencies);
+    expect(undeclaredIssue.calls.filter(({ executable, args }) => executable === "herdr-test" && args[0] === "notification")).toHaveLength(0);
   });
 
   test("does not notify when GitHub fails or Herdr is unavailable", async () => {
