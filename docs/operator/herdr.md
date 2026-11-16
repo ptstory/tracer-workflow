@@ -48,6 +48,10 @@ The extended-workspace plugin requires Herdr 0.9.5 or later, `bash`, `git`, `fzf
 
 Both keybindings use Herdr's default `ctrl+b` prefix. The plugin READMEs document the commands and actions above. The extended-workspace plugin's GitHub PR picker exists, but whether this operator setup uses it is **unverified**; start issue lanes from the GitHub issue.
 
+## Review Gate notifications
+
+The optional Tracer Review Gate Watcher sends Herdr notifications for eligible current-head `gate:needs-fix` and `gate:needs-human` verdicts. It does not create panes or launch agents. Follow [`tooling/herdr-watcher/README.md`](../../tooling/herdr-watcher/README.md) to link the plugin, configure watched repositories and trusted reviewers, and verify plugin disable and Herdr shutdown behavior. The listener is owned by Herdr and is not a detached service.
+
 ## Run an issue lane
 
 1. In the repository's Herdr space, press `ctrl+b Shift+N` and choose **From a GitHub issue**. Select the open issue and confirm its branch. The plugin opens a worktree workspace under that repository. Do not start issue work in the home checkout.

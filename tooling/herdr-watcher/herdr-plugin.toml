@@ -1,0 +1,9 @@
+id = "tracer.review-gate-watcher"
+name = "Tracer Review Gate Watcher"
+version = "0.1.0"
+min_herdr_version = "0.9.5"
+platforms = ["macos", "linux"]
+description = "Notify on trusted current-head Review Gate needs-fix and needs-human verdicts without dispatching workers."
+
+[[startup]]
+command = ["bun", "run", "watcher.ts"]
