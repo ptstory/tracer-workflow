@@ -192,8 +192,10 @@ function hasHitl(labels: readonly { name: string }[], issue = false): boolean {
 }
 
 function governingIssueIsHitl(issue: IssueMetadata): boolean {
+  const autonomyDeclarations = [...issue.body.matchAll(/(?:^|\n)\s*autonomy\s*:\s*([^\r\n]*)/gi)]
+    .map((match) => match[1].trim().toLowerCase());
   return hasHitl(issue.labels, true) || /\[(?:HITL|needs-human)\]/i.test(issue.title) ||
-    !/(?:^|\n)\s*autonomy\s*:\s*afk-safe\s*$/im.test(issue.body);
+    autonomyDeclarations.length !== 1 || autonomyDeclarations[0] !== "afk-safe";
 }
 
 function correctiveReviewHistory(repository: string, pullRequestNumber: number, comments: Comment[], reviewerLogins: readonly string[], commandRunner: CommandRunner): CorrectiveReview[] {
