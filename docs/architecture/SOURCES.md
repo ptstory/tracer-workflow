@@ -1,7 +1,7 @@
 # Source-backed architecture notes
 
 These diagrams describe `ptstory/tracer-workflow` as observed at revision
-`53edae78f8f1a0ad56f1f0f19bcf69e5bdedc728`.
+`0892ec5c5dad4f540e6408590e1e38c0c008df78`.
 
 The editable source models are:
 

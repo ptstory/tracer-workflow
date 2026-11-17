@@ -12,36 +12,41 @@ transcripts are disposable.
 
 If you're reading this because you forgot what the workflow was: the chain is
 below, the skills are in `skills/`, the plain reusable prompts are in `prompts/`,
-and the repo-owned rules are the evidence-bundle contract, the slice-contract
-rule, and the check-run gate. `using-superpowers` is optional guardrail context,
-not a global router that overrides this workflow. `from-issue` is the execution
-stage for a `ready-for-agent` issue, or for a validated pasted implementation
-handoff / durable agent brief that has been accepted as equivalent execution
-input; it resumes the same issue/worktree when present, and completes at PR +
-evidence bundle. Once it accepts action-ready input, nested brainstorming/planning/`using-superpowers`
-steps are subordinate subroutines and must return control to execution. An
-ordinary `Approve this direction` / design-approval checkpoint only ends the run
-if it names a concrete unresolved blocker absent from the issue or brief.
-Multi-file scope, UI impact, a desire for planning, or a nested skill's default
-approval checkpoint are not blockers by themselves. Review, check-run, and merge
-stay downstream in subordinate stages. Handoff-only only for genuine blockers or
-verified failures that cannot be recovered locally.
+and the four repo-owned rules are the evidence-bundle contract, the slice-contract
+rule, the check-run gate, and durable blocker / verified-failure recovery.
+`from-issue` is the execution stage for a `ready-for-agent` issue, or for a
+validated pasted implementation handoff / durable agent brief that has been
+accepted as equivalent execution input; it resumes the same issue/worktree when
+present, and completes at PR + evidence bundle. Once it accepts action-ready
+input, nested brainstorming or planning steps are subordinate subroutines and
+must return control to execution. An ordinary `Approve this direction` /
+design-approval checkpoint only ends the run if it names a concrete unresolved
+blocker absent from the issue or brief. Multi-file scope, UI impact, a desire for
+planning, or a nested skill's default approval checkpoint are not blockers by
+themselves. Review, check-run, and merge stay downstream in subordinate stages.
+Handoff-only is allowed only for genuine blockers or verified failures that
+cannot be recovered locally.
 
 ## The chain
 
 ```
-chat / PRD / messy idea → to-issues → triage-queue → agent-brief → next → from-issue
+planning session → [optional upstream to-tickets] or direct issue filing
+     → [optional triage-queue → agent-brief for incoming, untriaged, or incomplete issues]
+     → from-issue (ready-for-agent / complete execution contract)
      → PR with closing issue reference + evidence bundle
-     → requesting-code-review → from-pr-review ⇄ receiving-code-review if judgment is needed
+     → @review-gate in a fresh ChatGPT conversation ⇄ from-pr-review for needs-fix
      → retest → check-run gate → merge candidate / human stop / follow-up issue
-     → next
+
+next is a safety stub until #30, not a working selector
 ```
 
-`triage-queue` is the shallow repository-wide selector. It recommends how open
-issues and external PRs should move through the state machine, but does not
-change labels, close issues, or write durable briefs. `wontfix-candidate` is a
-queue recommendation. `wontfix` is a deep-triage decision made by `agent-brief`
-or the maintainer.
+`triage-queue` is an optional shallow repository-wide selector for incoming or
+untriaged work, or issues whose bodies are not complete execution contracts. It
+recommends how open issues and external PRs should move through the state machine,
+but does not change labels, close issues, or write durable briefs. `to-tickets`
+applies `ready-for-agent` itself; for other inputs, deep triage may apply that
+label when the contract is complete. `wontfix-candidate` is a queue recommendation.
+`wontfix` is a deep-triage decision made by `agent-brief` or the maintainer.
 
 `agent-brief` is the deep single-item triage pass. It turns one selected issue or
 PR into the durable GitHub comment that supports `ready-for-agent`, `needs-info`,
@@ -50,19 +55,18 @@ normal contract later consumed by `from-issue`. For PRs, an agent brief is a
 human coordination artifact unless a downstream workflow explicitly consumes PR
 briefs. `from-pr-review` consumes review-gate verdicts and review threads.
 
-`next` is the state-machine selector after merge. It lists `ready-for-agent`
-issues whose blockers are closed and contract-satisfying.
+`next` is a safety stub until #30; it is not a functioning selector and must not
+be treated as the post-merge route to executable work.
 
 | Skill / prompt | Owner | Role |
 |---|---|---|
-| `to-issues` | adopted (Matt Pocock) | messy idea → scoped GitHub issues, one vertical slice each. Tags each issue HITL or AFK **at creation**. |
-| `triage-queue` | Tracer custom prompt | repository-wide shallow issue/PR pass; recommends states for maintainer selection only. |
-| `agent-brief` | Tracer custom prompt | deep single issue/PR triage; writes the durable handoff comment for delegation or human stop. |
-| `from-issue` | Tracer custom skill | execution stage: one `ready-for-agent` issue, validated pasted implementation handoff, or validated pasted durable agent brief → durable brief + issue worktree → smallest safe slice → PR with a closing issue reference + evidence bundle. Review, check-run, and merge remain downstream. Handoff-only only for genuine blockers or verified failures that cannot be recovered locally; no duplicate implementation handoff for the same issue. |
-| `requesting-code-review` | adopted (REPOZY) | reviewer side. Security pass, severity-blocks-merge, produces a merge-readiness verdict. |
-| `from-pr-review` | Tracer custom skill | **plumbing** for the return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, emit handoff. Delegates every judgment call to `receiving-code-review`. |
-| `receiving-code-review` | adopted (REPOZY) | **judgment**. Uses the canonical verdict contract in `skills/review-gate/references/verdict-contract.md`. Forbids "good catch" / agreeing before verification. |
-| `next` | Tracer custom skill | loop-closer. After merge, lists open `ready-for-agent` issues with no open blockers → hand one to `from-issue`. Read-only. |
+| `to-tickets` | upstream (optional) | Planning method that can create scoped issues and applies `ready-for-agent` itself; issues may also be filed directly. |
+| `triage-queue` | Tracer custom prompt (optional) | Shallow repository-wide issue/PR pass for incoming or untriaged work, or an issue without a complete execution contract; recommends states only. |
+| `agent-brief` | Tracer custom prompt (optional) | Deep single issue/PR triage when needed; writes the durable handoff comment for delegation or human stop. `to-tickets` applies `ready-for-agent` itself; otherwise this step may add it for complete, executable work. |
+| `from-issue` | Tracer custom skill | Execution stage: one `ready-for-agent` issue, validated pasted implementation handoff, or validated pasted durable agent brief → durable brief + issue worktree → smallest safe slice → PR with a closing issue reference + evidence bundle. Review, check-run, and merge remain downstream. Handoff-only only for genuine blockers or verified failures that cannot be recovered locally; no duplicate implementation handoff for the same issue. |
+| `review-gate` | Tracer custom prompt / `@review-gate` plugin | Active fresh-conversation review; applies the canonical verdict contract and posts a current-head verdict. |
+| `from-pr-review` | Tracer custom skill | Mechanical return leg: read review threads, apply fixes, verify against real check-runs, reply per-thread, re-push, and emit handoff. Its judgment/disposition contract is `skills/from-pr-review/references/disposition-rules.md`. |
+| `next` | Tracer custom skill (stub) | Safety stub until #30; not a functioning issue selector. |
 
 ## Triage depth rule
 
@@ -70,9 +74,9 @@ Repository-wide triage stops at queueing. It may recommend states and identify
 promising `ready-for-agent` candidates, but it does not complete the deeper
 contract for every issue in one session.
 
-Deep triage handles one issue or PR at a time. Before an item becomes safe for an
-AFK agent, `agent-brief` gathers context, checks current repo state, identifies
-scope boundaries, and writes concrete acceptance criteria.
+When needed, deep triage handles one issue or PR at a time. Before an item becomes
+safe for an AFK agent, `agent-brief` gathers context, checks current repo state,
+identifies scope boundaries, and writes concrete acceptance criteria.
 
 Low-confidence queue recommendations route to `deep-triage` or
 `human-decision`. They are not action-ready.
@@ -84,15 +88,15 @@ or a validated pasted durable agent brief are all execution inputs once
 validated; the later review stages are separate contracts, not nested inside
 `from-issue`.
 
-## The three repo-owned rules
+## The four repo-owned rules
 
 Tracer adds these rules because the adopted skills trust reported command output.
 That creates a narrated-confidence failure mode.
 
 **1. Evidence-bundle contract.** A `from-issue` PR body contains the exact local
 commands run and their output, anchored to a specific head SHA. Prose claims such
-as "tests pass" only index the evidence. `requesting-code-review` audits the
-bundle itself.
+as "tests pass" only index the evidence. The `review-gate` audits the
+evidence bundle itself.
 
 **2. Check-run gate.** Merge readiness comes from the current head's required
 status-check configuration. For a PR whose every changed path is in the docs-only
@@ -141,7 +145,7 @@ Resume entry points:
 | issue exists, no PR | `from-issue <issue-url>` |
 | PR exists, no verdict | `review-gate` against the PR |
 | PR exists, `needs-fix` verdict on current head | `from-pr-review` |
-| merged | `next` |
+| merged | `next` (safety stub until #30; not a working selector) |
 
 Two limits:
 
@@ -158,6 +162,7 @@ Two limits:
 
 ## HITL / AFK
 
+An issue is HITL by default; AFK applies only when the issue explicitly says so.
 The autonomy decision is made at issue creation in the planning plane with full
 context. Workers do not infer it mid-session.
 
@@ -176,7 +181,7 @@ Anything touching write endpoints, auth paths, public surface, or live infra
 - Runtime skills: `~/.agents/skills/<name>` symlinks into this repo where a
   prompt or skill is installed as a runtime skill, leaving one authoritative
   copy.
-- Adopted skills (`to-issues`, `requesting-code-review`, `receiving-code-review`)
-  live in their upstream skill repos or copies and are consumed here.
+- Upstream planning method: `to-tickets` may be used to create issues; direct
+  issue filing is also supported. Tracer does not ship a planning skill.
 - Per-repo contract: each project gets an `AGENTS.md` / `WORKFLOW.md` pointer and
   its label mapping via `setup-matt-pocock-skills`.

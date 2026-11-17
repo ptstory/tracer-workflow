@@ -3,14 +3,15 @@
 This file records the **current tool bindings** for Tracer. It is non-normative:
 changing a tool here must not change the workflow protocol in `WORKFLOW.md`.
 
-## Current bindings — 2026-09-30
+## Current bindings — 2026-11-17
 
 | Responsibility | Current runtime |
 |---|---|
-| Planning and interactive review | ChatGPT web / Claude web |
+| Planning and interactive review | ChatGPT web / Claude web; `to-tickets` is the upstream planning method, and issues may also be filed directly. |
 | Implementation and fix passes | Crush |
 | Durable coordination and workflow authority | GitHub issues, pull requests, comments, commits, and check runs |
-| Review-gate poller | **Not in use.** The checked-in poller is still tied to OpenCode and is tracked for runtime decoupling in #184. |
+| Review gate | The `@review-gate` ChatGPT plugin in a fresh conversation; `skills/review-gate/` is the canonical contract, and `actions/review-gate-gpt/` is an available but inactive package. See #195 for the plugin implementation. |
+| Review-gate poller | **Parked, not in use.** The checked-in poller is still tied to OpenCode and is tracked for runtime decoupling in #184. |
 
 ## Rules
 
