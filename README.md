@@ -83,7 +83,8 @@ coverage. Older-head results never count.
 ## Where things live
 
 Custom skills are versioned under `skills/`; this repo is their canonical source.
-The canonical definitions for the ChatGPT-web stages live under `prompts/`. Issue
+The canonical definitions for the ChatGPT-web triage prompts live under
+`prompts/`; the Review Gate contract remains under `skills/review-gate/`. Issue
 #15 tracks tighter parity plus the posting and supersession contracts around it.
 
 The full stage table, including every skill, owner, and role, is in
