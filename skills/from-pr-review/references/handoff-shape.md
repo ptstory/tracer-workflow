@@ -103,3 +103,11 @@ Check-run gate (head SHA dddddddddddddddddddddddddddddddddddddddd):
   Readiness evidence path: plan-unavailable
 Readiness: ready
 ```
+
+### PR-body finding history
+
+```handoff
+Round 0 finding: PR body Docs line refers to README.md.
+Round 1 evidence: PR body Docs line changed after the prior verdict; README.md did not change.
+Disposition: evaluate the changed PR-body text, not stale based on the unchanged README.md anchor.
+```

@@ -53,6 +53,7 @@ describe("from-pr-review return contract", () => {
     expect(handoff).toMatch(/`plan-unavailable` is not by itself a blocker/);
     expect(handoff).toMatch(/`indeterminate` readiness is blocked/);
     expect(handoff).toMatch(/### Plan unavailable, canonical no-required-check path[\s\S]*?Readiness evidence path: plan-unavailable[\s\S]*?Readiness: ready/);
+    expect(handoff).toMatch(/### PR-body finding history[\s\S]*?evaluate the changed PR-body text, not stale based on the unchanged README\.md anchor/);
     expect(verdictContract).toMatch(/Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`/);
     expect(verdictContract).toMatch(/HTTP 403 with the exact body message[\s\S]*?records `plan-unavailable`/);
   });
