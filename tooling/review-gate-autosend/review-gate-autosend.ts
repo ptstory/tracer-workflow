@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execFileSync } from "node:child_process";
-import { latestConformingGateComment, reviewerLogins, type Comment } from "../lib/verdict";
+import { latestConformingGateComment, parseGateReviewMetadata, reviewerLogins, type Comment } from "../lib/verdict";
 
 const PR_URL_PATTERN = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)$/;
 
@@ -49,8 +49,9 @@ function nextActionFor(comments: Comment[], gate: NonNullable<ReturnType<typeof 
 }
 
 function main(argv: string[] = process.argv.slice(2)): void {
-  if (argv.length !== 1) {
-    process.stderr.write("usage: bun tooling/review-gate-autosend/review-gate-autosend.ts <PR_URL>\n");
+  const afterPrBodyFix = argv[0] === "--after-pr-body-fix";
+  if (argv.length !== (afterPrBodyFix ? 2 : 1)) {
+    process.stderr.write("usage: bun tooling/review-gate-autosend/review-gate-autosend.ts [--after-pr-body-fix] <PR_URL>\n");
     process.exitCode = 2;
     return;
   }
@@ -58,8 +59,8 @@ function main(argv: string[] = process.argv.slice(2)): void {
   let pullRequestUrl: string;
   let target: ReturnType<typeof parsePullRequestUrl>;
   try {
-    target = parsePullRequestUrl(argv[0]);
-    pullRequestUrl = argv[0];
+    target = parsePullRequestUrl(argv[afterPrBodyFix ? 1 : 0]);
+    pullRequestUrl = argv[afterPrBodyFix ? 1 : 0];
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 2;
@@ -71,7 +72,23 @@ function main(argv: string[] = process.argv.slice(2)): void {
     reviewerLogins();
     const pullRequest = readPullRequest(target.owner, target.repository, target.number);
     const gate = latestConformingGateComment(pullRequest.comments, { pullRequestNumber: target.number });
-    if (gate && gate.headSha === pullRequest.headRefOid.toLowerCase()) {
+    if (afterPrBodyFix) {
+      // The normal SHA guard must not suppress a fresh review after a genuine
+      // PR-body-only correction; a PR description edit does not move the head.
+      const trusted = reviewerLogins();
+      const previousVerdict = pullRequest.comments.find((comment) =>
+        comment.createdAt === gate?.commentedAt &&
+        !!comment.author?.login && trusted.has(comment.author.login.toLowerCase()) &&
+        comment.body.startsWith("## review-gate: needs-fix") &&
+        comment.body.split(/\r?\n/).includes(`head-sha: ${gate?.headSha}`),
+      );
+      const targets = previousVerdict ? parseGateReviewMetadata(previousVerdict.body)?.blockingTargets : null;
+      if (gate?.headSha !== pullRequest.headRefOid.toLowerCase() ||
+          gate.verdict !== "needs-fix" || targets?.length !== 1 || targets[0] !== "PR body") {
+        throw new Error("--after-pr-body-fix requires a trusted current-head needs-fix verdict whose sole blocker is PR body");
+      }
+      process.stdout.write("Launching fresh Review Gate after verified PR-body-only correction; head unchanged.\n");
+    } else if (gate && gate.headSha === pullRequest.headRefOid.toLowerCase()) {
       process.stdout.write(`Current Review Gate verdict: ${gate.verdict}\n`);
       process.stdout.write(`Next action: ${nextActionFor(pullRequest.comments, gate)}\n`);
       return;
