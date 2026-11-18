@@ -26,4 +26,12 @@ The helper prints the PR URL as a fallback. It reads the current PR head and com
 
 `https://chatgpt.com/?autosend=1&q=<URL-encoded "@review-gate <full PR URL>">`
 
+For a **verified PR-body-only correction without a new commit**, `from-pr-review`
+compares the PR body before/after the edit and instead calls
+`review-gate-autosend.ts --after-pr-body-fix <PR_URL>`. Only a trusted,
+current-head `needs-fix` whose sole blocking target is `PR body` may use
+this explicit exception; it launches the fresh Review Gate review rather than
+echoing the already-completed fixer invocation. The default SHA guard is
+unchanged. Do not use the flag when the body was not changed.
+
 If GitHub data or trusted reviewer configuration cannot be read, the helper fails closed and does not launch Review Gate.

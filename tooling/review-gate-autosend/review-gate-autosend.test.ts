@@ -52,10 +52,12 @@ function writeExecutable(path: string, content: string): void {
   chmodSync(path, 0o755);
 }
 
-function runAutosend(harness: Harness, skill = "from-issue") {
+function runAutosend(harness: Harness, skill = "from-issue", afterPrBodyFix = false) {
+  const invocation = 'skill_dir="$(cd "$HOME/.agents/skills/$1" && pwd -P)" && bun "$skill_dir/../../tooling/review-gate-autosend/review-gate-autosend.ts" ' +
+    (afterPrBodyFix ? '"--after-pr-body-fix" "$2"' : '"$2"');
   return spawnSync("sh", [
     "-c",
-    'skill_dir="$(cd "$HOME/.agents/skills/$1" && pwd -P)" && bun "$skill_dir/../../tooling/review-gate-autosend/review-gate-autosend.ts" "$2"',
+    invocation,
     "review-gate-autosend",
     skill,
     pullRequestUrl,
@@ -111,10 +113,12 @@ function makeUserscriptHarness(composerText: string) {
 }
 
 function verdictComment(headSha: string, verdict = "merge-candidate"): CommentFixture {
-  const nextAction = verdict === "merge-candidate" ? "gh pr ready 12" : "gh pr view 12 --web";
+  const nextAction = verdict === "merge-candidate" ? "gh pr ready 12" :
+    verdict === "needs-fix" ? `from-pr-review ${pullRequestUrl}` : "gh pr view 12 --web";
+  const blockingSet = verdict === "needs-fix" ? "PR body" : "";
   return {
     author: { login: "reviewer" },
-    body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreview-round: 0\nreviewed-files: 1\nblocking-set:\nnext-action: ${nextAction}\n`,
+    body: `## review-gate: ${verdict}\nhead-sha: ${headSha}\nreview-round: 0\nreviewed-files: 1\nblocking-set: ${blockingSet}\nnext-action: ${nextAction}\n`,
     createdAt: "2026-10-01T00:00:00Z",
   };
 }
@@ -131,6 +135,50 @@ describe("tooling/review-gate-autosend", () => {
       expect(existsSync(harness.openLog) ? readFileSync(harness.openLog, "utf8") : "").toBe("");
     } finally {
       rmSync(harness.root, { recursive: true, force: true });
+    }
+  });
+
+  test("default guard still suppresses same-head PR-body-only needs-fix", () => {
+    const harness = makeHarness([verdictComment(currentHead, "needs-fix")]);
+    try {
+      const result = runAutosend(harness, "from-pr-review");
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain(`Next action: from-pr-review ${pullRequestUrl}`);
+      expect(existsSync(harness.openLog)).toBe(false);
+    } finally {
+      rmSync(harness.root, { recursive: true, force: true });
+    }
+  });
+
+  test("explicit post-fix handoff launches a fresh review for a same-head PR-body-only blocker", () => {
+    const harness = makeHarness([verdictComment(currentHead, "needs-fix")]);
+    try {
+      const result = runAutosend(harness, "from-pr-review", true);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("Launching fresh Review Gate after verified PR-body-only correction");
+      expect(readFileSync(harness.openLog, "utf8")).toBe(`-g\nhttps://chatgpt.com/?autosend=1&q=${encodeURIComponent(`@review-gate ${pullRequestUrl}`)}\n`);
+    } finally {
+      rmSync(harness.root, { recursive: true, force: true });
+    }
+  });
+
+  test("post-fix override fails closed for a merge candidate, stale verdict, or mixed blockers", () => {
+    const mixed = verdictComment(currentHead, "needs-fix");
+    mixed.body = mixed.body.replace("blocking-set: PR body", "blocking-set: PR body, README.md");
+    for (const comments of [
+      [verdictComment(currentHead)],
+      [verdictComment(oldHead, "needs-fix")],
+      [mixed],
+    ]) {
+      const harness = makeHarness(comments);
+      try {
+        const result = runAutosend(harness, "from-pr-review", true);
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("--after-pr-body-fix requires a trusted current-head needs-fix verdict");
+        expect(existsSync(harness.openLog)).toBe(false);
+      } finally {
+        rmSync(harness.root, { recursive: true, force: true });
+      }
     }
   });
 
