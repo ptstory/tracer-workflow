@@ -56,3 +56,50 @@ Next action: <one fresh-session invocation or `nothing — done`>
   a duplicate review at the unchanged head. Never emit `from-pr-review` as its own
   next action. If the unchanged head has newly dispositioned findings and no
   `fix-now` rows remain, hand back to `@review-gate <PR_URL>`.
+
+## Regression fixtures
+
+### No push after disposition
+
+```handoff
+head SHA (before → after): aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa → aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Readiness: blocked-on: current-head needs-fix verdict awaits independent review
+Next action: @review-gate <PR_URL>
+```
+
+### No push and no new PR state
+
+```handoff
+head SHA (before → after): aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa → aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Readiness: blocked-on: current-head needs-fix verdict; no new PR state to review
+Next action: nothing — done
+```
+
+### Checks still pending after poll budget
+
+```handoff
+Check-run gate (head SHA bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb):
+  CI : pending
+  required-all-green: false
+Readiness: blocked-on: checks pending
+Next action: gh pr checks 123
+```
+
+### Red check caused by this pass
+
+```handoff
+Check-run gate (head SHA cccccccccccccccccccccccccccccccccccccccc):
+  CI : failure
+Action: repaired the in-scope failure in this pass, pushed a correction, and restarted current-head verification
+Next action: @review-gate <PR_URL>
+```
+
+### Plan unavailable, canonical no-required-check path
+
+```handoff
+Check-run gate (head SHA dddddddddddddddddddddddddddddddddddddddd):
+  CI : success
+  required-all-green: true
+  Readiness evidence path: plan-unavailable
+Readiness: ready
+```

@@ -29,6 +29,8 @@ describe("from-pr-review return contract", () => {
     expect(skill).toMatch(/no finding, disposition, thread, or PR\s+body changed during this pass[\s\S]*?duplicate review at the\s+unchanged head/);
     expect(handoff).toMatch(/Next action: <one fresh-session invocation or `nothing — done`>/);
     expect(handoff).toMatch(/If no push occurred, no new\s+disposition or PR-body change was made[\s\S]*?do not trigger\s+a duplicate review/);
+    expect(handoff).toMatch(/### No push after disposition[\s\S]*?Next action: @review-gate <PR_URL>/);
+    expect(handoff).toMatch(/### No push and no new PR state[\s\S]*?Next action: nothing — done/);
   });
 
   test("waits for settled current-head CI and handles pending and red outcomes", () => {
@@ -37,7 +39,9 @@ describe("from-pr-review return contract", () => {
     expect(skill).toMatch(/repair an in-scope\s+failure in this same run[\s\S]*?restart this step/);
     expect(skill).toMatch(/Once per poll, read the PR\s+head again[\s\S]*?restart verification for the new SHA/);
     expect(handoff).toMatch(/checks never settle \(still pending after the poll budget\)[\s\S]*?`blocked-on: checks pending`/);
+    expect(handoff).toMatch(/### Checks still pending after poll budget[\s\S]*?Next action: gh pr checks 123/);
     expect(handoff).toMatch(/A failure caused\s+by this pass is repaired in the same pass/);
+    expect(handoff).toMatch(/### Red check caused by this pass[\s\S]*?restarted current-head verification/);
   });
 
   test("uses canonical readiness semantics and tracks metadata findings in body history", () => {
@@ -48,6 +52,7 @@ describe("from-pr-review return contract", () => {
     expect(handoff).toMatch(/Readiness evidence path: <available\|plan-unavailable\|indeterminate>/);
     expect(handoff).toMatch(/`plan-unavailable` is not by itself a blocker/);
     expect(handoff).toMatch(/`indeterminate` readiness is blocked/);
+    expect(handoff).toMatch(/### Plan unavailable, canonical no-required-check path[\s\S]*?Readiness evidence path: plan-unavailable[\s\S]*?Readiness: ready/);
     expect(verdictContract).toMatch(/Record the readiness evidence path in the Review Record as `available`, `plan-unavailable`, or `indeterminate`/);
     expect(verdictContract).toMatch(/HTTP 403 with the exact body message[\s\S]*?records `plan-unavailable`/);
   });
