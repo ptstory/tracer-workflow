@@ -145,10 +145,20 @@ against actual check-run state, and hand back.
       bun "$skill_dir/../../tooling/review-gate-autosend/review-gate-autosend.ts" <PR_URL>
     ```
 
+    **PR-body-only return:** If the sole blocking target in the trusted
+    current-head `needs-fix` verdict is `PR body`, and this pass actually
+    changed the PR body without changing the head SHA, compare the body before
+    and after the edit and invoke the same helper with
+    `--after-pr-body-fix <PR_URL>`. This explicit exception opens a fresh
+    `@review-gate` despite the old same-head verdict. Do not use the exception
+    unless the before/after PR body is different, and do not use it for code
+    findings, `needs-human`, or `merge-candidate`. This is a reviewer handoff,
+    **not** another `from-pr-review` pass; state the next action accordingly.
+
     Name the resulting PR URL fallback or the verdict and next action printed
-    by the guard. A current-head verdict suppresses launch; otherwise the helper
-    opens the opt-in ChatGPT Review Gate URL. Never instruct a merge from this
-    skill.
+    by the guard. Normally a current-head verdict suppresses launch; otherwise
+    the helper opens the opt-in ChatGPT Review Gate URL. Never instruct a merge
+    from this skill.
 
 ## Do not
 
