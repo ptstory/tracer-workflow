@@ -16,7 +16,7 @@ This is a personal workflow, deliberately heavier than a small change warrants, 
 
 ## One verified example
 
-[Issue #242](https://github.com/ptstory/tracer-workflow/issues/242) was completed by [merged PR #271](https://github.com/ptstory/tracer-workflow/pull/271), which includes its head-SHA evidence bundle. The PR's [merge-candidate review-gate verdict](https://github.com/ptstory/tracer-workflow/pull/271#issuecomment-6964767500) records the review loop.
+[Issue #242](https://github.com/ptstory/tracer-workflow/issues/242) was completed by [merged PR #271](https://github.com/ptstory/tracer-workflow/pull/271), which includes its head-SHA evidence bundle. The PR's [merge-candidate review-gate verdict](https://github.com/ptstory/tracer-workflow/pull/271#issuecomment-6964767500) records the review loop. Follow the [five-minute walkthrough](./docs/showcase-walkthrough.md) for the evidence trail and its safeguards.
 
 ## What is in this repo
 
