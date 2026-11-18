@@ -82,7 +82,8 @@ memory. A `ready-for-agent` label asserts that this brief exists.
 
 ## HITL / AFK
 
-The autonomy decision made at issue creation in the planning plane with full
+An issue is HITL by default; AFK applies only when the issue explicitly says so.
+The autonomy decision is made at issue creation in the planning plane with full
 context. Workers do not infer it mid-session. **AFK** pre-authorizes the
 autonomous path through merge once the check-run gate is green. **HITL** means
 the human owns the merge button; agents may still push fixes, reply to threads,

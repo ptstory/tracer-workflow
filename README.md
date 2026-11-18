@@ -14,8 +14,8 @@ Each stage closes one of those gaps. Intent becomes an issue. Work becomes a PR
 with an evidence bundle. Review runs in a fresh session carrying none of the
 planning thread's assumptions, and its verdict is stamped with the head SHA.
 Push a new commit and the verdict becomes stale automatically. Check-run state,
-rather than narrated confidence, decides readiness. A nightly monitor finds
-commits no trusted remote holds.
+rather than narrated confidence, decides readiness. A local monitor is available
+to find commits no trusted remote holds, with an optional launchd schedule.
 
 Sessions are good workers with bad memories. They can do the work, but GitHub is
 the record.
@@ -46,11 +46,11 @@ fresh review even when the implementation session itself continues.
 
 ## One issue, end to end
 
-A raw idea goes through `to-issues` and comes out as scoped issues, one vertical
-slice each. `triage-queue` does a shallow pass over everything open and
-recommends what to inspect; `agent-brief` then reads one issue deeply and
-produces the durable triage comment that makes the issue safe to hand to an
-agent. `next` reports which of those issues have no open blockers.
+Issues come from a planning session, either through optional upstream
+`to-tickets`, which applies `ready-for-agent`, or by filing issues directly.
+`triage-queue` and `agent-brief` are optional for incoming or untriaged issues,
+or when an issue body is not a complete execution contract; they are not
+mandatory for every issue. `next` is a safety stub until #30.
 
 `from-issue` is the execution stage for a `ready-for-agent` issue, or for a
 validated pasted implementation handoff / durable agent brief that has been
@@ -59,23 +59,13 @@ when one exists, otherwise it cuts a branch, implements the slice, and opens a
 PR carrying `Closes #N` and an evidence bundle — exact commands and their
 output, anchored to the head SHA, rather than a prose claim that things work.
 
-Once action-ready input is accepted, nested brainstorming/planning/`using-superpowers`
-steps are subordinate subroutines and must return control to execution. An
-ordinary approval gate does not end the run unless it names a concrete
-unresolved blocker that is absent from the issue or brief. Multi-file scope, UI
-impact, a desire for planning, or a nested skill's default approval checkpoint
-are not blockers by themselves. A handoff-only result is allowed only for
-genuine blockers or verified failures that cannot be recovered locally. The
-allowed terminal outcomes are: PR opened with closing issue reference + evidence
-bundle; existing PR/worktree resumed and advanced; explicit durable blocker
-naming the exact missing prerequisite or decision; verified failure with the
-exact recovery state persisted.
+Once action-ready input is accepted, execution resumes the issue/worktree and proceeds to a PR with evidence or a durable blocker, as specified by [`from-issue`](./skills/from-issue/SKILL.md).
 
-`review-gate` is pasted into a fresh web session with a GitHub connector. It runs
-`requesting-code-review`, classifies findings through `receiving-code-review`
-dispositions, and posts a verdict comment stamped with the reviewed head SHA. A
-fresh session reviews the issue as written without carrying assumptions from the
-planning thread.
+The active review gate is the `@review-gate` ChatGPT plugin, run in a fresh
+conversation. [`skills/review-gate/`](./skills/review-gate/) remains its canonical
+contract. The checked-in [`actions/review-gate-gpt/`](./actions/review-gate-gpt/)
+package is available but is not the active entry point; the plugin posts a verdict
+comment stamped with the reviewed head SHA.
 
 On a `needs-fix` verdict, `from-pr-review` applies the fixes, replies per thread,
 and pushes. The push moves the head SHA and invalidates the verdict, so the
@@ -90,45 +80,38 @@ must pass on the current head, and Review Gate content review must be clean at
 that head. Non-allowlisted and mixed changes retain ordinary changed-path
 coverage. Older-head results never count.
 
-### Reader-facing diagrams
-
-The figures in `docs/diagrams/` stay intentionally simple; they are the primary
-visuals in this README. Their editable source and editorial rules live in
-[`docs/diagrams/README.md`](./docs/diagrams/README.md).
-
 ## Where things live
 
 Custom skills are versioned under `skills/`; this repo is their canonical source.
-The canonical definitions for the ChatGPT-web stages live under `prompts/`. The
-installed ChatGPT skills are kept aligned with them by hand. Issue #15 tracks
-tighter parity plus the posting and supersession contracts around it.
-
-Adopted skills are upstream copies. They are extended through their config seams
-or routed around, never edited in place. `receiving-code-review` has no config
-seam and is used stock; `requesting-code-review` takes review scope from a root
-`context-snapshot.json` when present.
+The canonical definitions for the ChatGPT-web triage prompts live under
+`prompts/`; the Review Gate contract remains under `skills/review-gate/`. Issue
+#15 tracks tighter parity plus the posting and supersession contracts around it.
 
 The full stage table, including every skill, owner, and role, is in
 [WORKFLOW.md](./WORKFLOW.md).
 
 ## Tooling
 
-**`tooling/gate-state/`**: repository gate-state inventory. The monitored fleet is runtime configuration: set `TRACER_REPOS` to a comma/newline-separated list or `TRACER_REPOS_FILE` to a local file. The public source intentionally checks in no private repository inventory and falls back to this repository only.
-
-**`tooling/review-gate-poller/`**: Bun poller that watches open PRs for a fresh
-`needs-fix` verdict at the current head and contains the legacy fix-pass
-launcher. The poller is currently **not in use**; `RUNTIME.md` records the
-current runtime status and #184 owns decoupling the launcher. The poller does not
-infer or override the issue's AFK/HITL landing authority. See its
-[README](./tooling/review-gate-poller/README.md) for environment variables and
-launchd install.
-
-**`tooling/unbacked-work-monitor/`**: nightly Bun monitor for local-only commits
-retained by branches or linked worktrees but not by trusted remote refs. It scans
-configured repository roots recursively, discovers non-bare Git repos, and
-writes JSON plus Markdown reports. See
-[`tooling/unbacked-work-monitor/README.md`](./tooling/unbacked-work-monitor/README.md)
-for roots-based invocation, output paths, and launchd install notes.
+- `tooling/dependency-readiness/` — **available**: dependency readiness checks.
+- `tooling/doctor/` — **available**: diagnoses local repository/runtime setup.
+- `tooling/gate-packet/` — **available**: assembles current-head gate evidence.
+- `tooling/gate-readiness/` — **active**: GitHub Actions workflows evaluate and
+  reevaluate PR readiness.
+- `tooling/gate-state/` — **available**: inventories repository gate state.
+- `tooling/herdr-watcher/` — **available**: reports review verdict notifications
+  in Herdr.
+- `tooling/lib/` — **active**: shared review-gate verdict and eligibility logic.
+- `tooling/review-gate-auto-merge/` — **available**: supports authorized AFK
+  landing after the gate.
+- `tooling/review-gate-autosend/` — **available**: opens the opt-in review-gate
+  flow.
+- `tooling/review-gate-poller/` — **parked** (#184): legacy poller, not active
+  automation.
+- `tooling/unbacked-work-monitor/` — **available**: local-only commit monitor
+  with an optional launchd schedule.
+- `actions/` — **available**: GitHub connector actions and the non-active Custom
+  GPT package.
+- `scripts/` — **active**: repository contract, package, and disclosure checks.
 
 Verdict format and the two load-bearing review-gate rules, SHA-staleness and
 comment-only operation, are defined in

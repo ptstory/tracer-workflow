@@ -56,7 +56,7 @@
   <text class="label" x="826" y="332">Landed change</text>
 
   <path class="line" d="M268 201 H352"/>
-  <text class="mono" x="282" y="188">TO-ISSUES</text>
+  <text class="mono" x="282" y="188">TO-TICKETS</text>
 
   <path class="line" d="M502 222 H590"/>
   <text class="mono" x="516" y="209">PR</text>
