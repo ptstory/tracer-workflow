@@ -156,7 +156,7 @@ describe("tooling/review-gate-autosend", () => {
       const result = runAutosend(harness, "from-pr-review", true);
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("Launching fresh Review Gate after verified PR-body-only correction");
-      expect(readFileSync(harness.openLog, "utf8")).toBe(`-g\\nhttps://chatgpt.com/?autosend=1&q=${encodeURIComponent(`@review-gate ${pullRequestUrl}`)}\\n`);
+      expect(readFileSync(harness.openLog, "utf8")).toBe(`-g\nhttps://chatgpt.com/?autosend=1&q=${encodeURIComponent(`@review-gate ${pullRequestUrl}`)}\n`);
     } finally {
       rmSync(harness.root, { recursive: true, force: true });
     }
