@@ -6,7 +6,7 @@ This is a personal workflow, deliberately heavier than a small change warrants, 
 
 ## The chain
 
-`planning session → optional upstream to-tickets or direct issue filing → optional triage-queue / agent-brief when needed → from-issue → PR with evidence → @review-gate ⇄ from-pr-review for needs-fix → retest → check-run gate → merge candidate / human stop / follow-up issue`
+`planning session → [optional upstream to-tickets] or direct issue filing → [optional triage-queue → agent-brief for incoming, untriaged, or incomplete issues] → from-issue → PR with closing issue reference + evidence bundle → @review-gate in a fresh ChatGPT conversation ⇄ from-pr-review for needs-fix → retest → check-run gate → merge candidate / human stop / follow-up issue`
 
 `next` is a safety stub until #30, not a working selector.
 
