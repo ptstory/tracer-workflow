@@ -165,7 +165,7 @@ function makeHarness(fixture: Fixture): HarnessResult {
       number: fixture.issueResponseMalformed ? "242" : 242,
       state: fixture.issueState ?? "open",
       title: fixture.issueTitleResponseMalformed ? 24 : fixture.issueTitle ?? "Build feature",
-      body: fixture.issueBodyResponseMalformed ? null : fixture.issueBody === undefined ? "## Autonomy\n**AFK-safe for implementation and PR creation.**\n" : fixture.issueBody,
+      body: fixture.issueBodyResponseMalformed ? null : fixture.issueBody === undefined ? "Autonomy: AFK-safe\n" : fixture.issueBody,
       labels: fixture.issueLabelsResponseMalformed ? null : (fixture.issueLabels ?? []).map((name) => ({ name })),
     },
     issueReadable: fixture.issueReadable ?? true,
@@ -240,7 +240,7 @@ if (/\\/issues\\/\\d+$/.test(endpoint) && !endpoint.endsWith("/comments")) {
     process.exit(1);
   }
   const issue = data.issueSecondReadDenied && data.issueReadCount > 0
-    ? { ...data.issue, body: "## Autonomy\\nHITL. Human owns merge." }
+    ? { ...data.issue, body: "Autonomy: HITL" }
     : data.issue;
   data.issueReadCount += 1;
   fs.writeFileSync(fixturePath, JSON.stringify(data));
@@ -393,12 +393,16 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     ["malformed issue title", { issueTitleResponseMalformed: true }, "linked issue #242 metadata is malformed"],
     ["malformed issue body", { issueBodyResponseMalformed: true }, "linked issue #242 metadata is malformed"],
     ["malformed issue labels", { issueLabelsResponseMalformed: true }, "linked issue #242 metadata is malformed"],
-    ["absent autonomy", { issueBody: "No autonomy declaration" }, "does not contain exactly one ## Autonomy section"],
-    ["duplicate autonomy", { issueBody: "## Autonomy\nAFK-safe for implementation.\n\n## Autonomy\nAFK-safe for implementation." }, "does not contain exactly one ## Autonomy section"],
+    ["absent autonomy", { issueBody: "No autonomy declaration" }, "must contain exactly one Autonomy declaration"],
+    ["duplicate autonomy", { issueBody: "Autonomy: AFK-safe\n\nAutonomy: AFK-safe" }, "must contain exactly one Autonomy declaration"],
+    ["legacy heading format", { issueBody: "## Autonomy\nAFK-safe" }, "must contain exactly one Autonomy declaration"],
+    ["markdown emphasis variant", { issueBody: "**Autonomy: AFK-safe**" }, "must contain exactly one Autonomy declaration"],
     ["closed linked issue", { issueState: "closed" }, "linked issue #242 is not open"],
-    ["HITL autonomy", { issueBody: "## Autonomy\nHITL. Human owns merge." }, "does not explicitly authorize AFK"],
-    ["conflicting AFK policy", { issueBody: "## Autonomy\nAFK-safe for implementation. The human owns merge authority." }, "does not explicitly authorize AFK"],
-    ["malformed autonomy", { issueBody: "## Autonomy\nAFK may be considered." }, "does not explicitly authorize AFK"],
+    ["HITL autonomy", { issueBody: "Autonomy: HITL" }, "does not explicitly authorize AFK"],
+    ["implementation-only autonomy", { issueBody: "Autonomy: AFK-safe for implementation and PR creation" }, "does not explicitly authorize AFK"],
+    ["owner-approval merge restriction", { issueBody: "Autonomy: AFK-safe\nMerge requires owner approval." }, "does not explicitly authorize AFK"],
+    ["conflicting AFK policy", { issueBody: "Autonomy: AFK-safe\nThe human owns merge authority." }, "does not explicitly authorize AFK"],
+    ["malformed autonomy", { issueBody: "Autonomy: AFK may be considered." }, "does not explicitly authorize AFK"],
     ["HITL title marker", { issueTitle: "[HITL] Build feature" }, "is marked HITL"],
     ["HITL issue label", { issueLabels: ["hitl"] }, "is marked HITL"],
     ["blocked issue label", { issueLabels: ["blocked"] }, "is marked HITL"],

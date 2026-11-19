@@ -5,11 +5,11 @@ current trusted `merge-candidate` after the verdict/readiness workflow, CI, or
 check completion; it verifies the current PR head, mirrored verdict label,
 blocking labels, readiness report, required checks, and explicit AFK authorization
 in the PR's unique in-repository closing issue before any ready transition or
-guarded squash merge. The issue must have exactly one `## Autonomy` section whose
-first non-empty line starts with `AFK-safe`; HITL markers or conflicting human
-merge authority stop the workflow. Gate Readiness Reevaluate dispatches a follow-up
-run after it has finished processing a verdict comment so the auto-merge decision
-cannot race ahead of its report or labels.
+guarded squash merge. The issue must have exactly one `Autonomy: AFK-safe`
+declaration, matching the Herdr watcher contract; narrower grants or any HITL
+marker or conflicting human merge authority stop the workflow. Gate Readiness
+Reevaluate dispatches a follow-up run after it has finished processing a verdict
+comment so the auto-merge decision cannot race ahead of its report or labels.
 
 ## Required repository secret
 

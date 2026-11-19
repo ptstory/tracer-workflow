@@ -231,29 +231,19 @@ jobs:
             fi
             autonomy_data="$(printf '%s' "$issue_json" | jq -c '
               .body as $body
-              | ($body | split("\n")) as $lines
-              | [range(0; ($lines | length)) as $index | select($lines[$index] | test("^##[ \\t]+Autonomy[ \\t]*$"; "i")) | $index] as $headers
-              | if ($headers | length) != 1 then
-                  {header_count: ($headers | length), authorized: false, conflict: false, headers: $headers}
-                else
-                  ($headers[0] + 1) as $start
-                  | [range($start; ($lines | length)) as $index | select($lines[$index] | test("^##[ \\t]+")) | $index] as $ends
-                  | ($ends[0] // ($lines | length)) as $end
-                  | ($lines[$start:$end] | map(select(test("[^[:space:]]"))) | first // "") as $first
-                  | ($lines[$start:$end] | join("\n")) as $section
-                  | {
-                      header_count: ($headers | length),
-                      authorized: ($first | test("^[[:space:]]*(\\*\\*)?AFK-safe(\\*\\*)?([[:space:][:punct:]]|$)"; "i")),
-                      conflict: ($section | test("HITL|needs-human|human.{0,80}merge|merge.{0,80}human|maintainer.{0,80}merge|merge.{0,80}maintainer|manual.{0,80}merge|merge.{0,80}manual|human.{0,80}authority|authority.{0,80}human|not authorized to merge|does not authorize merge"; "i"))
-                    }
-                end
+              | [$body | split("\n")[] | select(test("^[[:space:]]*Autonomy[[:space:]]*:"; "i")) | sub("^[[:space:]]*Autonomy[[:space:]]*:[[:space:]]*"; "") | gsub("[[:space:]]+$"; "") | ascii_downcase] as $declarations
+              | {
+                  declaration_count: ($declarations | length),
+                  authorized: ($declarations == ["afk-safe"]),
+                  conflict: ($body | test("HITL|needs-human|human.{0,80}merge|merge.{0,80}human|maintainer.{0,80}merge|merge.{0,80}maintainer|manual.{0,80}merge|merge.{0,80}manual|human.{0,80}authority|authority.{0,80}human|not authorized to merge|does not authorize merge|merge.{0,80}owner|owner.{0,80}merge|owner.{0,80}approval|approval.{0,80}owner"; "i"))
+                }
             ')"
-            if [ "$(printf '%s' "$autonomy_data" | jq -r '.header_count')" -ne 1 ]; then
-              add_failure "linked issue #$issue_number does not contain exactly one ## Autonomy section"
+            if [ "$(printf '%s' "$autonomy_data" | jq -r '.declaration_count')" -ne 1 ]; then
+              add_failure "linked issue #$issue_number must contain exactly one Autonomy declaration"
               return
             fi
             if [ "$(printf '%s' "$autonomy_data" | jq -r '.authorized')" != "true" ] || [ "$(printf '%s' "$autonomy_data" | jq -r '.conflict')" = "true" ]; then
-              add_failure "linked issue #$issue_number does not explicitly authorize AFK in its ## Autonomy section"
+              add_failure "linked issue #$issue_number does not explicitly authorize AFK with Autonomy: AFK-safe"
               return
             fi
           }
