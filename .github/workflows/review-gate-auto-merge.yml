@@ -231,11 +231,19 @@ jobs:
             fi
             autonomy_data="$(printf '%s' "$issue_json" | jq -c '
               .body as $body
-              | [$body | split("\n")[] | select(test("^[[:space:]]*Autonomy[[:space:]]*:"; "i")) | sub("^[[:space:]]*Autonomy[[:space:]]*:[[:space:]]*"; "") | gsub("[[:space:]]+$"; "") | ascii_downcase] as $declarations
+              | reduce ($body | split("\n")[]) as $line (
+                  {in_fence: false, declarations: []};
+                  if ($line | test("^[[:space:]]*(```|~~~)")) then .in_fence |= not
+                  elif .in_fence or ($line | test("^[[:space:]]*>")) then .
+                  elif ($line | test("^[[:space:]]*Autonomy[[:space:]]*:"; "i")) then
+                    .declarations += [($line | sub("^[[:space:]]*Autonomy[[:space:]]*:[[:space:]]*"; "") | gsub("[[:space:]]+$"; "") | ascii_downcase)]
+                  else .
+                  end
+                )
               | {
-                  declaration_count: ($declarations | length),
-                  authorized: ($declarations == ["afk-safe"]),
-                  conflict: ($body | test("HITL|needs-human|human.{0,80}merge|merge.{0,80}human|maintainer.{0,80}merge|merge.{0,80}maintainer|manual.{0,80}merge|merge.{0,80}manual|human.{0,80}authority|authority.{0,80}human|not authorized to merge|does not authorize merge|merge.{0,80}owner|owner.{0,80}merge|owner.{0,80}approval|approval.{0,80}owner"; "i"))
+                  declaration_count: (.declarations | length),
+                  authorized: (.declarations == ["afk-safe"]),
+                  conflict: ($body | test("HITL|needs-human|human.{0,80}merge|merge.{0,80}human|maintainer.{0,80}merge|merge.{0,80}maintainer|manual.{0,80}merge|merge.{0,80}manual|human.{0,80}authority|authority.{0,80}human|not authorized to merge|does not authorize merge|merge.{0,80}owner|owner.{0,80}merge|owner.{0,80}approval|approval.{0,80}owner|do not.{0,80}auto[- ]?merg(e|es|ing)|must not.{0,80}auto[- ]?merg(e|es|ing)|never.{0,80}auto[- ]?merg(e|es|ing)|no.{0,80}auto[- ]?merg(e|es|ing)|auto[- ]?merg(e|es|ing).{0,80}(not authorized|not permitted|not allowed|forbidden|prohibited|disabled|requires? (human|owner))|automated merge.{0,80}(not authorized|not permitted|not allowed|forbidden|prohibited|disabled|requires? (human|owner))|automatic(?:ally)? merge.{0,80}(not authorized|not permitted|not allowed|forbidden|prohibited|disabled|requires? (human|owner))|(?:do not|must not|never).{0,80}(?:auto[- ]?merge|automated merge|automatic(?:ally)? merge|merge automatically|merge this|land this)|(?:do not|must not|never).{0,80}(?:merge|landing).{0,40}(?:automatically|without (?:human|owner|maintainer) approval|by automation)|no.{0,80}(?:auto[- ]?merge|automated merge|automatic(?:ally)? merge)|only (?:a )?(?:human|owner|maintainer).{0,80}(?:may |can |must )?(?:approve|perform|authorize)?.{0,40}merge|only.{0,40}merge.{0,40}(?:human|owner|maintainer)"; "i"))
                 }
             ')"
             if [ "$(printf '%s' "$autonomy_data" | jq -r '.declaration_count')" -ne 1 ]; then
