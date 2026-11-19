@@ -8,6 +8,10 @@ const verdictContract = readFileSync(
   resolve(import.meta.dir, "../skills/review-gate/references/verdict-contract.md"),
   "utf8",
 );
+const stageInventory = readFileSync(
+  resolve(import.meta.dir, "../docs/architecture/WORKFLOW-STAGE-INVENTORY.md"),
+  "utf8",
+);
 
 describe("workflow and context operational contract", () => {
   test("keeps HITL as the default and requires explicit AFK authorization", () => {
@@ -31,5 +35,28 @@ describe("workflow and context operational contract", () => {
     expect(verdictContract).toMatch(/`CONTEXT\.md`, `WORKFLOW\.md`, `AGENTS\.md`,/);
     expect(verdictContract).toMatch(/Any non-allowlisted path, including a mixed PR, uses the\s+ordinary path-coverage rules below\./);
     expect(verdictContract).toMatch(/and at least one applicable required check exercises the changed paths\./);
+  });
+
+  test("covers every stage declared in the workflow table", () => {
+    const declaredStages = Array.from(workflow.matchAll(/^\| `([^`]+)` \|/gm), (match) => match[1]);
+
+    expect(declaredStages.length).toBeGreaterThan(0);
+    for (const stage of declaredStages) {
+      expect(stageInventory).toContain(`\`${stage}\``);
+    }
+    for (const stage of ["gh-triage-queue", "to-issues", "requesting-code-review", "receiving-code-review"]) {
+      expect(stageInventory).toContain(`\`${stage}\``);
+    }
+  });
+
+  test("gives every canonical inventory row an evidence and drift status", () => {
+    const inventoryTable = stageInventory.split("## Canonical stage inventory")[1]?.split("## Personal policy boundary")[0] ?? "";
+    const inventoryRows = inventoryTable.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| Stage / policy"));
+
+    expect(inventoryRows.length).toBeGreaterThan(0);
+    for (const row of inventoryRows) {
+      expect(row.split("|")).toHaveLength(9);
+      expect(row).toMatch(/\*\*(clean|drift|unverifiable)\*\*/);
+    }
   });
 });

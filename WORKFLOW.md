@@ -181,6 +181,13 @@ Anything touching write endpoints, auth paths, public surface, or live infra
 - Runtime skills: `~/.agents/skills/<name>` symlinks into this repo where a
   prompt or skill is installed as a runtime skill, leaving one authoritative
   copy.
+- Stage authority, consumers, and deployment status are recorded in the
+  [workflow-stage inventory](./docs/architecture/WORKFLOW-STAGE-INVENTORY.md).
+  Declare the canonical source and load/deployment mechanism there before
+  describing a new Tracer-owned stage as installed. Manually synchronized
+  semantic copies are not an acceptable steady state; where direct source
+  loading is unavailable, the repository must own a versioned deployable
+  artifact with a deterministic parity marker and observable read-back.
 - Upstream planning method: `to-tickets` may be used to create issues; direct
   issue filing is also supported. Tracer does not ship a planning skill.
 - Per-repo contract: each project gets an `AGENTS.md` / `WORKFLOW.md` pointer and

@@ -28,6 +28,7 @@ This is a personal workflow, deliberately heavier than a small change warrants, 
 | [`actions/review-gate-gpt/`](./actions/review-gate-gpt/) | Custom GPT package | Available, but inactive as the review entry point |
 | [`tooling/review-gate-poller/`](./tooling/review-gate-poller/) | Legacy review-gate poller | Parked, not in use |
 | [`skills/next/`](./skills/next/) | Future next-work selector | Stub until #30 |
+| [`docs/architecture/WORKFLOW-STAGE-INVENTORY.md`](./docs/architecture/WORKFLOW-STAGE-INVENTORY.md) | Canonical stage sources, consumers, deployments, and observed drift | Read-only inventory; #81 owns mechanical checks |
 
 ## Using a piece of it
 
@@ -47,5 +48,6 @@ Planning and interactive review use ChatGPT web or Claude web; `to-tickets` is a
 ## Reference
 
 - [Workflow contract](./WORKFLOW.md)
+- [Workflow-stage authority and deployment inventory](./docs/architecture/WORKFLOW-STAGE-INVENTORY.md)
 - [Context and vocabulary](./CONTEXT.md)
 - [Review-gate verdict contract](./skills/review-gate/references/verdict-contract.md)
