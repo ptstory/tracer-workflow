@@ -396,6 +396,8 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     ["absent autonomy", { issueBody: "No autonomy declaration" }, "must contain exactly one Autonomy declaration"],
     ["duplicate autonomy", { issueBody: "Autonomy: AFK-safe\n\nAutonomy: AFK-safe" }, "must contain exactly one Autonomy declaration"],
     ["fenced autonomy example", { issueBody: "Use this issue template:\n```text\nAutonomy: AFK-safe\n```" }, "must contain exactly one Autonomy declaration"],
+    ["indented autonomy example", { issueBody: "Implementation guide:\n    Autonomy: AFK-safe" }, "must contain exactly one Autonomy declaration"],
+    ["HTML-comment autonomy example", { issueBody: "<!-- sample declaration\nAutonomy: AFK-safe\n-->" }, "must contain exactly one Autonomy declaration"],
     ["quoted autonomy example", { issueBody: "> Autonomy: AFK-safe" }, "must contain exactly one Autonomy declaration"],
     ["explicit auto-merge restriction", { issueBody: "Autonomy: AFK-safe\nDo not auto-merge this PR." }, "does not explicitly authorize AFK"],
     ["prohibited auto-merge", { issueBody: "Autonomy: AFK-safe\nAuto-merge is prohibited." }, "does not explicitly authorize AFK"],

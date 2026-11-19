@@ -230,11 +230,11 @@ jobs:
               return
             fi
             autonomy_data="$(printf '%s' "$issue_json" | jq -c '
-              .body as $body
+              .body | gsub("(?s)<!--.*?(-->|$)"; "") as $body
               | reduce ($body | split("\n")[]) as $line (
                   {in_fence: false, declarations: []};
                   if ($line | test("^[[:space:]]*(```|~~~)")) then .in_fence |= not
-                  elif .in_fence or ($line | test("^[[:space:]]*>")) then .
+                  elif .in_fence or ($line | test("^[[:space:]]*>")) or ($line | test("^(    |\\t)")) then .
                   elif ($line | test("^[[:space:]]*Autonomy[[:space:]]*:"; "i")) then
                     .declarations += [($line | sub("^[[:space:]]*Autonomy[[:space:]]*:[[:space:]]*"; "") | gsub("[[:space:]]+$"; "") | ascii_downcase)]
                   else .
