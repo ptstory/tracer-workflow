@@ -46,6 +46,19 @@ type Fixture = {
   changedFiles?: string[];
   prBody?: string;
   requiredCheckContext?: string;
+  closingIssues?: unknown;
+  linkedIssuesReadable?: boolean;
+  issueReadable?: boolean;
+  issueState?: "open" | "closed";
+  issueResponseMalformed?: boolean;
+  issueTitle?: string;
+  issueBody?: string | null;
+  issueLabels?: readonly string[];
+  malformedLinkageReadable?: boolean;
+  issueSecondReadDenied?: boolean;
+  issueTitleResponseMalformed?: boolean;
+  issueBodyResponseMalformed?: boolean;
+  issueLabelsResponseMalformed?: boolean;
 };
 
 type HarnessResult = {
@@ -140,7 +153,24 @@ function makeHarness(fixture: Fixture): HarnessResult {
             },
           };
   const mockData = {
+    closingIssues: fixture.closingIssues ?? [{ number: 242, repository: { name: "repo", owner: { login: "acme" } } }],
+    linkedIssuesReadable: fixture.linkedIssuesReadable ?? true,
+    malformedLinkageReadable: fixture.malformedLinkageReadable ?? true,
+    issueSecondReadDenied: fixture.issueSecondReadDenied ?? false,
+    issueReadCount: 0,
+    issueTitleResponseMalformed: fixture.issueTitleResponseMalformed ?? false,
+    issueBodyResponseMalformed: fixture.issueBodyResponseMalformed ?? false,
+    issueLabelsResponseMalformed: fixture.issueLabelsResponseMalformed ?? false,
+    issue: {
+      number: fixture.issueResponseMalformed ? "242" : 242,
+      state: fixture.issueState ?? "open",
+      title: fixture.issueTitleResponseMalformed ? 24 : fixture.issueTitle ?? "Build feature",
+      body: fixture.issueBodyResponseMalformed ? null : fixture.issueBody === undefined ? "## Autonomy\n**AFK-safe for implementation and PR creation.**\n" : fixture.issueBody,
+      labels: fixture.issueLabelsResponseMalformed ? null : (fixture.issueLabels ?? []).map((name) => ({ name })),
+    },
+    issueReadable: fixture.issueReadable ?? true,
     pr: {
+      closingIssuesReferences: fixture.closingIssues ?? [{ number: 242, repository: { name: "repo", owner: { login: "acme" } } }],
       state: fixture.pullRequestOpen === false ? "closed" : "open",
       head: { sha: headSha },
       base: { ref: "main" },
@@ -179,6 +209,18 @@ const bodyArg = args.find((arg) => arg.startsWith("body="));
 const auth = process.env.GH_TOKEN === ${JSON.stringify(fineGrainedToken)} ? "merge-token" : process.env.GH_TOKEN === "github-token" ? "github-token" : "none";
 const entry = { command, args, auth, ...(bodyArg ? { body: bodyArg.slice(5) } : {}) };
 fs.appendFileSync(logPath, JSON.stringify(entry) + "\\n");
+if (command === "pr" && args[1] === "view") {
+  if (!data.linkedIssuesReadable) {
+    process.stderr.write("GitHub unavailable\\n");
+    process.exit(1);
+  }
+  if (!data.malformedLinkageReadable) {
+    process.stdout.write("not-json");
+  } else {
+    process.stdout.write(JSON.stringify({ closingIssuesReferences: data.closingIssues }));
+  }
+  process.exit(0);
+}
 if (command === "pr" && args[1] === "ready") {
   data.pr.draft = false;
   fs.writeFileSync(fixturePath, JSON.stringify(data));
@@ -192,7 +234,18 @@ if (command === "pr" && args[1] === "merge") {
   fs.writeFileSync(fixturePath, JSON.stringify(data));
   process.exit(0);
 }
-if (endpoint.includes("/pulls/") && endpoint.includes("/files?")) {
+if (/\\/issues\\/\\d+$/.test(endpoint) && !endpoint.endsWith("/comments")) {
+  if (!data.issueReadable) {
+    process.stderr.write("Resource not accessible by integration\\n");
+    process.exit(1);
+  }
+  const issue = data.issueSecondReadDenied && data.issueReadCount > 0
+    ? { ...data.issue, body: "## Autonomy\\nHITL. Human owns merge." }
+    : data.issue;
+  data.issueReadCount += 1;
+  fs.writeFileSync(fixturePath, JSON.stringify(data));
+  process.stdout.write(JSON.stringify(issue));
+} else if (endpoint.includes("/pulls/") && endpoint.includes("/files?")) {
   process.stdout.write(JSON.stringify(data.changedFiles.map((filename) => ({ filename }))));
 } else if (endpoint.includes("/pulls/")) {
   process.stdout.write(JSON.stringify(data.pr));
@@ -256,6 +309,10 @@ function mergeCalls(result: HarnessResult) {
   return result.log.filter((entry) => entry.command === "pr" && entry.args[1] === "merge");
 }
 
+function readyCalls(result: HarnessResult) {
+  return result.log.filter((entry) => entry.command === "pr" && entry.args[1] === "ready");
+}
+
 function stopComments(result: HarnessResult) {
   return result.log.filter((entry) => entry.command === "api" && entry.args.includes("-X") && entry.args[entry.args.indexOf("-X") + 1] === "POST" && entry.args.some((arg) => arg.includes("/issues/98/comments")));
 }
@@ -270,15 +327,22 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     expect(mergeCalls(result)[0].args).toContain("--match-head-commit");
     expect(mergeCalls(result)[0].args).toContain(headSha);
     expect(mergeCalls(result)[0].auth).toBe("merge-token");
+    const issueReadIndex = result.log.findIndex((entry) => entry.command === "pr" && entry.args[1] === "view");
+    const mergeIndex = result.log.findIndex((entry) => entry.command === "pr" && entry.args[1] === "merge");
+    expect(issueReadIndex).toBeGreaterThanOrEqual(0);
+    expect(issueReadIndex).toBeLessThan(mergeIndex);
     expect(result.log.filter((entry) => entry.args.some((arg) => arg.includes("/branches/"))).every((entry) => entry.auth === "merge-token")).toBe(true);
     expect(result.comments.at(-1)?.body).toContain("Merge SHA: cccccccccccccccccccccccccccccccccccccccc");
   });
 
-  test("marks a draft ready before using the guarded squash merge", () => {
+  test("marks a draft ready before using the guarded squash merge when its issue explicitly authorizes AFK", () => {
     const result = makeHarness({ draft: true });
     expect(result.status, result.stderr).toBe(0);
+    const issueReadIndex = result.log.findIndex((entry) => entry.command === "pr" && entry.args[1] === "view");
     const readyIndex = result.log.findIndex((entry) => entry.command === "pr" && entry.args[1] === "ready");
     const mergeIndex = result.log.findIndex((entry) => entry.command === "pr" && entry.args[1] === "merge");
+    expect(issueReadIndex).toBeGreaterThanOrEqual(0);
+    expect(issueReadIndex).toBeLessThan(readyIndex);
     expect(readyIndex).toBeGreaterThanOrEqual(0);
     expect(mergeIndex).toBeGreaterThan(readyIndex);
   });
@@ -312,6 +376,38 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     expect(workflow).toContain(".labels[]?.name");
     const result = makeHarness({});
     expect(mergeCalls(result)).toHaveLength(1);
+  });
+
+  test.each([
+    ["missing", { closingIssues: [] }, "no in-repository closing issue"],
+    ["unreadable linkage", { linkedIssuesReadable: false }, "could not read authoritative linked issues"],
+    ["ambiguous", { closingIssues: [
+      { number: 242, repository: { name: "repo", owner: { login: "acme" } } },
+      { number: 243, repository: { name: "repo", owner: { login: "acme" } } },
+    ] }, "multiple in-repository closing issues"],
+    ["malformed linkage", { closingIssues: [{ number: "242" }] }, "linked-issue references for PR #98 are malformed or unavailable"],
+    ["cross-repository only", { closingIssues: [{ number: 242, repository: { name: "repo", owner: { login: "other" } } }] }, "no in-repository closing issue"],
+    ["malformed linked-issue response", { malformedLinkageReadable: false }, "linked-issue references for PR #98 are malformed or unavailable"],
+    ["unavailable", { issueReadable: false }, "could not read linked issue #242"],
+    ["malformed issue data", { issueResponseMalformed: true }, "linked issue #242 metadata is malformed"],
+    ["malformed issue title", { issueTitleResponseMalformed: true }, "linked issue #242 metadata is malformed"],
+    ["malformed issue body", { issueBodyResponseMalformed: true }, "linked issue #242 metadata is malformed"],
+    ["malformed issue labels", { issueLabelsResponseMalformed: true }, "linked issue #242 metadata is malformed"],
+    ["absent autonomy", { issueBody: "No autonomy declaration" }, "does not contain exactly one ## Autonomy section"],
+    ["duplicate autonomy", { issueBody: "## Autonomy\nAFK-safe for implementation.\n\n## Autonomy\nAFK-safe for implementation." }, "does not contain exactly one ## Autonomy section"],
+    ["closed linked issue", { issueState: "closed" }, "linked issue #242 is not open"],
+    ["HITL autonomy", { issueBody: "## Autonomy\nHITL. Human owns merge." }, "does not explicitly authorize AFK"],
+    ["conflicting AFK policy", { issueBody: "## Autonomy\nAFK-safe for implementation. The human owns merge authority." }, "does not explicitly authorize AFK"],
+    ["malformed autonomy", { issueBody: "## Autonomy\nAFK may be considered." }, "does not explicitly authorize AFK"],
+    ["HITL title marker", { issueTitle: "[HITL] Build feature" }, "is marked HITL"],
+    ["HITL issue label", { issueLabels: ["hitl"] }, "is marked HITL"],
+    ["blocked issue label", { issueLabels: ["blocked"] }, "is marked HITL"],
+  ] as const)("does not ready or merge when issue authorization is %s", (_state, fixture, expectedReason) => {
+    const result = makeHarness({ ...fixture, draft: true });
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+    expect(readyCalls(result)).toHaveLength(0);
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(stopComments(result).some((entry) => entry.body?.includes(expectedReason)), JSON.stringify(result.log)).toBe(true);
   });
 
   test("does not merge a stale verdict and names the mismatch", () => {
@@ -468,6 +564,15 @@ describe(".github/workflows/review-gate-auto-merge.yml behavior", () => {
     const result = makeHarness({ verdictState: "needs-human", labels: ["gate:needs-human"] });
     expect(mergeCalls(result)).toHaveLength(0);
     expect(stopComments(result).some((entry) => entry.body?.includes("latest current allowlisted verdict is needs-human"))).toBe(true);
+  });
+
+  test("rechecks issue authorization after the ready transition before merge", () => {
+    const result = makeHarness({ draft: true, issueSecondReadDenied: true });
+    const authorizationReads = result.log.filter((entry) => entry.command === "pr" && entry.args[1] === "view");
+    expect(authorizationReads.length).toBeGreaterThanOrEqual(2);
+    expect(readyCalls(result)).toHaveLength(1);
+    expect(mergeCalls(result)).toHaveLength(0);
+    expect(stopComments(result).some((entry) => entry.body?.includes("does not explicitly authorize AFK"))).toBe(true);
   });
 
   test("posts at most one stop comment per head and reason across retries", () => {

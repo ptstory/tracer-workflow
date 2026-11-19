@@ -167,6 +167,97 @@ jobs:
             gate_report_updated_at="$(printf '%s' "$gate_report" | jq -r '.updated_at // .created_at // empty')"
           }
 
+          check_issue_afk_authorization() {
+            local linked_issues issue_count issue_number issue_json issue_state issue_title_lower autonomy_data issue_labels
+            if ! linked_issues="$(gh pr view "$pr_number" --repo "$repo" --json closingIssuesReferences 2>/dev/null)"; then
+              add_failure "could not read authoritative linked issues for PR #$pr_number"
+              return
+            fi
+            if ! printf '%s' "$linked_issues" | jq -e --arg repo "$repo" '
+              type == "object"
+              and (.closingIssuesReferences | type) == "array"
+              and all(.closingIssuesReferences[];
+                (.number | type) == "number" and .number > 0
+                and (.repository | type) == "object"
+                and (.repository.name | type) == "string" and (.repository.name | length) > 0
+                and (.repository.owner.login | type) == "string" and (.repository.owner.login | length) > 0
+              )
+            ' >/dev/null; then
+              add_failure "linked-issue references for PR #$pr_number are malformed or unavailable"
+              return
+            fi
+            if ! issue_count="$(printf '%s' "$linked_issues" | jq --arg repo "$repo" '[.closingIssuesReferences[] | select((.repository.owner.login + "/" + .repository.name | ascii_downcase) == ($repo | ascii_downcase))] | length')"; then
+              add_failure "could not determine the authoritative linked issue for PR #$pr_number"
+              return
+            fi
+            if [ "$issue_count" -eq 0 ]; then
+              add_failure "PR #$pr_number has no in-repository closing issue to authorize auto-merge"
+              return
+            fi
+            if [ "$issue_count" -ne 1 ]; then
+              add_failure "PR #$pr_number has multiple in-repository closing issues; AFK authorization is ambiguous"
+              return
+            fi
+            if ! issue_number="$(printf '%s' "$linked_issues" | jq -er --arg repo "$repo" '[.closingIssuesReferences[] | select((.repository.owner.login + "/" + .repository.name | ascii_downcase) == ($repo | ascii_downcase))][0].number | select(type == "number" and . > 0)')"; then
+              add_failure "could not resolve the authoritative linked issue for PR #$pr_number"
+              return
+            fi
+            if ! issue_json="$(gh api "repos/$repo/issues/$issue_number" 2>/dev/null)"; then
+              add_failure "could not read linked issue #$issue_number; AFK authorization is unverifiable"
+              return
+            fi
+            if ! printf '%s' "$issue_json" | jq -e --argjson number "$issue_number" '
+              type == "object"
+              and .number == $number
+              and (.state == "open" or .state == "closed")
+              and (.title | type) == "string"
+              and (.body | type) == "string"
+              and (.labels | type) == "array"
+              and all(.labels[]; type == "object" and (.name | type) == "string")
+            ' >/dev/null; then
+              add_failure "linked issue #$issue_number metadata is malformed; AFK authorization is unverifiable"
+              return
+            fi
+            issue_state="$(printf '%s' "$issue_json" | jq -r '.state')"
+            if [ "$issue_state" != "open" ]; then
+              add_failure "linked issue #$issue_number is not open"
+              return
+            fi
+            issue_title_lower="$(printf '%s' "$issue_json" | jq -r '.title' | tr '[:upper:]' '[:lower:]')"
+            issue_labels="$(printf '%s' "$issue_json" | jq -r '[.labels[].name | ascii_downcase] | any(. == "blocked" or . == "hitl" or . == "needs-human" or . == "needs-fix" or . == "needs-info" or . == "needs-triage" or . == "ready-for-human")')"
+            if [[ "$issue_title_lower" =~ \[(hitl|needs-human)\] ]] || [ "$issue_labels" = "true" ]; then
+              add_failure "linked issue #$issue_number is marked HITL or has a blocking issue label"
+              return
+            fi
+            autonomy_data="$(printf '%s' "$issue_json" | jq -c '
+              .body as $body
+              | ($body | split("\n")) as $lines
+              | [range(0; ($lines | length)) as $index | select($lines[$index] | test("^##[ \\t]+Autonomy[ \\t]*$"; "i")) | $index] as $headers
+              | if ($headers | length) != 1 then
+                  {header_count: ($headers | length), authorized: false, conflict: false, headers: $headers}
+                else
+                  ($headers[0] + 1) as $start
+                  | [range($start; ($lines | length)) as $index | select($lines[$index] | test("^##[ \\t]+")) | $index] as $ends
+                  | ($ends[0] // ($lines | length)) as $end
+                  | ($lines[$start:$end] | map(select(test("[^[:space:]]"))) | first // "") as $first
+                  | ($lines[$start:$end] | join("\n")) as $section
+                  | {
+                      header_count: ($headers | length),
+                      authorized: ($first | test("^[[:space:]]*(\\*\\*)?AFK-safe(\\*\\*)?([[:space:][:punct:]]|$)"; "i")),
+                      conflict: ($section | test("HITL|needs-human|human.{0,80}merge|merge.{0,80}human|maintainer.{0,80}merge|merge.{0,80}maintainer|manual.{0,80}merge|merge.{0,80}manual|human.{0,80}authority|authority.{0,80}human|not authorized to merge|does not authorize merge"; "i"))
+                    }
+                end
+            ')"
+            if [ "$(printf '%s' "$autonomy_data" | jq -r '.header_count')" -ne 1 ]; then
+              add_failure "linked issue #$issue_number does not contain exactly one ## Autonomy section"
+              return
+            fi
+            if [ "$(printf '%s' "$autonomy_data" | jq -r '.authorized')" != "true" ] || [ "$(printf '%s' "$autonomy_data" | jq -r '.conflict')" = "true" ]; then
+              add_failure "linked issue #$issue_number does not explicitly authorize AFK in its ## Autonomy section"
+              return
+            fi
+          }
+
           post_stop_comments() {
             local reason marker_id marker body
             for reason in "${failures[@]}"; do
@@ -358,6 +449,7 @@ jobs:
           fi
 
           check_required_checks
+          check_issue_afk_authorization
           if [ "${#failures[@]}" -gt 0 ]; then
             post_stop_comments
             exit 0
@@ -377,6 +469,7 @@ jobs:
           if [ "${#failures[@]}" -eq 0 ]; then
             check_required_checks
           fi
+          check_issue_afk_authorization
           if [ "${#failures[@]}" -gt 0 ]; then
             post_stop_comments
             exit 0
