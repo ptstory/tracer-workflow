@@ -74,7 +74,7 @@
     {"id": "checks-human", "from": "ci_check_runs", "to": "human_operator", "label": "current-head gate state", "variant": "security"}
   ],
   "cards": [
-    {"dot": "cyan", "title": "System summary", "items": ["Where Tracer keeps workflow state", "Each stage can be restarted from a durable GitHub artifact instead of prior chat memory.", "Drift detectors compare what an agent reported against what GitHub shows."]},
+    {"dot": "cyan", "title": "System summary", "items": ["Where Tracer keeps workflow state", "Each stage can be restarted from a durable GitHub artifact instead of prior chat memory.", "Drift detectors compare agent reports with GitHub state."]},
     {"dot": "emerald", "title": "Three trust classes", "items": ["Agent claim: useful working narration, never authoritative by itself.", "Authored GitHub record: issue/brief, PR evidence bundle, and append-only verdict comment.", "Observed state: current head SHA, actual CI/check runs, and commit reachability from trusted remote refs."]},
     {"dot": "violet", "title": "Gate evidence and limitations", "items": ["Evidence bundles preserve exact reported commands/output but do not independently prove correctness.", "Fresh review evaluates the binding spec/standards and binds its verdict to one exact commit.", "Green checks establish configured current-head verification evidence; correctness still is not guaranteed."]}
   ]
