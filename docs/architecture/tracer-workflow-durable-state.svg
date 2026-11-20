@@ -9,7 +9,7 @@
   </defs>
   <rect width="1200" height="760" fill="#fff"/>
   <text class="t" x="600" y="42" text-anchor="middle">Where Tracer keeps workflow state</text>
-  <text class="s" x="600" y="68" text-anchor="middle">Authority moves from session-local work into durable GitHub records; observed state checks whether those records are still current.</text>
+  <text class="s" x="600" y="68" text-anchor="middle">Records contain decisions and evidence; checks compare reports with current repository state.</text>
 
   <rect class="frame d" x="40" y="110" width="280" height="500" stroke="#8c959f"/>
   <text class="lab" x="60" y="138" fill="#57606a">Disposable worker / local state</text>
@@ -47,5 +47,5 @@
   <path class="e" d="M295 462C520 600 800 565 930 443"/><text class="s" x="604" y="575" text-anchor="middle">local retainers</text>
   <path class="e" d="M840 481H930"/><text class="s" x="885" y="469" text-anchor="middle">trusted refs</text>
 
-  <text class="b" x="600" y="715" text-anchor="middle">A green gate confirms required checks passed; it does not prove correctness.</text>
+  <text class="b" x="600" y="715" text-anchor="middle">A green gate shows configured checks passed; it does not prove correctness.</text>
 </svg>

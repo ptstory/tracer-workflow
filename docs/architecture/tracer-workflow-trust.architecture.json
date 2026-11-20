@@ -14,7 +14,7 @@
         "id": "sessions-vs-record",
         "label": "Where Tracer keeps workflow state",
         "focus": ["web_sessions", "implementation_agents", "github_issues", "github_prs", "verdict_comments", "head_sha", "ci_check_runs"],
-        "note": "Disposable workers cross into durable GitHub artifacts; later stages resume from those artifacts, not chat memory."
+        "note": "Records contain decisions and evidence; checks compare reports with current repository state."
       },
       {
         "id": "authored-vs-observed",
@@ -75,7 +75,7 @@
   ],
   "cards": [
     {"dot": "cyan", "title": "System summary", "items": ["Where Tracer keeps workflow state", "Each stage can be restarted from a durable GitHub artifact instead of prior chat memory.", "Drift detectors compare agent reports with GitHub state."]},
-    {"dot": "emerald", "title": "Three trust classes", "items": ["Agent claim: useful working narration, never authoritative by itself.", "Authored GitHub record: issue/brief, PR evidence bundle, and append-only verdict comment.", "Observed state: current head SHA, actual CI/check runs, and commit reachability from trusted remote refs."]},
-    {"dot": "violet", "title": "Gate evidence and limitations", "items": ["Evidence bundles preserve exact reported commands/output but do not independently prove correctness.", "Fresh review evaluates the binding spec/standards and binds its verdict to one exact commit.", "Green checks establish configured current-head verification evidence; correctness still is not guaranteed."]}
+    {"dot": "emerald", "title": "Record types and check results", "items": ["Agent claim: useful working narration, never authoritative by itself.", "Authored GitHub record: issue/brief, PR evidence bundle, and append-only verdict comment.", "Observed state: current head SHA, actual CI/check runs, and commit reachability from trusted remote refs."]},
+    {"dot": "violet", "title": "What the gate checks establish", "items": ["Evidence bundles record reported commands and output; they do not independently establish correctness.", "Review checks the specification and standards, and binds its verdict to one exact commit.", "Configured checks passed for the current head; passing checks alone does not prove correctness."]}
   ]
 }
