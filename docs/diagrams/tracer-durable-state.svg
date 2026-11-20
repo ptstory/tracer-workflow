@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="560" viewBox="0 0 1120 560" role="img" aria-labelledby="title desc">
-  <title id="title">Sessions do work; GitHub holds the record</title>
-  <desc id="desc">An ephemeral idea or chat becomes a durable GitHub issue. A local or agent execution session works from that issue and returns a pull request to GitHub. The pull request moves through review and current-head checks before landing. The diagram emphasizes that sessions and local work are disposable while GitHub artifacts are durable.</desc>
+  <title id="title">Where Tracer keeps workflow state</title>
+  <desc id="desc">An ephemeral idea or chat becomes a durable GitHub issue. A local or agent execution session works from that issue and returns a pull request to GitHub. The pull request moves through review and current-head checks before landing. GitHub issues and pull requests preserve workflow state between sessions; current-head checks and trusted remote refs provide observed state.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L8,4 L0,8 Z" fill="#64748b"/>
@@ -23,15 +23,15 @@
   </defs>
 
   <rect class="bg" x="0" y="0" width="1120" height="560" rx="16"/>
-  <text class="mono" x="48" y="48">TRACER MENTAL MODEL</text>
-  <text class="title" x="48" y="82">Sessions do work. GitHub holds the record.</text>
+  <text class="mono" x="48" y="48">TRACER WORKFLOW STATE</text>
+  <text class="title" x="48" y="82">Where Tracer keeps workflow state</text>
 
   <rect class="ephemeral" x="48" y="126" width="220" height="150" rx="12"/>
   <text class="mono" x="68" y="150">EPHEMERAL INPUT</text>
   <text class="label" x="68" y="186">Idea / chat / PRD</text>
-  <text class="small" x="68" y="208">Useful context, not authority.</text>
-  <text class="small" x="68" y="228">Safe to discard after intent</text>
-  <text class="small" x="68" y="246">is captured durably.</text>
+  <text class="small" x="68" y="208">Context only; the issue is the spec.</text>
+  <text class="small" x="68" y="228">Can be discarded once the</text>
+  <text class="small" x="68" y="246">issue captures it.</text>
 
   <rect class="zone" x="316" y="126" width="756" height="252" rx="14"/>
   <rect x="340" y="116" width="208" height="20" class="bg"/>
@@ -77,5 +77,5 @@
 
   <path class="line" d="M650 418 V398 Q650 386 662 386 H665 Q677 386 677 374 V268"/>
 
-  <text class="small" x="48" y="540">Durable artifacts survive session turnover; local narration does not.</text>
+  <text class="small" x="48" y="540">A new session resumes from the issue and PR.</text>
 </svg>
