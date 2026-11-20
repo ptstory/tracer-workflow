@@ -12,7 +12,7 @@ This is a personal workflow, deliberately heavier than a small change warrants, 
 
 ![Durable-state overview showing disposable sessions and local work crossing into GitHub issues, PRs, SHA-bound verdicts, current-head checks, trusted remote refs, and drift detectors.](./docs/diagrams/tracer-durable-state.svg)
 
-![PR review loop showing a fresh review stamped to SHA A, a needs-fix push producing SHA B and making the prior verdict stale, current-head checks, hard-stop states, and AFK autonomous landing versus HITL human merge.](./docs/diagrams/tracer-review-loop.svg)
+![PR review loop showing a fresh review stamped to SHA A, a needs-fix push producing SHA B and making the prior verdict stale, current-head checks, hard-stop states, and AFK authorized automatic landing versus HITL human merge.](./docs/diagrams/tracer-review-loop.svg)
 
 ## One verified example
 
