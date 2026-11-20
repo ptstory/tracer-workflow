@@ -34,5 +34,5 @@ Tracer's contract says HITL by default and requires explicit issue authorization
 
 - A trusted, correctly formatted verdict establishes the comment's provenance and SHA binding; it does not validate every reviewer judgment.
 - Green checks establish only what those checks actually run. The `needs-human` round exposed a real coverage gap; the issue was amended and a focused test added rather than claiming general policy coverage.
-- A stale head, a missing or failing check, missing configuration, or unavailable merge prerequisites can block readiness. The auto-merge workflow is a separate guarded path, not a guarantee of automatic landing.
+- A stale head, a missing or failing check, missing configuration, or unavailable merge prerequisites can block readiness. The separate auto-merge workflow also requires the linked issue's explicit AFK authorization and current-head checks.
 - This is one historical example. It demonstrates the recorded workflow and its limitations, not a performance benchmark or proof that every issue follows the same path.
