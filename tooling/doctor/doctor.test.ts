@@ -46,7 +46,8 @@ description: >
 
 Keep the writer's point and voice.
 `;
-type DoctorFixture = { remoteUrl: string; labels: string[]; ghFailure?: string };
+type DoctorFixture = { remoteUrl: string; labels: string[]; ghFailure?: string; prListFailure?: string; prListOutput?: string; openPullRequests?: unknown };
+type DoctorPullRequestFixture = { number: number; isDraft: boolean; body?: string; closingIssuesReferences: unknown[] };
 
 const sandboxDirs: string[] = [];
 
@@ -182,7 +183,7 @@ function slugFromRemoteUrl(remoteUrl: string): string {
   return `${owner}/${repo}`;
 }
 
-function makeDoctorDeps(fixtures: Record<string, { remoteUrl?: string; labels?: string[]; ghFailure?: string }> = {}) {
+function makeDoctorDeps(fixtures: Record<string, { remoteUrl?: string; labels?: string[]; ghFailure?: string; prListFailure?: string; prListOutput?: string; openPullRequests?: unknown }> = {}) {
   const defaultFixture = {
     remoteUrl: CANONICAL_REMOTE_URL,
     labels: TRACER_ADOPTION_LABELS,
@@ -194,6 +195,9 @@ function makeDoctorDeps(fixtures: Record<string, { remoteUrl?: string; labels?: 
         remoteUrl: fixture.remoteUrl ?? defaultFixture.remoteUrl,
         labels: fixture.labels ?? defaultFixture.labels,
         ghFailure: fixture.ghFailure,
+        prListFailure: fixture.prListFailure,
+        prListOutput: fixture.prListOutput,
+        openPullRequests: fixture.openPullRequests,
       } as DoctorFixture,
     ] as const),
   );
@@ -217,6 +221,10 @@ function makeDoctorDeps(fixtures: Record<string, { remoteUrl?: string; labels?: 
         const repoSlug = args[args.indexOf("--repo") + 1];
         const fixture = slugFixtures.get(repoSlug);
         if (!fixture) return { status: 1, stdout: "", stderr: `unknown repo slug: ${repoSlug}` };
+        if (args[0] === "pr" && args[1] === "list") {
+          if (fixture.prListFailure) return { status: 1, stdout: "", stderr: fixture.prListFailure };
+          return { status: 0, stdout: fixture.prListOutput ?? JSON.stringify(fixture.openPullRequests ?? []), stderr: "" };
+        }
         if (fixture.ghFailure) return { status: 1, stdout: "", stderr: fixture.ghFailure };
         return { status: 0, stdout: JSON.stringify(fixture.labels.map((name) => ({ name }))), stderr: "" };
       }
@@ -266,6 +274,17 @@ function makeRepoRoot(): { repoRoot: string; home: string } {
   const home = join(sandbox(), "home");
   mkdirSync(home, { recursive: true });
   return { repoRoot, home };
+}
+
+function buildReportForOpenPullRequests(options: { openPullRequests?: unknown; prListFailure?: string; prListOutput?: string } = {}) {
+  const { repoRoot, home } = makeRepoRoot();
+  writeCleanBaseline(repoRoot);
+  makeCanonicalRuntimeSymlinks(home, join(repoRoot, "skills/next"));
+  writeInstalledLaunchdTargets(home, repoRoot);
+  const report = (buildDoctorReport as any)([repoRoot], home, makeDoctorDeps({
+    [repoRoot]: { remoteUrl: CANONICAL_REMOTE_URL, ...options },
+  }));
+  return { report, repoRoot };
 }
 
 function makeWorktreeRepoRoot(): { canonicalRoot: string; worktreeRoot: string; home: string } {
@@ -1032,7 +1051,11 @@ printf '%s\n' 'git@github.com:ptstory/tracer-workflow.git'
 `);
   writeExecutable(join(stubBin, "gh"), `#!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' '[{"name":"needs-triage"},{"name":"needs-info"},{"name":"ready-for-agent"},{"name":"ready-for-human"},{"name":"wontfix"},{"name":"bug"},{"name":"enhancement"}]'
+if [ "$1" = "pr" ]; then
+  printf '%s\n' '[]'
+else
+  printf '%s\n' '[{"name":"needs-triage"},{"name":"needs-info"},{"name":"ready-for-agent"},{"name":"ready-for-human"},{"name":"wontfix"},{"name":"bug"},{"name":"enhancement"}]'
+fi
 `);
 
   const result = spawnSync("bun", [doctorScript, "--json", "--repo-root", canonicalRepoRoot, "--home", home], {
@@ -1064,7 +1087,11 @@ printf '%s\n' 'git@github.com:ptstory/tracer-workflow.git'
 `);
   writeExecutable(join(stubBin, "gh"), `#!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' '[{"name":"needs-triage"},{"name":"needs-info"},{"name":"ready-for-agent"},{"name":"ready-for-human"},{"name":"wontfix"},{"name":"bug"},{"name":"enhancement"}]'
+if [ "$1" = "pr" ]; then
+  printf '%s\n' '[]'
+else
+  printf '%s\n' '[{"name":"needs-triage"},{"name":"needs-info"},{"name":"ready-for-agent"},{"name":"ready-for-human"},{"name":"wontfix"},{"name":"bug"},{"name":"enhancement"}]'
+fi
 `);
 
   const result = spawnSync("bun", [doctorScript, "--json", "--repo-root", canonicalDownstreamRoot, "--home", home], {
@@ -1080,6 +1107,107 @@ printf '%s\n' '[{"name":"needs-triage"},{"name":"needs-info"},{"name":"ready-for
   expect(parsed.repoRoots).toContain(canonicalDownstreamRoot);
   expect(parsed.findings.some((item: any) => item.component === `repo-contract:${basename(canonicalRepoRoot)}`)).toBe(true);
   expect(parsed.findings.some((item: any) => item.component === `repo-contract:${basename(canonicalDownstreamRoot)}`)).toBe(false);
+});
+
+const closingReference = (number: number, owner = "ptstory", name = "tracer-workflow") => ({
+  number,
+  repository: { name, owner: { login: owner } },
+});
+const implementationPr = (number: number, issueNumber: number, options: { body?: string; owner?: string; repository?: string; draft?: boolean } = {}): DoctorPullRequestFixture => ({
+  number,
+  isDraft: options.draft ?? false,
+  body: options.body ?? `Closes #${issueNumber}`,
+  closingIssuesReferences: options.owner && options.owner !== "ptstory" ? [closingReference(issueNumber, options.owner, options.repository)] : [closingReference(issueNumber)],
+});
+
+test("PR #32 regression reports an open implementation PR with no governing issue", () => {
+  const { report } = buildReportForOpenPullRequests({
+    openPullRequests: [{ number: 32, isDraft: false, body: "Implementation without a closing reference", closingIssuesReferences: [] }],
+  });
+  const finding = report.findings.find((item: any) => item.component.endsWith("#32") && item.component.startsWith("repo-pr-binding:"));
+
+  expect(finding).toMatchObject({ severity: "error" });
+  expect(finding?.observed).toContain("PR #32 has no recognized in-repository closing issue");
+  expect(report.summary.errors).toBeGreaterThan(0);
+});
+
+test.each([
+  ["related mention", "Related to #95"],
+  ["tilde-fenced example", "Example:\n~~~text\nCloses #95\n~~~"],
+  ["backtick-fenced example", "Example:\n```text\nCloses #95\n```"],
+] as const)("rejects a manually linked issue with a %s instead of body closing syntax", (_label, body) => {
+  const { report } = buildReportForOpenPullRequests({
+    openPullRequests: [implementationPr(94, 95, { body })],
+  });
+  const finding = report.findings.find((item: any) => item.component === `repo-pr-binding:${report.repoRoot}#94`);
+
+  expect(finding?.severity).toBe("error");
+  expect(finding?.observed).toContain("PR #94 has no recognized in-repository closing issue");
+});
+
+test("accepts a GitHub colon-form body reference in doctor", () => {
+  const { report } = buildReportForOpenPullRequests({
+    openPullRequests: [implementationPr(96, 97, { body: "Closes: #97" })],
+  });
+
+  expect(report.findings.filter((item: any) => item.component.startsWith("repo-pr-binding:") || item.component.startsWith("repo-issue-binding:"))).toEqual([]);
+});
+
+test("#71/#72/#73 regression reports every competing implementation PR", () => {
+  const { report } = buildReportForOpenPullRequests({
+    openPullRequests: [72, 73].map((number) => implementationPr(number, 71)),
+  });
+  const finding = report.findings.find((item: any) => item.component === `repo-issue-binding:${report.repoRoot}#71`);
+
+  expect(finding).toMatchObject({ severity: "error" });
+  expect(finding?.component).toEndWith("#71");
+  expect(finding?.observed).toContain("issue #71 is claimed by competing open PRs #72, #73");
+});
+
+test("a single usable governing issue has no binding finding", () => {
+  const { report } = buildReportForOpenPullRequests({
+    openPullRequests: [implementationPr(80, 81)],
+  });
+
+  expect(report.findings.filter((item: any) => item.component.startsWith("repo-pr-binding:") || item.component.startsWith("repo-issue-binding:"))).toEqual([]);
+});
+
+test("draft PRs do not participate in active binding conflicts", () => {
+  const { report } = buildReportForOpenPullRequests({
+    openPullRequests: [
+      implementationPr(82, 83),
+      implementationPr(84, 83, { draft: true }),
+    ],
+  });
+
+  expect(report.findings.filter((item: any) => item.component.startsWith("repo-pr-binding:") || item.component.startsWith("repo-issue-binding:"))).toEqual([]);
+});
+
+test.each([
+  ["multiple in-repository issues", [{ ...implementationPr(85, 86, { body: "Closes #86\nFixes #87" }), closingIssuesReferences: [closingReference(86), closingReference(87)] }], "multiple in-repository closing issues"],
+  ["malformed issue reference", [{ number: 88, isDraft: false, body: "Closes #89", closingIssuesReferences: [{ number: "89" }] }], "malformed closing issue references"],
+  ["cross-repository only", [implementationPr(90, 91, { owner: "other", body: "Closes other/tracer-workflow#91" })], "no in-repository closing issue"],
+] as const)("reports %s references deterministically", (_label, openPullRequests, observed) => {
+  const { report } = buildReportForOpenPullRequests({ openPullRequests });
+  const finding = report.findings.find((item: any) => item.component === `repo-pr-binding:${report.repoRoot}#${openPullRequests[0].number}`);
+
+  expect(finding?.severity).toBe("error");
+  expect(finding?.observed).toContain(observed);
+});
+
+test.each([
+  ["CLI failure", { prListFailure: "gh: permission denied" }, "gh pr list failed"],
+  ["malformed JSON", { prListOutput: "not-json" }, "open pull request inspection failed"],
+  ["non-list response", { prListOutput: "{}" }, "non-list response"],
+  ["malformed record", { openPullRequests: [{ number: 92, closingIssuesReferences: [] }] }, "malformed identity or draft state"],
+  ["missing body", { openPullRequests: [{ number: 93, isDraft: false, closingIssuesReferences: [closingReference(94)] }] }, "pull request body is unavailable or malformed"],
+  ["possibly truncated inventory", { openPullRequests: Array.from({ length: 1000 }, (_, index) => ({ number: index + 1, isDraft: true, closingIssuesReferences: [] })) }, "inventory may be incomplete"],
+] as const)("fails closed on open pull request %s", (_label, options, observed) => {
+  const { report } = buildReportForOpenPullRequests(options);
+  const finding = report.findings.find((item: any) => item.component.startsWith("repo-pr-binding-inspection:") || item.observed.includes(observed));
+
+  expect(finding?.severity).toBe("error");
+  expect(finding?.observed).toContain(observed);
 });
 
 test("missing GitHub labels are reported for a repo with access", () => {

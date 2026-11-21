@@ -2,11 +2,13 @@
 
 import { execFileSync } from "node:child_process";
 import { collectGateStates, type GateState } from "../gate-state/gate-state";
+import { classifyGoverningIssueReferences } from "../lib/pr-binding";
 import { parseGateBody, parseGateComment, reviewerLogins, type Comment } from "../lib/verdict";
 
 type PRDetails = {
   body: string;
   comments: Comment[];
+  closingIssuesReferences: unknown;
 };
 
 type Packet = {
@@ -91,21 +93,15 @@ function warn(message: string): void {
 
 function loadPrDetails(repo: string, number: number): PRDetails {
   try {
-    const out = gh(["pr", "view", String(number), "--repo", repo, "--json", "body,comments"]);
-    return JSON.parse(out) as PRDetails;
+    const out = gh(["pr", "view", String(number), "--repo", repo, "--json", "body,comments,closingIssuesReferences"]);
+    const details = JSON.parse(out) as PRDetails;
+    if (typeof details.body !== "string" || !Array.isArray(details.comments)) throw new Error("GitHub returned incomplete pull request data");
+    return details;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     warn(`failed to load PR #${number} from ${repo}: ${message}`);
-    return { body: "", comments: [] };
+    return { body: "", comments: [], closingIssuesReferences: null };
   }
-}
-
-function parseIssueNumber(body: string): number | null {
-  const pattern = /(?:Closes|Fixes|Resolves)\s+#(\d+)|https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/(\d+)/gi;
-  const match = pattern.exec(body);
-  if (!match) return null;
-  const value = match[1] ?? match[2];
-  return value ? Number(value) : null;
 }
 
 function loadIssueText(repo: string, issueNumber: number): string {
@@ -136,7 +132,11 @@ function buildPacket(row: {
   gateState: "ungated" | "stale";
 }): Packet {
   const details = loadPrDetails(row.repo, row.number);
-  const issueNumber = parseIssueNumber(details.body);
+  const classification = classifyGoverningIssueReferences(details.closingIssuesReferences, row.repo, details.body);
+  const issueNumber = classification.kind === "valid" ? classification.issueNumber : null;
+  if (classification.kind !== "valid") {
+    warn(`PR #${row.number} in ${row.repo} has ${classification.kind} governing issue references`);
+  }
   const issueText = issueNumber === null ? "none" : loadIssueText(row.repo, issueNumber).trimEnd() || "none";
   const verdict = latestGateComment(details.comments, row.number);
   const priorVerdictText = verdict?.body.trimEnd() || "none";
@@ -270,4 +270,4 @@ function main(): void {
 
 if (import.meta.main) main();
 
-export { applyBudget, buildPacket, latestGateComment, loadDiffText, loadIssueText, loadPrDetails, main, parseArgs, parseIssueNumber, pbcopy, renderOutput, renderPacket, truncateDiffToBudget };
+export { applyBudget, buildPacket, latestGateComment, loadDiffText, loadIssueText, loadPrDetails, main, parseArgs, pbcopy, renderOutput, renderPacket, truncateDiffToBudget };
