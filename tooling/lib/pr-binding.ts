@@ -23,7 +23,7 @@ function classifyGoverningIssueReferences(value: unknown, repository: string): G
       return { kind: "malformed", detail: `closing issue reference ${index} is not an object` };
     }
     const reference = candidate as Partial<ClosingIssueReference>;
-    if (!Number.isInteger(reference.number) || (reference.number ?? 0) <= 0 || !reference.repository ||
+    if (!Number.isSafeInteger(reference.number) || (reference.number ?? 0) <= 0 || !reference.repository ||
       typeof reference.repository.name !== "string" || reference.repository.name.trim() === "" ||
       !reference.repository.owner || typeof reference.repository.owner.login !== "string" || reference.repository.owner.login.trim() === "") {
       return { kind: "malformed", detail: `closing issue reference ${index} has incomplete identity` };

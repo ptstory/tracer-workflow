@@ -1128,7 +1128,7 @@ test("#71/#72/#73 regression reports every competing implementation PR", () => {
   const { report } = buildReportForOpenPullRequests({
     openPullRequests: [72, 73].map((number) => ({ number, isDraft: false, closingIssuesReferences: [closingReference(71)] })),
   });
-  const finding = report.findings.find((item: any) => item.component === report.findings.find((candidate: any) => candidate.component.startsWith("repo-issue-binding:"))?.component);
+  const finding = report.findings.find((item: any) => item.component === `repo-issue-binding:${report.repoRoot}#71`);
 
   expect(finding).toMatchObject({ severity: "error" });
   expect(finding?.component).toEndWith("#71");
@@ -1140,7 +1140,7 @@ test("a single usable governing issue has no binding finding", () => {
     openPullRequests: [{ number: 80, isDraft: false, closingIssuesReferences: [closingReference(81)] }],
   });
 
-  expect(report.findings.filter((item: any) => item.component.startsWith("repo-pr-binding:") || item.component.startsWith("repo-issue-binding:") )).toEqual([]);
+  expect(report.findings.filter((item: any) => item.component.startsWith("repo-pr-binding:") || item.component.startsWith("repo-issue-binding:"))).toEqual([]);
 });
 
 test("draft PRs do not participate in active binding conflicts", () => {
@@ -1151,7 +1151,7 @@ test("draft PRs do not participate in active binding conflicts", () => {
     ],
   });
 
-  expect(report.findings.filter((item: any) => item.component.startsWith("repo-pr-binding:") || item.component.startsWith("repo-issue-binding:") )).toEqual([]);
+  expect(report.findings.filter((item: any) => item.component.startsWith("repo-pr-binding:") || item.component.startsWith("repo-issue-binding:"))).toEqual([]);
 });
 
 test.each([
