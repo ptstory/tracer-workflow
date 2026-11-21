@@ -126,36 +126,36 @@ function setupRepos(root: string, repos: string[]): Map<string, string> {
 
 describe("tooling/launch-lanes/launch.ts", () => {
   test("parses explicit issue references and launch flags", () => {
-    expect(parseIssueRef("ptstory/thread-atlas#23")).toEqual({ owner: "ptstory", repository: "thread-atlas", repo: "ptstory/thread-atlas", number: 23 });
-    expect(parseArgs(["--max", "2", "--allow-same-repo", "--dry-run", "--repositories", "~/repos.json", "ptstory/tracer-workflow#292"], "/home/test")).toEqual({
-      issues: [issue("ptstory/tracer-workflow", 292)],
-      repositoriesFile: "/home/test/repos.json",
+    expect(parseIssueRef("sample/thread-atlas#23")).toEqual({ owner: "sample", repository: "thread-atlas", repo: "sample/thread-atlas", number: 23 });
+    expect(parseArgs(["--max", "2", "--allow-same-repo", "--dry-run", "--repositories", "~/repos.json", "sample/launch-target#292"], "/test-home")).toEqual({
+      issues: [issue("sample/launch-target", 292)],
+      repositoriesFile: "/test-home/repos.json",
       max: 2,
       allowSameRepo: true,
       dryRun: true,
     });
-    expect(() => parseIssueRef("ptstory/tracer-workflow#0")).toThrow("invalid issue reference");
-    expect(() => parseArgs(["--max", "0", "ptstory/repo#1"])).toThrow("positive integer");
+    expect(() => parseIssueRef("sample/tracer-workflow#0")).toThrow("invalid issue reference");
+    expect(() => parseArgs(["--max", "0", "sample/repo#1"])).toThrow("positive integer");
   });
 
   test("maps repository checkouts and expands home paths", () => {
-    expect(parseRepositoryMap('{"ptstory/thread-atlas":"~/Code/vibecoding/messages"}', "/Users/test")).toEqual(
-      new Map([["ptstory/thread-atlas", "/Users/test/Code/vibecoding/messages"]]),
+    expect(parseRepositoryMap('{"sample/repository":"~/Code/repository"}', "/test-home")).toEqual(
+      new Map([["sample/repository", "/test-home/Code/repository"]]),
     );
-    expect(() => parseRepositoryMap('{"ptstory/repo":42}')).toThrow("invalid repository mapping");
+    expect(() => parseRepositoryMap('{"sample/repository":42}')).toThrow("invalid repository mapping");
   });
 
   test("matches the GitHub issue workspace slug contract", () => {
     expect(slugifyIssueTitle("CI: rename discipline.yml, unify commit rules, enforce PR body contract")).toBe("ci-rename-discipline-yml-unify-commit-ru");
-    expect(branchForIssue(issue("ptstory/repo", 8), "!!!")).toBe("issue-8");
-    expect(branchForIssue(issue("ptstory/repo", 14), "Protect share-stats endpoint when SHARE_STATS_KEY is unset")).toBe("14-protect-share-stats-endpoint-when-share");
-    expect(agentNameForIssue(issue("ptstory/thread-atlas", 23))).toBe("lane-ptstory-thread-atlas-23");
+    expect(branchForIssue(issue("sample/repo", 8), "!!!")).toBe("issue-8");
+    expect(branchForIssue(issue("sample/repo", 14), "Protect share-stats endpoint when SHARE_STATS_KEY is unset")).toBe("14-protect-share-stats-endpoint-when-share");
+    expect(agentNameForIssue(issue("sample/thread-atlas", 23))).toBe("lane-sample-thread-atlas-23");
   });
 
   test("dry-run plans within max without creating worktrees or panes", () => {
     const root = sandbox();
-    const repositories = setupRepos(root, ["ptstory/repo-a", "ptstory/repo-b"]);
-    const refs = [issue("ptstory/repo-a", 1), issue("ptstory/repo-b", 2), issue("ptstory/repo-a", 3), issue("ptstory/repo-b", 4)];
+    const repositories = setupRepos(root, ["sample/repo-a", "sample/repo-b"]);
+    const refs = [issue("sample/repo-a", 1), issue("sample/repo-b", 2), issue("sample/repo-a", 3), issue("sample/repo-b", 4)];
     const issues = new Map(refs.map((reference) => [`${reference.repo}#${reference.number}`, { title: `Issue ${reference.number}`, state: "open", labels: ["ready-for-agent"] }]));
     const harness = makeAdapter(repositories, { issues });
     const deps = dependencies(harness);
@@ -173,8 +173,8 @@ describe("tooling/launch-lanes/launch.ts", () => {
 
   test("launches three lanes across two repositories when same-repo concurrency is allowed", () => {
     const root = sandbox();
-    const repositories = setupRepos(root, ["ptstory/repo-a", "ptstory/repo-b"]);
-    const refs = [issue("ptstory/repo-a", 1), issue("ptstory/repo-a", 2), issue("ptstory/repo-b", 3)];
+    const repositories = setupRepos(root, ["sample/repo-a", "sample/repo-b"]);
+    const refs = [issue("sample/repo-a", 1), issue("sample/repo-a", 2), issue("sample/repo-b", 3)];
     const issues = new Map(refs.map((reference) => [`${reference.repo}#${reference.number}`, { title: `Issue ${reference.number}`, state: "open", labels: ["ready-for-agent"] }]));
     const harness = makeAdapter(repositories, { issues });
     const lines: string[] = [];
@@ -183,12 +183,12 @@ describe("tooling/launch-lanes/launch.ts", () => {
 
     expect(results.map(({ status }) => status)).toEqual(["started", "started", "started"]);
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toContain("agent lane-ptstory-repo-a-1, workspace w1");
+    expect(lines[0]).toContain("agent lane-sample-repo-a-1, workspace w1");
     expect(harness.calls.filter((call) => call.startsWith("createWorktree"))).toHaveLength(3);
     expect(harness.calls.filter((call) => call.startsWith("renameAgent"))).toHaveLength(3);
     expect(harness.calls.filter((call) => call.startsWith("waitForCrush"))).toHaveLength(3);
     expect(harness.calls.filter((call) => call.startsWith("promptAgent"))).toHaveLength(3);
-    expect(harness.calls).toContain("promptAgent:lane-ptstory-repo-a-1:Implement ptstory/repo-a#1");
+    expect(harness.calls).toContain("promptAgent:lane-sample-repo-a-1:Implement sample/repo-a#1");
     for (const result of results) {
       const path = join(harness.worktreeRoot, basename(repositories.get(result.issue.repo)!), branchForIssue(result.issue, `Issue ${result.issue.number}`));
       expect(readFileSync(join(path, ".crush", ".gitignore"), "utf8")).toBe("*\n");
@@ -198,17 +198,17 @@ describe("tooling/launch-lanes/launch.ts", () => {
 
   test("skips closed, blocked, missing-mapped, and duplicate worktree issues while continuing", () => {
     const root = sandbox();
-    const repositories = setupRepos(root, ["ptstory/repo"]);
-    const refs = [issue("ptstory/repo", 1), issue("ptstory/repo", 2), issue("ptstory/repo", 3), issue("ptstory/repo", 4), issue("ptstory/repo", 5)];
+    const repositories = setupRepos(root, ["sample/repo"]);
+    const refs = [issue("sample/repo", 1), issue("sample/repo", 2), issue("sample/repo", 3), issue("sample/repo", 4), issue("sample/repo", 5)];
     const issues = new Map<string, IssueDetails>([
-      ["ptstory/repo#1", { title: "Closed", state: "closed", labels: ["ready-for-agent"] }],
-      ["ptstory/repo#2", { title: "Blocked", state: "open", labels: ["blocked"] }],
-      ["ptstory/repo#3", { title: "Duplicate", state: "open", labels: ["ready-for-agent"] }],
-      ["ptstory/repo#4", { title: "Missing map", state: "open", labels: ["ready-for-agent"] }],
-      ["ptstory/repo#5", { title: "Continue", state: "open", labels: ["ready-for-agent"] }],
+      ["sample/repo#1", { title: "Closed", state: "closed", labels: ["ready-for-agent"] }],
+      ["sample/repo#2", { title: "Blocked", state: "open", labels: ["blocked"] }],
+      ["sample/repo#3", { title: "Duplicate", state: "open", labels: ["ready-for-agent"] }],
+      ["sample/repo#4", { title: "Missing map", state: "open", labels: ["ready-for-agent"] }],
+      ["sample/repo#5", { title: "Continue", state: "open", labels: ["ready-for-agent"] }],
     ]);
-    const repositoryPath = repositories.get("ptstory/repo")!;
-    const harness = makeAdapter(repositories, { issues, worktrees: new Map([[repositoryPath, [{ path: "/tmp/3-duplicate", branch: "3-duplicate", workspaceId: "w0" }, { path: "/tmp/4-missing-map", branch: "4-missing-map", workspaceId: "w0" }]]]) });
+    const repositoryPath = repositories.get("sample/repo")!;
+    const harness = makeAdapter(repositories, { issues, worktrees: new Map([[repositoryPath, [{ path: "duplicate-worktree", branch: "3-duplicate", workspaceId: "w0" }, { path: "missing-map-worktree", branch: "4-missing-map", workspaceId: "w0" }]]]) });
     const results = launchIssues(options(refs, { allowSameRepo: true, max: 5 }), repositories, dependencies(harness));
 
     expect(results.map(({ status }) => status)).toEqual(["skipped", "skipped", "skipped", "skipped", "started"]);
@@ -220,8 +220,8 @@ describe("tooling/launch-lanes/launch.ts", () => {
 
   test("caps starts at --max even when same-repository launches are allowed", () => {
     const root = sandbox();
-    const repositories = setupRepos(root, ["ptstory/repo-a", "ptstory/repo-b", "ptstory/repo-c"]);
-    const refs = [issue("ptstory/repo-a", 1), issue("ptstory/repo-b", 2), issue("ptstory/repo-c", 3)];
+    const repositories = setupRepos(root, ["sample/repo-a", "sample/repo-b", "sample/repo-c"]);
+    const refs = [issue("sample/repo-a", 1), issue("sample/repo-b", 2), issue("sample/repo-c", 3)];
     const issues = new Map(refs.map((reference) => [`${reference.repo}#${reference.number}`, { title: `Issue ${reference.number}`, state: "open", labels: ["ready-for-agent"] }]));
     const harness = makeAdapter(repositories, { issues });
 
@@ -234,17 +234,17 @@ describe("tooling/launch-lanes/launch.ts", () => {
 
   test("skips missing, closed, HITL, and unmapped issues while launching eligible work", () => {
     const root = sandbox();
-    const repositories = setupRepos(root, ["ptstory/repo"]);
+    const repositories = setupRepos(root, ["sample/repo"]);
     const missingCheckout = join(root, "missing-checkout");
-    repositories.set("ptstory/missing", missingCheckout);
-    const refs = [issue("ptstory/unmapped", 1), issue("ptstory/missing", 2), issue("ptstory/repo", 3), issue("ptstory/repo", 4), issue("ptstory/repo", 5), issue("ptstory/repo", 6), issue("ptstory/repo", 7)];
+    repositories.set("sample/missing", missingCheckout);
+    const refs = [issue("sample/unmapped", 1), issue("sample/missing", 2), issue("sample/repo", 3), issue("sample/repo", 4), issue("sample/repo", 5), issue("sample/repo", 6), issue("sample/repo", 7)];
     const issues = new Map<string, IssueDetails>([
-      ["ptstory/unmapped#1", { title: "No mapping", state: "open", labels: ["ready-for-agent"] }],
-      ["ptstory/missing#2", { title: "Missing checkout", state: "open", labels: ["ready-for-agent"] }],
-      ["ptstory/repo#3", { title: "HITL label", state: "open", labels: ["ready-for-agent", "HITL"] }],
-      ["ptstory/repo#4", { title: "[needs-human] Decision", state: "open", labels: ["ready-for-agent"] }],
-      ["ptstory/repo#5", { title: "Closed", state: "closed", labels: ["ready-for-agent"] }],
-      ["ptstory/repo#7", { title: "Continue", state: "open", labels: ["ready-for-agent"] }],
+      ["sample/unmapped#1", { title: "No mapping", state: "open", labels: ["ready-for-agent"] }],
+      ["sample/missing#2", { title: "Missing checkout", state: "open", labels: ["ready-for-agent"] }],
+      ["sample/repo#3", { title: "HITL label", state: "open", labels: ["ready-for-agent", "HITL"] }],
+      ["sample/repo#4", { title: "[needs-human] Decision", state: "open", labels: ["ready-for-agent"] }],
+      ["sample/repo#5", { title: "Closed", state: "closed", labels: ["ready-for-agent"] }],
+      ["sample/repo#7", { title: "Continue", state: "open", labels: ["ready-for-agent"] }],
     ]);
     const harness = makeAdapter(repositories, { issues });
 
@@ -261,9 +261,9 @@ describe("tooling/launch-lanes/launch.ts", () => {
 
   test("a repeated invocation skips an already-launched issue", () => {
     const root = sandbox();
-    const repositories = setupRepos(root, ["ptstory/repo"]);
-    const reference = issue("ptstory/repo", 11);
-    const issues = new Map([["ptstory/repo#11", { title: "Repeated launch", state: "open", labels: ["ready-for-agent"] }]]);
+    const repositories = setupRepos(root, ["sample/repo"]);
+    const reference = issue("sample/repo", 11);
+    const issues = new Map([["sample/repo#11", { title: "Repeated launch", state: "open", labels: ["ready-for-agent"] }]]);
     const harness = makeAdapter(repositories, { issues });
     const deps = dependencies(harness);
 
@@ -279,13 +279,13 @@ describe("tooling/launch-lanes/launch.ts", () => {
 
   test("skips active same-repository lanes and duplicate issue inputs", () => {
     const root = sandbox();
-    const repositories = setupRepos(root, ["ptstory/repo"]);
-    const reference = issue("ptstory/repo", 9);
-    const repositoryPath = repositories.get("ptstory/repo")!;
+    const repositories = setupRepos(root, ["sample/repo"]);
+    const reference = issue("sample/repo", 9);
+    const repositoryPath = repositories.get("sample/repo")!;
     const agents: AgentDetails[] = [{ name: "other", state: "working", cwd: repositoryPath, paneId: "w1:p1", kind: "crush" }];
     const harness = makeAdapter(repositories, {
       agents,
-      issues: new Map([["ptstory/repo#9", { title: "One", state: "open", labels: ["ready-for-agent"] }]]),
+      issues: new Map([["sample/repo#9", { title: "One", state: "open", labels: ["ready-for-agent"] }]]),
     });
 
     const results = launchIssues(options([reference, reference]), repositories, dependencies(harness));
@@ -297,12 +297,12 @@ describe("tooling/launch-lanes/launch.ts", () => {
 
   test("agent_not_ready after rename is fatal and never sends a prompt through pane input", () => {
     const root = sandbox();
-    const repositories = setupRepos(root, ["ptstory/repo"]);
-    const reference = issue("ptstory/repo", 10);
+    const repositories = setupRepos(root, ["sample/repo"]);
+    const reference = issue("sample/repo", 10);
     const calls: Array<{ command: string; args: string[] }> = [];
     const outputs = new Map<string, string>([
       ["herdr status", "{}"],
-      ["herdr agent list", JSON.stringify({ result: { agents: [{ name: "crush", state: "idle", agent: "crush", pane_id: "w1:p1", cwd: "/tmp/worktree" }] } })],
+      ["herdr agent list", JSON.stringify({ result: { agents: [{ name: "crush", state: "idle", agent: "crush", pane_id: "w1:p1", cwd: "worktree-root" }] } })],
       ["gh issue view", JSON.stringify({ number: 10, title: "Agent not ready", state: "OPEN", labels: [{ name: "ready-for-agent" }] })],
       ["gh repo view", JSON.stringify({ defaultBranchRef: { name: "main" } })],
       ["git fetch", ""],
@@ -325,7 +325,7 @@ describe("tooling/launch-lanes/launch.ts", () => {
       if (command === "git" && args[0] === "fetch") return outputs.get("git fetch")!;
       if (command === "git" && args[0] === "rev-parse") return outputs.get("git rev-parse")!;
       if (command === "herdr" && args[0] === "agent" && args[1] === "rename") return outputs.get("herdr agent rename")!;
-      if (command === "herdr" && args[0] === "agent" && args[1] === "prompt") throw new Error("agent_not_ready: agent w1:p1 is not an active named agent");
+      if (command === "herdr" && args[0] === "agent" && args[1] === "prompt") throw new Error(`agent_not_ready: agent ${args[2]} is not an active named agent`);
       throw new Error(`unexpected command ${key}`);
     });
     const dependencies: LaunchDependencies = {
@@ -335,18 +335,18 @@ describe("tooling/launch-lanes/launch.ts", () => {
       promptTemplate: "Implement {repo}#{issue}",
       emit: () => {},
     };
-    const issueMap = new Map([["ptstory/repo#10", { title: "Agent not ready", state: "open", labels: ["ready-for-agent"] }]]);
+    const issueMap = new Map([["sample/repo#10", { title: "Agent not ready", state: "open", labels: ["ready-for-agent"] }]]);
     const fakeAdapter = adapter as LaunchAdapter;
-    fakeAdapter.listAgents = () => [{ name: "crush", state: "idle", cwd: "/tmp/worktree", paneId: "w1:p1", kind: "crush" }];
-    fakeAdapter.waitForCrush = (paneId) => ({ name: "crush", state: "idle", cwd: "/tmp/worktree", paneId, kind: "crush" });
-    fakeAdapter.getIssue = () => issueMap.get("ptstory/repo#10")!;
+    fakeAdapter.listAgents = () => [{ name: "crush", state: "idle", cwd: "worktree-root", paneId: "w1:p1", kind: "crush" }];
+    fakeAdapter.waitForCrush = (paneId) => ({ name: "crush", state: "idle", cwd: "worktree-root", paneId, kind: "crush" });
+    fakeAdapter.getIssue = () => issueMap.get("sample/repo#10")!;
 
-    expect(() => launchIssues(options([reference]), repositories, dependencies)).toThrow(/agent_not_ready after rename for pane w1:p1:.*agent_not_ready: agent w1:p1 is not an active named agent/);
+    expect(() => launchIssues(options([reference]), repositories, dependencies)).toThrow(/agent_not_ready after rename for pane w1:p1:.*agent_not_ready: agent lane-sample-repo-10 is not an active named agent/);
     const renameIndex = calls.findIndex(({ command, args }) => command === "herdr" && args[0] === "agent" && args[1] === "rename");
     const promptIndex = calls.findIndex(({ command, args }) => command === "herdr" && args[0] === "agent" && args[1] === "prompt");
     expect(renameIndex).toBeGreaterThan(-1);
     expect(promptIndex).toBeGreaterThan(renameIndex);
-    expect(calls[promptIndex].args).toEqual(["agent", "prompt", "lane-ptstory-repo-10", "Implement ptstory/repo#10", "--wait", "--until", "working", "--timeout", "120000"]);
+    expect(calls[promptIndex].args).toEqual(["agent", "prompt", "lane-sample-repo-10", "Implement sample/repo#10", "--wait", "--until", "working", "--timeout", "120000"]);
     expect(calls.filter(({ command, args }) => command === "herdr" && args[0] === "pane" && args[1] === "run")).toEqual([{ command: "herdr", args: ["pane", "run", "w1:p1", "crush"] }]);
     expect(calls.some(({ command, args }) => command === "herdr" && args[0] === "pane" && args[1] === "send-keys")).toBe(false);
     expect(calls.some(({ command, args }) => command === "herdr" && args[0] === "agent" && args[1] === "send-keys")).toBe(false);
@@ -357,17 +357,17 @@ describe("tooling/launch-lanes/launch.ts", () => {
     const runner = (command: string, args: string[]) => {
       calls.push({ command, args });
       if (command === "herdr" && args[0] === "pane" && args[1] === "run") return "";
-      if (command === "herdr" && args[0] === "agent" && args[1] === "list") return JSON.stringify({ result: { agents: [{ name: "crush", state: "idle", agent: "crush", pane_id: "w1:p1", cwd: "/tmp/worktree" }] } });
+      if (command === "herdr" && args[0] === "agent" && args[1] === "list") return JSON.stringify({ result: { agents: [{ name: "crush", state: "idle", agent: "crush", pane_id: "w1:p1", cwd: "worktree-root" }] } });
       if (command === "herdr" && args[0] === "agent" && args[1] === "prompt") return JSON.stringify({ agent: { agent_status: "working" } });
       return "{}";
     };
     const adapter = createLaunchAdapter(runner);
 
-    const worktree: CreatedWorktree = { path: "/tmp/worktree", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1" };
+    const worktree: CreatedWorktree = { path: "worktree-root", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1" };
     adapter.startCrush(worktree);
     expect(adapter.waitForCrush("w1:p1", 500).kind).toBe("crush");
-    adapter.renameAgent("w1:p1", "lane-ptstory-repo-10");
-    expect(adapter.promptAgent("lane-ptstory-repo-10", "Implement issue")).toEqual({ state: "working" });
+    adapter.renameAgent("w1:p1", "lane-sample-repo-10");
+    expect(adapter.promptAgent("lane-sample-repo-10", "Implement issue")).toEqual({ state: "working" });
 
     expect(calls).toContainEqual({ command: "herdr", args: ["pane", "run", "w1:p1", "crush"] });
     expect(calls.some(({ command, args }) => command === "herdr" && args[0] === "pane" && args[1] === "send-keys")).toBe(false);

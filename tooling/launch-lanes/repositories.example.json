@@ -1,5 +1,4 @@
 {
-  "ptstory/thread-atlas": "~/Code/vibecoding/messages",
-  "ptstory/tracer-workflow": "~/Code/tracer-workflow",
-  "ptstory/corby-marketplace": "~/Code/corby/corby-marketplace"
+  "owner/repository": "~/Code/repository",
+  "owner/another-repository": "~/Code/another-repository"
 }
