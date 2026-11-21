@@ -52,7 +52,24 @@ Both keybindings use Herdr's default `ctrl+b` prefix. The plugin READMEs documen
 
 The optional Tracer Review Gate Watcher sends Herdr notifications for eligible current-head `gate:needs-fix` and `gate:needs-human` verdicts. It does not create panes or launch agents. Follow [`tooling/herdr-watcher/README.md`](../../tooling/herdr-watcher/README.md) to link the plugin, configure watched repositories and trusted reviewers, and verify plugin disable and Herdr shutdown behavior. The listener is owned by Herdr and is not a detached service.
 
-## Run an issue lane
+## Launch explicit issue lanes
+
+The `tooling/launch-lanes/launch.ts` CLI starts Crush lanes for an explicit list of GitHub issues. It runs from an ordinary shell with access to Herdr, `gh`, `git`, and Bun. It creates one issue worktree per eligible issue, starts Crush, waits for Herdr to recognize the Crush process, renames the agent, then submits the shared from-issue prompt through `herdr agent prompt`. It never uses raw pane input to submit the prompt. Herdr can report Crush question dialogs as `working`, and even after rename it may reject `agent prompt` with `agent_not_ready`; the launcher exits non-zero and reports the pane rather than answering or bypassing that dialog. Related: issue [#295](https://github.com/ptstory/tracer-workflow/issues/295).
+
+Copy `tooling/launch-lanes/repositories.example.json` to `~/.config/tracer/launch-lanes/repositories.json` and edit each checkout path. Then run a dry plan before launching:
+
+```sh
+bun tooling/launch-lanes/launch.ts --dry-run owner/repo#23 owner/other#17
+bun tooling/launch-lanes/launch.ts owner/repo#23 owner/other#17
+```
+
+The default is at most three lanes and at most one lane per repository, including already-running agents. `--max N` caps lanes started in this invocation and `--allow-same-repo` allows more than one lane for a repository in that invocation; neither disables duplicate issue/worktree/live-agent checks. Each issue prints one started, planned, or skipped result. Closed, missing, HITL/blocked, unmapped, and already-active issues are skipped. The launcher does not choose issues, merge, or synthesize `HERDR_*` values. If Herdr fails to recognize a Crush agent within two minutes, the agent is blocked, or rename/prompt submission fails, inspect the named pane manually. `agent_not_ready` is a hard stop; there is no pane-input fallback.
+
+### Manual live verification
+
+Run this from an ordinary shell inside Herdr, not from a Crush tool call. Use a disposable authorized repository and test issue. In a throwaway worktree workspace, run `herdr pane run <pane-id> crush`, wait for `herdr agent list` to identify a Crush agent on that pane, rename it with `herdr agent rename <pane-id> <unique-name>`, then run `herdr agent prompt <unique-name> "Reply with the word ready." --wait --timeout 120000`. Verify Herdr reports the lane as `working` while responding and that the prompt was accepted. Do not answer any unexpected Crush question or use raw pane input to submit the prompt; record the pane and stop if rename/prompt fails. Remove the disposable workspace only after verifying its Git worktree is clean.
+
+## Run one issue lane manually
 
 1. In the repository's Herdr space, press `ctrl+b Shift+N` and choose **From a GitHub issue**. Select the open issue and confirm its branch. The plugin opens a worktree workspace under that repository. Do not start issue work in the home checkout.
 2. In that issue workspace's Crush pane, use the current prompt template verbatim:

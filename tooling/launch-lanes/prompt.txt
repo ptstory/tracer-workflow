@@ -1,0 +1,1 @@
+I am explicitly asking you to commit and push in this run: commit after each green step, push to the branch, update the PR with gh. Don't ask again. Don't ask me questions; take the conservative option and note it in the PR. Implement {repo}#{issue} with the from-issue skill and open the PR.
