@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { completeHandoff, incompleteHandoff, regressionCases, type RegressionCase } from "./from-issue-contract.fixtures";
+import {
+  completeHandoff,
+  incompleteHandoff,
+  readyIssueBodyWithoutFilesOrVerification,
+  regressionCases,
+  type RegressionCase,
+} from "./from-issue-contract.fixtures";
 
 const skillRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -45,6 +51,14 @@ function recognizePastedHandoff(text: string): boolean {
     && requiredSections.every((section) => new RegExp(`^${section}$`, "im").test(text));
 }
 
+function acceptsReadyIssueBody(text: string): boolean {
+  const headings = text.split(/\r?\n/).map((line) => line.trim().toLowerCase());
+
+  return headings.includes("## goal")
+    && headings.includes("## acceptance criteria")
+    && !/^Issue\s+#\d+\s+handoff/im.test(text);
+}
+
 function assertRegressionCase(regressionCase: RegressionCase): void {
   if (
     regressionCase.input.pastedArtifact !== undefined
@@ -52,6 +66,15 @@ function assertRegressionCase(regressionCase: RegressionCase): void {
   ) {
     expect(recognizePastedHandoff(regressionCase.input.pastedArtifact)).toBe(
       regressionCase.input.shouldRecognizePastedArtifact,
+    );
+  }
+
+  if (
+    regressionCase.input.issueBody !== undefined
+    && regressionCase.input.shouldAcceptIssueBody !== undefined
+  ) {
+    expect(acceptsReadyIssueBody(regressionCase.input.issueBody)).toBe(
+      regressionCase.input.shouldAcceptIssueBody,
     );
   }
 
@@ -72,8 +95,15 @@ describe("from-issue contract", () => {
     expect(recognizePastedHandoff(incompleteHandoff)).toBe(false);
   });
 
-  test("covers all fourteen issue #20 and #230 regression cases", () => {
-    expect(regressionCases).toHaveLength(14);
+  test("ready issue bodies require Goal and Acceptance criteria without pasted-handoff sections", () => {
+    expect(acceptsReadyIssueBody(readyIssueBodyWithoutFilesOrVerification)).toBe(true);
+    expect(acceptsReadyIssueBody("## Goal\nImplement the change.\n")).toBe(false);
+    expect(acceptsReadyIssueBody("## Acceptance criteria\nThe change works.\n")).toBe(false);
+    expect(acceptsReadyIssueBody(completeHandoff)).toBe(false);
+  });
+
+  test("covers all fifteen issue #20, #230, and #234 regression cases", () => {
+    expect(regressionCases).toHaveLength(15);
   });
 
   test("plan checkpoint posts a bounded plan before implementation or stops with a split proposal", () => {

@@ -5,6 +5,8 @@ export type RegressionCase = {
     summary: string;
     pastedArtifact?: string;
     shouldRecognizePastedArtifact?: boolean;
+    issueBody?: string;
+    shouldAcceptIssueBody?: boolean;
   };
   skillMatches: Array<{
     heading: "Inputs" | "Dirty checkout" | "Contract" | "Steps" | "Do not";
@@ -45,6 +47,14 @@ Constraints
 
 Acceptance criteria
 - Enter execution when safe.
+`;
+
+export const readyIssueBodyWithoutFilesOrVerification = `## Goal
+Accept ready-for-agent issue bodies as execution input.
+
+## Acceptance criteria
+- Derive files from the repository.
+- Derive verification from repository guidance and required checks.
 `;
 
 export const regressionCases: RegressionCase[] = [
@@ -311,6 +321,27 @@ export const regressionCases: RegressionCase[] = [
         heading: "Steps",
         mustContain: [
           "the recovery attempted, why it failed, and the next required recovery contract",
+        ],
+      },
+    ],
+  },
+  {
+    id: 15,
+    name: "ready issue body without Files or Verification is execution input",
+    input: {
+      summary: "A ready-for-agent issue body has explicit Goal and Acceptance criteria without Files or Verification sections.",
+      issueBody: readyIssueBodyWithoutFilesOrVerification,
+      shouldAcceptIssueBody: true,
+    },
+    skillMatches: [
+      {
+        heading: "Inputs",
+        mustContain: [
+          "a `ready-for-agent` github issue body with explicit `goal` and `acceptance criteria` is valid execution input on its own, even without `files` or `verification` sections",
+          "derive files from the repository",
+          "derive verification from repository `agents.md` / `readme` / ci required checks",
+          "block only when the goal or acceptance criteria are missing, contradictory, or depend on an undecided product choice",
+          "name the exact missing item in the blocker",
         ],
       },
     ],
