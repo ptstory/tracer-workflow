@@ -128,13 +128,7 @@ function readPullRequestGateState(repo: string, number: number): ResolvedGateSta
   });
   const pullRequest: OpenPR = { ...payload, comments } as OpenPR;
   const state = classifyGateState(repo, pullRequest);
-  const trustedReviewers = reviewerLogins();
-  const latestMarked = comments
-    .filter((comment) => comment.body.startsWith("## review-gate:") &&
-      !!comment.author?.login && trustedReviewers.has(comment.author.login.toLowerCase()))
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-    .at(-1);
-  const parsed = parseGateComment(latestMarked ? [latestMarked] : [], { pullRequestNumber: number });
+  const parsed = parseGateComment(comments, { pullRequestNumber: number });
   return {
     state,
     verdict: parsed.kind === "parsed" ? parsed.verdict : null,

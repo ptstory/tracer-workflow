@@ -8,7 +8,7 @@ This is a personal workflow, deliberately heavier than a small change warrants, 
 
 `issue (direct or optional planning/triage) → from-issue → PR + evidence → @review-gate ⇄ from-pr-review (needs-fix) → retest + check-run gate → merge candidate / human stop`
 
-`next` is a safety stub until #30, not a working selector. For PRs, `bun run tracer resume <PR URL or number>` resolves the current head and Review Gate verdict, then prints one next-stage invocation or a terminal/human state. It performs GitHub reads only; issue and repository routing are not supported.
+`next` is a safety stub until #30, not a working selector. For PRs, `TRACER_REVIEWER_LOGINS="reviewer-login" bun run tracer resume "https://github.com/owner/repo/pull/123"` resolves the current head and Review Gate verdict, then prints one next-stage invocation or a terminal/human state. Set `TRACER_REVIEWER_LOGINS` to the comma-separated trusted reviewer GitHub logins used by your Review Gate; it is required, and the command fails closed if unset or empty. The command performs GitHub reads only; issue and repository routing are not supported.
 
 ![Durable-state overview showing disposable sessions and local work crossing into GitHub issues, PRs, SHA-bound verdicts, current-head checks, trusted remote refs, and drift detectors.](./docs/diagrams/tracer-durable-state.svg)
 

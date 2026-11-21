@@ -34,12 +34,19 @@ function writeGhStub(harness: Harness, payload: unknown, failure?: string): void
   chmodSync(join(harness.binDir, "gh"), 0o755);
 }
 
-function prPayload(verdict?: VerdictName, verdictSha = headSha): unknown {
-  const comments = verdict ? [{
-    body: `## review-gate: ${verdict}\nhead-sha: ${verdictSha}\nreview-round: 0\nreviewed-files: ${verdict === "needs-fix" ? 1 : 0}\nblocking-set: ${verdict === "needs-fix" || verdict === "blocked" ? "src/api.ts" : ""}\nnext-action: ${verdict === "needs-fix" ? `from-pr-review ${prUrl}` : verdict === "merge-candidate" ? "gh pr ready 17" : verdict === "needs-human" ? "gh pr view 17 --web" : "gh pr checks 17"}\n`,
-    author: { login: "reviewer" },
-    createdAt: "2026-10-01T00:00:00Z",
-  }] : [];
+function prPayload(verdict?: VerdictName, verdictSha = headSha, malformedMarker = false): unknown {
+  const comments = verdict ? [
+    {
+      body: `## review-gate: ${verdict}\nhead-sha: ${verdictSha}\nreview-round: 0\nreviewed-files: ${verdict === "needs-fix" ? 1 : 0}\nblocking-set: ${verdict === "needs-fix" || verdict === "blocked" ? "src/api.ts" : ""}\nnext-action: ${verdict === "needs-fix" ? `from-pr-review ${prUrl}` : verdict === "merge-candidate" ? "gh pr ready 17" : verdict === "needs-human" ? "gh pr view 17 --web" : "gh pr checks 17"}\n`,
+      author: { login: "reviewer" },
+      createdAt: "2026-10-01T00:00:00Z",
+    },
+    ...(malformedMarker ? [{
+      body: `## review-gate: ${verdict}\nhead-sha: invalid\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review ${prUrl}\n`,
+      author: { login: "reviewer" },
+      createdAt: "2026-10-02T00:00:00Z",
+    }] : []),
+  ] : [];
   return {
     number: 17,
     title: "Example pull request",
@@ -95,6 +102,28 @@ describe("tracer resume", () => {
     expect(result.stdout).toContain("State: from-pr-review");
     expect(result.stdout).toContain(`Invocation: from-pr-review ${prUrl}`);
     expect(result.stdout.match(/^Invocation:/gm)).toHaveLength(1);
+  });
+
+  test("retains current needs-fix when a newer trusted marker is malformed", () => {
+    writeGhStub(harness, prPayload("needs-fix", headSha, true));
+
+    const result = runResume(harness, prUrl);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("State: from-pr-review");
+    expect(result.stdout).toContain(`Invocation: from-pr-review ${prUrl}`);
+    expect(result.stdout).not.toContain("State: review-gate");
+  });
+
+  test("retains current needs-human when a newer trusted marker is malformed", () => {
+    writeGhStub(harness, prPayload("needs-human", headSha, true));
+
+    const result = runResume(harness, prUrl);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("State: needs-human");
+    expect(result.stdout).not.toContain("Invocation:");
+    expect(result.stdout).not.toContain("State: review-gate");
   });
 
   test("routes stale verdicts to Review Gate without using stale action", () => {
