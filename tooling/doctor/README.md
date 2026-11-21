@@ -25,8 +25,11 @@ bun tooling/doctor/doctor.ts [--json] [--repo-root <path>] [--repo-root <path>] 
 - `AGENTS.md` / `WORKFLOW.md` repo contract pointers are present
 - `skills/review-gate/references/verdict-contract.md` still carries the marker
   contract
-- GitHub repo access is checked read-only with `git remote.origin.url` and
-  `gh label list`
+- GitHub repo access is checked read-only with `git remote.origin.url`,
+  `gh label list`, and the complete `gh pr list --state open` inventory
 - canonical GitHub labels are present when the repo is reachable
+- every open non-draft PR has exactly one usable in-repository closing issue, and
+  each issue has at most one open non-draft implementation PR; draft PRs are
+  excluded from active binding checks
 - installed `~/Library/LaunchAgents/*.plist` jobs still point at scripts in the
   canonical tracer-workflow checkout

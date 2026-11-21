@@ -92,7 +92,12 @@ if (args[0] === "pr" && args[1] === "view") {
     process.stderr.write(entry.error + "\\n");
     process.exit(1);
   }
-  process.stdout.write(JSON.stringify({ body: entry.body ?? "", comments: entry.comments ?? [] }));
+  const body = entry.body ?? "";
+  const linkedIssue = body.match(/(?:Closes|Fixes|Resolves)\\s+(?:([A-Za-z0-9._-]+\\/[A-Za-z0-9._-]+)\\s+)?#(\\d+)/i);
+  const linkedRepository = linkedIssue?.[1] ?? getArg("--repo");
+  const [owner, name] = linkedRepository.split("/");
+  const closingIssuesReferences = linkedIssue ? [{ number: Number(linkedIssue[2]), repository: { owner: { login: owner }, name } }] : [];
+  process.stdout.write(JSON.stringify({ body, comments: entry.comments ?? [], closingIssuesReferences }));
   process.exit(0);
 }
 
