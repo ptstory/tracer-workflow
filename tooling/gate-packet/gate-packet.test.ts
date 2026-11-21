@@ -29,7 +29,7 @@ type Harness = {
 
 type StubState = {
   listByRepo: Record<string, ListPR[]>;
-  prViews: Record<string, { body?: string; comments?: Comment[]; error?: string }>;
+  prViews: Record<string, { body?: string; comments?: Comment[]; error?: string; closingIssuesReferences?: unknown }>;
   issueViews: Record<string, { text?: string; error?: string }>;
   diffs: Record<string, { text?: string; error?: string }>;
 };
@@ -92,7 +92,14 @@ if (args[0] === "pr" && args[1] === "view") {
     process.stderr.write(entry.error + "\\n");
     process.exit(1);
   }
-  process.stdout.write(JSON.stringify({ body: entry.body ?? "", comments: entry.comments ?? [] }));
+  const body = entry.body ?? "";
+  const linkedIssues = [...body.matchAll(/\\b(?:Closes|Fixes|Resolves)\\s+(?:([A-Za-z0-9._-]+\\/[A-Za-z0-9._-]+))?#(\\d+)\\b/gi)];
+  const closingIssuesReferences = entry.closingIssuesReferences ?? linkedIssues.map((linkedIssue) => {
+    const linkedRepository = linkedIssue[1] ?? getArg("--repo");
+    const [owner, name] = linkedRepository.split("/");
+    return { number: Number(linkedIssue[2]), repository: { owner: { login: owner }, name } };
+  });
+  process.stdout.write(JSON.stringify({ body, comments: entry.comments ?? [], closingIssuesReferences }));
   process.exit(0);
 }
 
@@ -229,12 +236,9 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
       },
     ];
 
-    state.prViews[`${repo}#1`] = {
-      body: "Closes #11",
-      comments: [],
-    };
+    state.prViews[`${repo}#1`] = { body: "Closes #11", comments: [] };
     state.prViews[`${repo}#2`] = {
-      body: "Fixes https://github.com/ptstory/tracer-workflow/issues/12",
+      body: "Fixes ptstory/tracer-workflow#12",
       comments: [gateComment(2, "cccccccccccccccccccccccccccccccccccccccc", "needs-fix", "2026-01-02T00:00:00Z")],
     };
     state.prViews[`${repo}#3`] = {
@@ -256,12 +260,38 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     expect(result.stdout).toBe("");
     const copied = readFileSync(harness.pbcopyLog, "utf8");
     expect(copied).toContain("=== ptstory/tracer-workflow#1 — ungated");
+    expect(copied).toContain("issue #11 — alpha");
     expect(copied).toContain("=== ptstory/tracer-workflow#2 — stale");
     expect(copied).not.toContain("current");
     expect(copied).not.toContain("draft");
     expect(copied).toContain("--- issue ---");
     expect(copied).toContain("--- prior verdict ---");
     expect(copied).toContain("--- diff ---");
+  });
+
+  test("does not treat a manually linked issue without a body closing reference as governing", () => {
+    const state = emptyStubState();
+    const repo = REPOS[0];
+    state.listByRepo[repo] = [{
+      number: 6,
+      title: "manual link only",
+      headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      comments: [],
+      isDraft: false,
+    }];
+    state.prViews[`${repo}#6`] = {
+      body: "Related to #65",
+      comments: [],
+      closingIssuesReferences: [{ number: 65, repository: { owner: { login: "ptstory" }, name: "tracer-workflow" } }],
+    };
+    state.diffs[`${repo}#6`] = { text: "diff --git a/x.txt b/x.txt\n+payload\n" };
+    writeGhStub(harness, state);
+
+    const result = runGatePacket(harness, ["--stdout"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("has missing governing issue references");
+    expect(result.stdout).toContain("--- issue ---\nnone");
   });
 
   test("writes the formatted packet blocks to stdout when --stdout is set", () => {
