@@ -104,17 +104,6 @@ function loadPrDetails(repo: string, number: number): PRDetails {
   }
 }
 
-function parseIssueNumber(body: string, repository = ""): number | null {
-  if (!repository) return null;
-  const pattern = /(?:Fixes|Closes|Resolves)\s+(?:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)\s+)?#(\d+)/gi;
-  const matches = [...body.matchAll(pattern)];
-  if (matches.length !== 1) return null;
-  const [, referencedRepository, numberText] = matches[0];
-  if (referencedRepository && referencedRepository.toLowerCase() !== repository.toLowerCase()) return null;
-  const issueNumber = Number(numberText);
-  return Number.isSafeInteger(issueNumber) && issueNumber > 0 ? issueNumber : null;
-}
-
 function loadIssueText(repo: string, issueNumber: number): string {
   try {
     return gh(["issue", "view", String(issueNumber), "--repo", repo]);
@@ -281,4 +270,4 @@ function main(): void {
 
 if (import.meta.main) main();
 
-export { applyBudget, buildPacket, latestGateComment, loadDiffText, loadIssueText, loadPrDetails, main, parseArgs, parseIssueNumber, pbcopy, renderOutput, renderPacket, truncateDiffToBudget };
+export { applyBudget, buildPacket, latestGateComment, loadDiffText, loadIssueText, loadPrDetails, main, parseArgs, pbcopy, renderOutput, renderPacket, truncateDiffToBudget };
