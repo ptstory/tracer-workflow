@@ -665,9 +665,10 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     ["absent", [], "absent"],
     ["pending push-triggered run", [{ id: 21, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", status: "in_progress", check_suite: { pull_requests: [] } }], "pending"],
     ["failed push-triggered Corby PR #16 run", [{ id: 22, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", status: "completed", conclusion: "failure", check_suite: { pull_requests: [] } }], "failed/cancelled"],
-    ["successful push-triggered run", [{ id: 23, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", status: "completed", conclusion: "success", check_suite: { pull_requests: [] } }], "passed"],
-    ["pull-request-triggered run", [{ id: 24, name: "build", app: { slug: "github-actions" }, event: "pull_request", status: "completed", conclusion: "success", check_suite: { pull_requests: [{ number: 98 }] } }], "passed"],
-    ["run for another SHA", [{ id: 25, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", head_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", status: "completed", conclusion: "failure", check_suite: { pull_requests: [] } }], "absent"],
+    ["cancelled push-triggered run", [{ id: 23, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", status: "completed", conclusion: "cancelled", check_suite: { pull_requests: [] } }], "failed/cancelled"],
+    ["successful push-triggered run", [{ id: 24, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", status: "completed", conclusion: "success", check_suite: { pull_requests: [] } }], "passed"],
+    ["pull-request-triggered run", [{ id: 25, name: "build", app: { slug: "github-actions" }, event: "pull_request", status: "completed", conclusion: "success", check_suite: { pull_requests: [{ number: 98 }] } }], "passed"],
+    ["run for another SHA", [{ id: 26, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", head_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", status: "completed", conclusion: "failure", check_suite: { pull_requests: [] } }], "absent"],
   ] as const)("classifies exact-head check evidence as %s", (_case, checkRunsJson, expected) => {
     const reviewedHeadSha = "68109ff6d980ff035beee9b40a4e9058ec01d41d";
     const { result, commentLog, ghLog } = runWorkflow({
@@ -684,12 +685,31 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(commentLog).toContain(`- current-head check evidence: ${expected}`);
     expect(ghLog).toContain(`repos/acme/repo/commits/${reviewedHeadSha}/check-runs`);
     if (expected === "failed/cancelled") {
-      expect(commentLog).toContain("check run inkode.yml completed with conclusion failure");
+      expect(commentLog).toContain("check run inkode.yml completed with conclusion");
       expect(commentLog).not.toContain("no completed check runs or commit statuses found");
     }
     if (expected === "absent") {
       expect(commentLog).toContain("no completed check runs or commit statuses found");
     }
+  });
+
+  test.each([
+    ["pending", "pending"],
+    ["failure", "failed/cancelled"],
+    ["error", "failed/cancelled"],
+    ["success", "passed"],
+  ] as const)("classifies current-head commit status %s as %s", (state, expected) => {
+    const { result, commentLog } = runWorkflow({
+      eventName: "workflow_call",
+      prNumber: 98,
+      pullJson: { head: { sha: "a".repeat(40) }, body: "Closes #96", labels: [] },
+      commentsJson: [],
+      checkRunsJson: [],
+      statusesJson: [{ context: "ci", state, created_at: "2026-01-03T00:00:00Z" }],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain(`- current-head check evidence: ${expected}`);
   });
 
   test("same-name check runs from distinct apps stay separate", () => {
