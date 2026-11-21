@@ -86,6 +86,7 @@ function extractRunScript(): string {
 }
 
 function writeGhStub(harness: Harness, fixture: WorkflowFixture): void {
+  const fixtureHeadSha = ((fixture.pullJson ?? (fixture.eventPayload as { pull_request?: unknown } | undefined)?.pull_request ?? {}) as { head?: { sha?: string } }).head?.sha ?? "a".repeat(40);
   const ghScript = `#!/usr/bin/env node
 const fs = require("node:fs");
 
@@ -101,7 +102,7 @@ const fixture = ${JSON.stringify({
     labels: fixture.labels ?? (fixture.pullJson && typeof fixture.pullJson === "object" ? (fixture.pullJson as { labels?: { name: string }[] }).labels : undefined) ?? ((fixture.eventPayload as { pull_request?: { labels?: { name: string }[] } } | undefined)?.pull_request?.labels) ?? [],
     labelCreateFailure: fixture.labelCreateFailure ?? null,
     commentsJson: fixture.commentsJson,
-    checkRunsJson: fixture.checkRunsJson,
+    checkRunsJson: fixture.checkRunsJson.map((checkRun) => ({ head_sha: fixtureHeadSha, ...(checkRun as Record<string, unknown>) })),
     statusesJson: fixture.statusesJson,
     failure: fixture.failure ?? null,
   })};
@@ -655,8 +656,62 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("- current-head check evidence: passed");
     expect(commentLog).toContain("- readiness: true");
     expect(commentLog).not.toContain("ready: false");
+  });
+
+  test.each([
+    ["absent", [], "absent"],
+    ["pending push-triggered run", [{ id: 21, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", status: "in_progress", check_suite: { pull_requests: [] } }], "pending"],
+    ["failed push-triggered Corby PR #16 run", [{ id: 22, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", status: "completed", conclusion: "failure", check_suite: { pull_requests: [] } }], "failed/cancelled"],
+    ["cancelled push-triggered run", [{ id: 23, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", status: "completed", conclusion: "cancelled", check_suite: { pull_requests: [] } }], "failed/cancelled"],
+    ["successful push-triggered run", [{ id: 24, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", status: "completed", conclusion: "success", check_suite: { pull_requests: [] } }], "passed"],
+    ["pull-request-triggered run", [{ id: 25, name: "build", app: { slug: "github-actions" }, event: "pull_request", status: "completed", conclusion: "success", check_suite: { pull_requests: [{ number: 98 }] } }], "passed"],
+    ["run for another SHA", [{ id: 26, name: "inkode.yml", app: { slug: "github-actions" }, event: "push", head_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", status: "completed", conclusion: "failure", check_suite: { pull_requests: [] } }], "absent"],
+  ] as const)("classifies exact-head check evidence as %s", (_case, checkRunsJson, expected) => {
+    const reviewedHeadSha = "68109ff6d980ff035beee9b40a4e9058ec01d41d";
+    const { result, commentLog, ghLog } = runWorkflow({
+      eventName: "workflow_call",
+      prNumber: 98,
+      pullJson: { head: { sha: reviewedHeadSha }, body: "Closes #96", labels: [] },
+      commentsJson: [],
+      checkRunsJson: [...checkRunsJson],
+      statusesJson: [],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain(`- head-sha: ${reviewedHeadSha}`);
+    expect(commentLog).toContain(`- current-head check evidence: ${expected}`);
+    const completedRunCount = expected === "absent" ? "0/0" : expected === "pending" ? "0/1" : "1/1";
+    expect(commentLog).toContain(`- check runs: ${completedRunCount} completed`);
+    expect(ghLog).toContain(`repos/acme/repo/commits/${reviewedHeadSha}/check-runs`);
+    if (expected === "failed/cancelled") {
+      expect(commentLog).toContain("check run inkode.yml completed with conclusion");
+      expect(commentLog).not.toContain("no completed check runs or commit statuses found");
+    }
+    if (expected === "absent") {
+      expect(commentLog).toContain("no completed check runs or commit statuses found");
+    }
+  });
+
+  test.each([
+    ["pending", "pending"],
+    ["failure", "failed/cancelled"],
+    ["error", "failed/cancelled"],
+    ["success", "passed"],
+  ] as const)("classifies current-head commit status %s as %s", (state, expected) => {
+    const { result, commentLog } = runWorkflow({
+      eventName: "workflow_call",
+      prNumber: 98,
+      pullJson: { head: { sha: "a".repeat(40) }, body: "Closes #96", labels: [] },
+      commentsJson: [],
+      checkRunsJson: [],
+      statusesJson: [{ context: "ci", state, created_at: "2026-01-03T00:00:00Z" }],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain(`- current-head check evidence: ${expected}`);
   });
 
   test("same-name check runs from distinct apps stay separate", () => {
