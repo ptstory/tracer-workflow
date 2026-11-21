@@ -106,6 +106,28 @@ jobs:
             fi
           }
 
+          check_live_pr_head() {
+            local diagnostic="$1"
+            if ! gh_api_capture write_pr_json "GET repos/$repo/pulls/$pr_number (live head re-check before write)" "repos/$repo/pulls/$pr_number"; then
+              exit 1
+            fi
+            live_head_sha="$(printf '%s' "$write_pr_json" | jq -r '.head.sha // empty')"
+            if [ "$live_head_sha" != "$head_sha" ]; then
+              printf 'gate-readiness: PR head moved from %s to %s before %s; stopping writes\n' "$head_sha" "${live_head_sha:-unknown}" "$diagnostic" >&2
+              return 1
+            fi
+            return 0
+          }
+
+          gh_api_guarded() {
+            local diagnostic="$1"
+            shift
+            if ! check_live_pr_head "$diagnostic"; then
+              exit 0
+            fi
+            gh_api "$diagnostic" "$@"
+          }
+
           pr_metadata_source="GitHub API"
           gh_token_source="secrets.GITHUB_TOKEN"
           pull_request_action="${INPUT_PULL_REQUEST_ACTION:-}"
@@ -124,14 +146,7 @@ jobs:
               sync_gate_labels="$(printf '%s' "$sync_pr_json" | jq -r '[.labels // [] | .[] | .name | select(startswith("gate:"))] | .[] | @uri')"
               while IFS= read -r encoded_label; do
                 [ -n "$encoded_label" ] || continue
-                if ! gh_api_capture sync_pr_json "GET repos/$repo/pulls/$pr_number (recheck before synchronize label deletion)" "repos/$repo/pulls/$pr_number"; then
-                  exit 1
-                fi
-                if [ "$(printf '%s' "$sync_pr_json" | jq -r '.head.sha // empty')" != "$head_sha" ]; then
-                  printf 'gate-readiness: PR head moved during synchronize cleanup from %s; stopping label deletion\n' "$head_sha" >&2
-                  break
-                fi
-                gh_api "DELETE repos/$repo/issues/$pr_number/labels/$encoded_label" -X DELETE "repos/$repo/issues/$pr_number/labels/$encoded_label" >/dev/null
+                gh_api_guarded "DELETE repos/$repo/issues/$pr_number/labels/$encoded_label" -X DELETE "repos/$repo/issues/$pr_number/labels/$encoded_label" >/dev/null
               done <<< "$sync_gate_labels"
             else
               printf 'gate-readiness: PR head moved before synchronize cleanup; skipping label deletion\n' >&2
@@ -340,9 +355,7 @@ jobs:
             done
           fi
 
-          # Re-read the live PR immediately before any write. Event payloads and earlier reads can
-          # describe a head that has since been replaced; writing labels or the readiness comment
-          # for a superseded head would restore stale state. A newer run evaluates the new head.
+          # Re-read the live PR before each write so a head change during the write sequence stops later mutations.
           if ! gh_api_capture live_pr_json "GET repos/$repo/pulls/$pr_number (live head re-check)" "repos/$repo/pulls/$pr_number"; then
             exit 1
           fi
@@ -362,9 +375,9 @@ jobs:
           ')"
 
           if [ -n "$existing_comment_id" ]; then
-            gh_api "PATCH repos/$repo/issues/comments/$existing_comment_id" -X PATCH "repos/$repo/issues/comments/$existing_comment_id" -f body="$comment_body" >/dev/null
+            gh_api_guarded "PATCH repos/$repo/issues/comments/$existing_comment_id" -X PATCH "repos/$repo/issues/comments/$existing_comment_id" -f body="$comment_body" >/dev/null
           else
-            gh_api "POST repos/$repo/issues/$pr_number/comments" -X POST "repos/$repo/issues/$pr_number/comments" -f body="$comment_body" >/dev/null
+            gh_api_guarded "POST repos/$repo/issues/$pr_number/comments" -X POST "repos/$repo/issues/$pr_number/comments" -f body="$comment_body" >/dev/null
           fi
 
           pr_label_json="$(printf '%s' "$live_pr_json" | jq -c '[.labels // [] | .[] | .name]')"
@@ -380,6 +393,9 @@ jobs:
           existing_verdict_labels="$pr_label_json"
           while IFS='|' read -r label color description; do
             if ! gh api "repos/$repo/labels/$label" >/dev/null 2>&1; then
+              if ! check_live_pr_head "POST repos/$repo/labels"; then
+                exit 0
+              fi
               if ! create_error="$(gh api -X POST "repos/$repo/labels" -f name="$label" -f color="$color" -f description="$description" 2>&1 >/dev/null)"; then
                 if [[ "$create_error" != *"already_exists"* && "$create_error" != *"HTTP 422"* ]]; then
                   printf 'gate-readiness: failed to create label %s: %s\n' "$label" "$create_error" >&2
@@ -388,9 +404,9 @@ jobs:
               fi
             fi
             if [ "$label" = "$verdict_label" ]; then
-              gh_api "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="$label" >/dev/null
+              gh_api_guarded "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="$label" >/dev/null
             elif printf '%s' "$existing_verdict_labels" | jq -e --arg label "$label" 'index($label) != null' >/dev/null; then
-              gh_api "DELETE repos/$repo/issues/$pr_number/labels/$label" -X DELETE "repos/$repo/issues/$pr_number/labels/$label" >/dev/null || true
+              gh_api_guarded "DELETE repos/$repo/issues/$pr_number/labels/$label" -X DELETE "repos/$repo/issues/$pr_number/labels/$label" >/dev/null || true
             fi
           done <<'LABELS'
           gate:merge-candidate|0e8a16|Trusted current-head merge-candidate verdict
@@ -401,10 +417,10 @@ jobs:
 
           if [ "$ready" = "true" ]; then
             if [ "$has_ready_label" != "true" ]; then
-              gh_api "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="gate:ready" >/dev/null
+              gh_api_guarded "POST repos/$repo/issues/$pr_number/labels" -X POST "repos/$repo/issues/$pr_number/labels" -f labels[]="gate:ready" >/dev/null
             fi
           else
             if [ "$has_ready_label" = "true" ]; then
-              gh_api "DELETE repos/$repo/issues/$pr_number/labels/gate:ready" -X DELETE "repos/$repo/issues/$pr_number/labels/gate:ready" >/dev/null || true
+              gh_api_guarded "DELETE repos/$repo/issues/$pr_number/labels/gate:ready" -X DELETE "repos/$repo/issues/$pr_number/labels/gate:ready" >/dev/null || true
             fi
           fi

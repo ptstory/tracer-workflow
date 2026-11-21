@@ -77,19 +77,18 @@ describe(".github/workflows/gate-readiness.yml", () => {
     expect(script).toContain('"HTTP 422"');
   });
 
-  test("re-reads the live PR head before every comment and label write", () => {
+  test("re-reads the live PR head immediately before every comment and label write", () => {
     const script = runScript("Evaluate readiness");
-    const recheck = script.indexOf('(live head re-check)');
-    const synchronizeCleanup = script.indexOf('(live head re-check for synchronize cleanup)');
-    const cleanupIterationRecheck = script.indexOf('(recheck before synchronize label deletion)');
-    expect(recheck).toBeGreaterThan(-1);
-    expect(synchronizeCleanup).toBeGreaterThan(-1);
-    expect(cleanupIterationRecheck).toBeGreaterThan(synchronizeCleanup);
-    for (const write of ['-X PATCH "repos/$repo/issues/comments/', '-X POST "repos/$repo/issues/$pr_number/comments"', '-X POST "repos/$repo/issues/$pr_number/labels"', '-X DELETE "repos/$repo/issues/$pr_number/labels/', '-X POST "repos/$repo/labels"']) {
-      const first = script.indexOf(write);
-      const requiredRecheck = write.startsWith('-X DELETE') ? cleanupIterationRecheck : recheck;
-      expect(first, write).toBeGreaterThan(requiredRecheck);
-    }
+    expect(script).toContain('check_live_pr_head() {');
+    expect(script).toContain('gh_api_guarded() {');
+    expect(script).toContain('gh_api "$diagnostic" "$@"');
+    expect(script).toContain('gh_api_guarded "PATCH repos/$repo/issues/comments/$existing_comment_id"');
+    expect(script).toContain('gh_api_guarded "POST repos/$repo/issues/$pr_number/comments"');
+    expect(script).toContain('gh_api_guarded "POST repos/$repo/issues/$pr_number/labels"');
+    expect(script).toContain('gh_api_guarded "DELETE repos/$repo/issues/$pr_number/labels/$encoded_label"');
+    expect(script).toContain('gh_api_guarded "DELETE repos/$repo/issues/$pr_number/labels/$label"');
+    expect(script).toContain('gh_api_guarded "DELETE repos/$repo/issues/$pr_number/labels/gate:ready"');
+    expect(script).toContain('if ! check_live_pr_head "POST repos/$repo/labels"; then');
   });
 
   test("parses trusted verdicts in the workflow without executing PR-controlled code", () => {
