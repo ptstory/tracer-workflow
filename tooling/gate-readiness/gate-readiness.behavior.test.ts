@@ -683,6 +683,8 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(commentLog).toContain(`- head-sha: ${reviewedHeadSha}`);
     expect(commentLog).toContain(`- current-head check evidence: ${expected}`);
+    const completedRunCount = expected === "absent" ? "0/0" : expected === "pending" ? "0/1" : "1/1";
+    expect(commentLog).toContain(`- check runs: ${completedRunCount} completed`);
     expect(ghLog).toContain(`repos/acme/repo/commits/${reviewedHeadSha}/check-runs`);
     if (expected === "failed/cancelled") {
       expect(commentLog).toContain("check run inkode.yml completed with conclusion");
