@@ -132,9 +132,9 @@ function buildPacket(row: {
   gateState: "ungated" | "stale";
 }): Packet {
   const details = loadPrDetails(row.repo, row.number);
-  const classification = classifyGoverningIssueReferences(details.closingIssuesReferences, row.repo);
+  const classification = classifyGoverningIssueReferences(details.closingIssuesReferences, row.repo, details.body);
   const issueNumber = classification.kind === "valid" ? classification.issueNumber : null;
-  if (classification.kind !== "valid" && classification.kind !== "missing") {
+  if (classification.kind !== "valid") {
     warn(`PR #${row.number} in ${row.repo} has ${classification.kind} governing issue references`);
   }
   const issueText = issueNumber === null ? "none" : loadIssueText(row.repo, issueNumber).trimEnd() || "none";

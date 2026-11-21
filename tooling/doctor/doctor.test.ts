@@ -47,6 +47,7 @@ description: >
 Keep the writer's point and voice.
 `;
 type DoctorFixture = { remoteUrl: string; labels: string[]; ghFailure?: string; prListFailure?: string; prListOutput?: string; openPullRequests?: unknown };
+type DoctorPullRequestFixture = { number: number; isDraft: boolean; body?: string; closingIssuesReferences: unknown[] };
 
 const sandboxDirs: string[] = [];
 
@@ -1112,10 +1113,16 @@ const closingReference = (number: number, owner = "ptstory", name = "tracer-work
   number,
   repository: { name, owner: { login: owner } },
 });
+const implementationPr = (number: number, issueNumber: number, options: { body?: string; owner?: string; repository?: string; draft?: boolean } = {}): DoctorPullRequestFixture => ({
+  number,
+  isDraft: options.draft ?? false,
+  body: options.body ?? `Closes #${issueNumber}`,
+  closingIssuesReferences: [closingReference(issueNumber, options.owner, options.repository)],
+});
 
 test("PR #32 regression reports an open implementation PR with no governing issue", () => {
   const { report } = buildReportForOpenPullRequests({
-    openPullRequests: [{ number: 32, isDraft: false, closingIssuesReferences: [] }],
+    openPullRequests: [{ number: 32, isDraft: false, body: "Implementation without a closing reference", closingIssuesReferences: [] }],
   });
   const finding = report.findings.find((item: any) => item.component.endsWith("#32") && item.component.startsWith("repo-pr-binding:"));
 
@@ -1124,9 +1131,19 @@ test("PR #32 regression reports an open implementation PR with no governing issu
   expect(report.summary.errors).toBeGreaterThan(0);
 });
 
+test("rejects a manually linked issue without a recognized body closing reference", () => {
+  const { report } = buildReportForOpenPullRequests({
+    openPullRequests: [{ ...implementationPr(94, 95, { body: "Related to #95" }) }],
+  });
+  const finding = report.findings.find((item: any) => item.component === `repo-pr-binding:${report.repoRoot}#94`);
+
+  expect(finding?.severity).toBe("error");
+  expect(finding?.observed).toContain("PR #94 has no recognized in-repository closing issue");
+});
+
 test("#71/#72/#73 regression reports every competing implementation PR", () => {
   const { report } = buildReportForOpenPullRequests({
-    openPullRequests: [72, 73].map((number) => ({ number, isDraft: false, closingIssuesReferences: [closingReference(71)] })),
+    openPullRequests: [72, 73].map((number) => implementationPr(number, 71)),
   });
   const finding = report.findings.find((item: any) => item.component === `repo-issue-binding:${report.repoRoot}#71`);
 
@@ -1137,7 +1154,7 @@ test("#71/#72/#73 regression reports every competing implementation PR", () => {
 
 test("a single usable governing issue has no binding finding", () => {
   const { report } = buildReportForOpenPullRequests({
-    openPullRequests: [{ number: 80, isDraft: false, closingIssuesReferences: [closingReference(81)] }],
+    openPullRequests: [implementationPr(80, 81)],
   });
 
   expect(report.findings.filter((item: any) => item.component.startsWith("repo-pr-binding:") || item.component.startsWith("repo-issue-binding:"))).toEqual([]);
@@ -1146,8 +1163,8 @@ test("a single usable governing issue has no binding finding", () => {
 test("draft PRs do not participate in active binding conflicts", () => {
   const { report } = buildReportForOpenPullRequests({
     openPullRequests: [
-      { number: 82, isDraft: false, closingIssuesReferences: [closingReference(83)] },
-      { number: 84, isDraft: true, closingIssuesReferences: [closingReference(83)] },
+      implementationPr(82, 83),
+      implementationPr(84, 83, { draft: true }),
     ],
   });
 
@@ -1155,9 +1172,9 @@ test("draft PRs do not participate in active binding conflicts", () => {
 });
 
 test.each([
-  ["multiple in-repository issues", [{ number: 85, isDraft: false, closingIssuesReferences: [closingReference(86), closingReference(87)] }], "multiple in-repository closing issues"],
-  ["malformed issue reference", [{ number: 88, isDraft: false, closingIssuesReferences: [{ number: "89" }] }], "malformed closing issue references"],
-  ["cross-repository only", [{ number: 90, isDraft: false, closingIssuesReferences: [closingReference(91, "other")] }], "no in-repository closing issue"],
+  ["multiple in-repository issues", [{ ...implementationPr(85, 86, { body: "Closes #86 and fixes #87" }), closingIssuesReferences: [closingReference(86), closingReference(87)] }], "multiple in-repository closing issues"],
+  ["malformed issue reference", [{ number: 88, isDraft: false, body: "Closes #89", closingIssuesReferences: [{ number: "89" }] }], "malformed closing issue references"],
+  ["cross-repository only", [implementationPr(90, 91, { owner: "other", body: "Closes other/tracer-workflow#91" })], "no in-repository closing issue"],
 ] as const)("reports %s references deterministically", (_label, openPullRequests, observed) => {
   const { report } = buildReportForOpenPullRequests({ openPullRequests });
   const finding = report.findings.find((item: any) => item.component === `repo-pr-binding:${report.repoRoot}#${openPullRequests[0].number}`);
@@ -1171,10 +1188,11 @@ test.each([
   ["malformed JSON", { prListOutput: "not-json" }, "open pull request inspection failed"],
   ["non-list response", { prListOutput: "{}" }, "non-list response"],
   ["malformed record", { openPullRequests: [{ number: 92, closingIssuesReferences: [] }] }, "malformed identity or draft state"],
+  ["missing body", { openPullRequests: [{ number: 93, isDraft: false, closingIssuesReferences: [closingReference(94)] }] }, "pull request body is unavailable or malformed"],
   ["possibly truncated inventory", { openPullRequests: Array.from({ length: 1000 }, (_, index) => ({ number: index + 1, isDraft: true, closingIssuesReferences: [] })) }, "inventory may be incomplete"],
 ] as const)("fails closed on open pull request %s", (_label, options, observed) => {
   const { report } = buildReportForOpenPullRequests(options);
-  const finding = report.findings.find((item: any) => item.component.startsWith("repo-pr-binding-inspection:"));
+  const finding = report.findings.find((item: any) => item.component.startsWith("repo-pr-binding-inspection:") || item.observed.includes(observed));
 
   expect(finding?.severity).toBe("error");
   expect(finding?.observed).toContain(observed);

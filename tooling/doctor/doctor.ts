@@ -777,7 +777,7 @@ function checkRepoPullRequestBindings(repoRoot: string, deps: DoctorDeps = {}): 
 
   let records: unknown;
   try {
-    const result = (deps.runCommand ?? runCommand)("gh", ["pr", "list", "--repo", repoSlug, "--state", "open", "--limit", "1000", "--json", "number,isDraft,closingIssuesReferences"]);
+    const result = (deps.runCommand ?? runCommand)("gh", ["pr", "list", "--repo", repoSlug, "--state", "open", "--limit", "1000", "--json", "number,isDraft,body,closingIssuesReferences"]);
     if (result.status !== 0) {
       const observed = [result.stderr.trim(), result.stdout.trim(), `exit status ${result.status ?? "unknown"}`].filter(Boolean).join("; ");
       return [finding(
@@ -831,7 +831,7 @@ function checkRepoPullRequestBindings(repoRoot: string, deps: DoctorDeps = {}): 
       ));
       continue;
     }
-    const pullRequest = record as { number?: unknown; isDraft?: unknown; closingIssuesReferences?: unknown };
+    const pullRequest = record as { number?: unknown; isDraft?: unknown; body?: unknown; closingIssuesReferences?: unknown };
     if (!Number.isInteger(pullRequest.number) || (pullRequest.number as number) <= 0 || typeof pullRequest.isDraft !== "boolean") {
       findings.push(finding(
         `repo-pr-binding-inspection:${repoRoot}`,
@@ -844,7 +844,7 @@ function checkRepoPullRequestBindings(repoRoot: string, deps: DoctorDeps = {}): 
     }
     if (pullRequest.isDraft) continue;
 
-    const classification = classifyGoverningIssueReferences(pullRequest.closingIssuesReferences, repoSlug);
+    const classification = classifyGoverningIssueReferences(pullRequest.closingIssuesReferences, repoSlug, pullRequest.body);
     const number = pullRequest.number as number;
     if (classification.kind === "valid") {
       active.push({ number, issueNumber: classification.issueNumber });
