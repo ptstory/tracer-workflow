@@ -132,6 +132,7 @@ describe("tracer resume", () => {
       expect(result.stdout).toContain(`State: ${verdict === "merge-candidate" ? "human-checks" : verdict}`);
       if (verdict === "merge-candidate") expect(result.stdout).toContain("Reason: check current-head checks and human/AFK authorization");
       expect(result.stdout).not.toContain("Invocation:");
+      expect(readFileSync(harness.ghLog, "utf8").trim()).toBe("pr view 17 --repo ptstory/tracer-workflow --json number,title,headRefOid,comments,isDraft");
       writeFileSync(harness.ghLog, "", "utf8");
     }
   });
