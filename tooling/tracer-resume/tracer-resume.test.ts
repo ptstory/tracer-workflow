@@ -129,7 +129,8 @@ describe("tracer resume", () => {
       const result = runResume(harness, "17");
 
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain(`State: ${verdict}`);
+      expect(result.stdout).toContain(`State: ${verdict === "merge-candidate" ? "human-checks" : verdict}`);
+      if (verdict === "merge-candidate") expect(result.stdout).toContain("Reason: check current-head checks and human/AFK authorization");
       expect(result.stdout).not.toContain("Invocation:");
       writeFileSync(harness.ghLog, "", "utf8");
     }

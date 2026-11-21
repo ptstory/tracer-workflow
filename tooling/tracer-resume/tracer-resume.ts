@@ -13,8 +13,8 @@ type PullRequestReference = {
 type ResumeDecision = {
   prUrl: string;
   headSha: string;
-  state: "review-gate" | "from-pr-review" | "needs-human" | "blocked" | "merge-candidate";
-  reason?: "no-current-verdict" | "stale-verdict" | "malformed-verdict";
+  state: "review-gate" | "from-pr-review" | "needs-human" | "blocked" | "human-checks";
+  reason?: "no-current-verdict" | "stale-verdict" | "malformed-verdict" | "check current-head checks and human/AFK authorization";
   invocation?: string;
 };
 
@@ -56,6 +56,15 @@ function decideResume(prUrl: string, resolved: ResolvedGateState): ResumeDecisio
       headSha: state.headRefOid,
       state: "from-pr-review",
       invocation: `from-pr-review ${prUrl}`,
+    };
+  }
+
+  if (verdict.verdict === "merge-candidate") {
+    return {
+      prUrl,
+      headSha: state.headRefOid,
+      state: "human-checks",
+      reason: "check current-head checks and human/AFK authorization",
     };
   }
 
