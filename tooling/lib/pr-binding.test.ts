@@ -21,6 +21,7 @@ test("requires body and GitHub reference identities to agree", () => {
 
 test("rejects unsupported, multiple, and malformed body references", () => {
   expect(classifyGoverningIssueReferences([], repository, "")).toEqual({ kind: "missing" });
+  expect(classifyGoverningIssueReferences([reference(65)], repository, "The planned fix resolves #65 in prose.")).toEqual({ kind: "missing" });
   expect(classifyGoverningIssueReferences([reference(65, "other", "repo")], repository, "Closes other/repo#65")).toEqual({ kind: "unsupported", repositories: ["other/repo"] });
   expect(classifyGoverningIssueReferences([reference(65, "other", "repo")], repository, "Closes #65")).toEqual({ kind: "unsupported", repositories: ["other/repo"] });
   expect(classifyGoverningIssueReferences([], repository, "Closes #65").kind).toBe("malformed");

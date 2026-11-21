@@ -19,7 +19,7 @@ type BodyClosingReference = { issueNumber: number; repository: string };
 
 function parseBodyClosingReferences(body: string, repository: string): ParsedBodyReferences {
   const references: BodyClosingReference[] = [];
-  const pattern = /\b(?:Fixes|Closes|Resolves)\s+(?:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+))?#(\d+)\b/gi;
+  const pattern = /^\s*(?:Fixes|Closes|Resolves)\s+(?:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+))?#(\d+)\s*$/gim;
   for (const match of body.matchAll(pattern)) {
     const ownerRepository = match[1] ?? repository;
     const issueNumber = Number(match[2]);

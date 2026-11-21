@@ -1172,7 +1172,7 @@ test("draft PRs do not participate in active binding conflicts", () => {
 });
 
 test.each([
-  ["multiple in-repository issues", [{ ...implementationPr(85, 86, { body: "Closes #86 and fixes #87" }), closingIssuesReferences: [closingReference(86), closingReference(87)] }], "multiple in-repository closing issues"],
+  ["multiple in-repository issues", [{ ...implementationPr(85, 86, { body: "Closes #86\nFixes #87" }), closingIssuesReferences: [closingReference(86), closingReference(87)] }], "multiple in-repository closing issues"],
   ["malformed issue reference", [{ number: 88, isDraft: false, body: "Closes #89", closingIssuesReferences: [{ number: "89" }] }], "malformed closing issue references"],
   ["cross-repository only", [implementationPr(90, 91, { owner: "other", body: "Closes other/tracer-workflow#91" })], "no in-repository closing issue"],
 ] as const)("reports %s references deterministically", (_label, openPullRequests, observed) => {
