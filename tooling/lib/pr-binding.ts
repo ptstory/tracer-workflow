@@ -13,29 +13,32 @@ type GoverningIssueClassification =
   | { kind: "ambiguous"; issueNumbers: number[] }
   | { kind: "unsupported"; repositories: string[] };
 
+type ParsedBodyReferences = { kind: "valid"; references: BodyClosingReference[] } | { kind: "malformed"; detail: string };
+
 type BodyClosingReference = { issueNumber: number; repository: string };
 
-function parseBodyClosingReferences(body: string, repository: string): BodyClosingReference[] {
+function parseBodyClosingReferences(body: string, repository: string): ParsedBodyReferences {
   const references: BodyClosingReference[] = [];
   const pattern = /\b(?:Fixes|Closes|Resolves)\s+(?:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+))?#(\d+)\b/gi;
   for (const match of body.matchAll(pattern)) {
     const ownerRepository = match[1] ?? repository;
     const issueNumber = Number(match[2]);
-    if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0) return [{ issueNumber: 0, repository: ownerRepository }];
+    if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
+      return { kind: "malformed", detail: "pull request body contains an invalid closing issue number" };
+    }
     references.push({ issueNumber, repository: ownerRepository });
   }
-  return references;
+  return { kind: "valid", references };
 }
 
 function classifyGoverningIssueReferences(value: unknown, repository: string, body: unknown): GoverningIssueClassification {
   if (typeof body !== "string") return { kind: "malformed", detail: "pull request body is unavailable or malformed" };
   if (!Array.isArray(value)) return { kind: "malformed", detail: "closing issue references are not a list" };
 
-  const bodyReferences = parseBodyClosingReferences(body, repository);
+  const parsedBodyReferences = parseBodyClosingReferences(body, repository);
+  if (parsedBodyReferences.kind === "malformed") return parsedBodyReferences;
+  const bodyReferences = parsedBodyReferences.references;
   if (bodyReferences.length === 0) return { kind: "missing" };
-  if (bodyReferences.some(({ issueNumber }) => issueNumber <= 0)) {
-    return { kind: "malformed", detail: "pull request body contains an invalid closing issue number" };
-  }
   if (bodyReferences.length > 1) {
     return { kind: "ambiguous", issueNumbers: bodyReferences.map(({ issueNumber }) => issueNumber).sort((left, right) => left - right) };
   }
@@ -64,6 +67,10 @@ function classifyGoverningIssueReferences(value: unknown, repository: string, bo
     .filter(({ repository: referenceRepository }) => `${referenceRepository.owner.login}/${referenceRepository.name}`.toLowerCase() === expectedRepository)
     .map(({ number }) => number))].sort((left, right) => left - right);
   if (inRepositoryNumbers.length > 1) return { kind: "ambiguous", issueNumbers: inRepositoryNumbers };
+  if (inRepositoryNumbers.length === 0) {
+    const unsupportedRepositories = [...new Set(references.map(({ repository: referenceRepository }) => `${referenceRepository.owner.login}/${referenceRepository.name}`))].sort((left, right) => left.localeCompare(right));
+    return { kind: "unsupported", repositories: unsupportedRepositories };
+  }
   if (!inRepositoryNumbers.includes(bodyReference.issueNumber)) {
     return { kind: "malformed", detail: `pull request body closes #${bodyReference.issueNumber}, but GitHub reports no matching in-repository closing issue reference` };
   }
