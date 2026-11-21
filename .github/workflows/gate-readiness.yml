@@ -237,7 +237,8 @@ jobs:
             exit 1
           fi
           check_runs_json="$(printf '%s' "$check_runs_json_raw" | jq -s '[.[].check_runs[]?]')"
-          signal_check_runs_json="$(printf '%s' "$check_runs_json" | jq -c '[.[] | select(.app.slug != "github-actions" or .name != "gate-readiness")]')"
+          current_head_check_runs_json="$(printf '%s' "$check_runs_json" | jq -c --arg head_sha "$head_sha" '[.[] | select(.head_sha == $head_sha)]')"
+          signal_check_runs_json="$(printf '%s' "$current_head_check_runs_json" | jq -c '[.[] | select(.app.slug != "github-actions" or .name != "gate-readiness")]')"
           if ! gh_api_capture statuses_json_raw "GET repos/$repo/commits/$head_sha/statuses --paginate" "repos/$repo/commits/$head_sha/statuses" --paginate; then
             exit 1
           fi
@@ -252,7 +253,7 @@ jobs:
             | group_by(.context)
             | map(last)
           ')"
-          check_run_evidence_state="$(jq -n \
+          check_run_evidence_state="$(jq -nr \
             --argjson check_runs "$current_check_runs_json" \
             --argjson statuses "$current_statuses_json" '
               if (($check_runs | length) + ($statuses | length)) == 0 then "absent"
