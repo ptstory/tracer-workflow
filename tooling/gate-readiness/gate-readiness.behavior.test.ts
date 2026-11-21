@@ -327,7 +327,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate%3Aneeds-fix","method":"DELETE"');
     expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate%3Aneeds-human","method":"DELETE"');
-    expect(result.stderr).toContain("PR head moved during synchronize cleanup");
+    expect(result.stderr).toContain("PR head moved from bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb to cccccccccccccccccccccccccccccccccccccccc before DELETE repos/acme/repo/issues/98/labels/gate%3Aneeds-human");
   });
 
   test("synchronize after a needs-fix verdict removes every gate label", () => {
@@ -448,7 +448,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
     expect(result.status, result.stderr).toBe(0);
     const pullsReads = ghLog.split("\n").filter((line) => line.includes('"endpoint":"repos/acme/repo/pulls/98"'));
-    expect(pullsReads).toHaveLength(2);
+    expect(pullsReads.length).toBeGreaterThan(2);
     expect(commentLog).toContain("- PR metadata source: GitHub API");
     expect(commentLog).toContain("- auth path: GH_TOKEN -> secrets.GITHUB_TOKEN");
   });
@@ -471,6 +471,27 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(ghLog).not.toContain('"method":"POST"');
     expect(ghLog).not.toContain('"method":"DELETE"');
     expect(ghLog).not.toContain('"method":"PATCH"');
+  });
+
+  test("stops before the second write when the PR head changes after the readiness comment", () => {
+    const headSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const nextHeadSha = "cccccccccccccccccccccccccccccccccccccccc";
+    const { result, ghLog, commentLog } = runWorkflow({
+      eventName: "workflow_call",
+      pullJson: { head: { sha: headSha }, body: "Closes #97", labels: [] },
+      prNumber: 98,
+      liveHeadSequence: [headSha, headSha, nextHeadSha],
+      commentsJson: [currentReviewGateComment],
+      checkRunsJson: [],
+      statusesJson: [],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(commentLog).toContain("## gate-readiness");
+    expect(ghLog).toContain('"endpoint":"repos/acme/repo/issues/98/comments","method":"POST"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels","method":"POST"');
+    expect(ghLog).not.toContain('"endpoint":"repos/acme/repo/issues/98/labels/gate:merge-candidate","method":"POST"');
+    expect(result.stderr).toContain(`PR head moved from ${headSha} to ${nextHeadSha} before POST repos/acme/repo/issues/98/labels`);
   });
 
   test.each(["pull_request_target", "workflow_call"] as const)(
