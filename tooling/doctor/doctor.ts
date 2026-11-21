@@ -808,6 +808,15 @@ function checkRepoPullRequestBindings(repoRoot: string, deps: DoctorDeps = {}): 
       `Inspect GitHub access and open pull request inventory for ${repoSlug}.`,
     )];
   }
+  if (records.length === 1000) {
+    return [finding(
+      `repo-pr-binding-inspection:${repoRoot}`,
+      `complete read-only open pull request inventory succeeds for ${repoSlug}`,
+      "gh pr list reached its 1000-PR limit; the open pull request inventory may be incomplete",
+      "error",
+      `Inspect ${repoSlug} with a paginated GitHub query and rerun doctor after reducing the inventory below the CLI limit.`,
+    )];
+  }
 
   const active: Array<{ number: number; issueNumber: number }> = [];
   const findings: DoctorFinding[] = [];

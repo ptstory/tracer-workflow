@@ -1171,6 +1171,7 @@ test.each([
   ["malformed JSON", { prListOutput: "not-json" }, "open pull request inspection failed"],
   ["non-list response", { prListOutput: "{}" }, "non-list response"],
   ["malformed record", { openPullRequests: [{ number: 92, closingIssuesReferences: [] }] }, "malformed identity or draft state"],
+  ["possibly truncated inventory", { openPullRequests: Array.from({ length: 1000 }, (_, index) => ({ number: index + 1, isDraft: true, closingIssuesReferences: [] })) }, "inventory may be incomplete"],
 ] as const)("fails closed on open pull request %s", (_label, options, observed) => {
   const { report } = buildReportForOpenPullRequests(options);
   const finding = report.findings.find((item: any) => item.component.startsWith("repo-pr-binding-inspection:"));
