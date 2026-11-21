@@ -3,6 +3,7 @@
 import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { basename, join, resolve } from "node:path";
+import { classifyGoverningIssueReferences } from "../lib/pr-binding";
 
 type Severity = "error" | "warning";
 
@@ -762,6 +763,121 @@ function checkRepoGitHubLabels(repoRoot: string, deps: DoctorDeps = {}): DoctorF
   }
 }
 
+function checkRepoPullRequestBindings(repoRoot: string, deps: DoctorDeps = {}): DoctorFinding[] {
+  const repoSlug = resolveRepoSlug(repoRoot, deps);
+  if (!repoSlug) {
+    return [finding(
+      `repo-pr-binding-inspection:${repoRoot}`,
+      "resolve a GitHub repository slug and read its open pull requests",
+      "remote.origin.url missing or not a github.com repo",
+      "error",
+      "Point the origin remote at a GitHub slug and retry the read-only inspection.",
+    )];
+  }
+
+  let records: unknown;
+  try {
+    const result = (deps.runCommand ?? runCommand)("gh", ["pr", "list", "--repo", repoSlug, "--state", "open", "--limit", "1000", "--json", "number,isDraft,closingIssuesReferences"]);
+    if (result.status !== 0) {
+      const observed = [result.stderr.trim(), result.stdout.trim(), `exit status ${result.status ?? "unknown"}`].filter(Boolean).join("; ");
+      return [finding(
+        `repo-pr-binding-inspection:${repoRoot}`,
+        `complete read-only open pull request inventory succeeds for ${repoSlug}`,
+        `gh pr list failed: ${observed}`,
+        "error",
+        `Inspect GitHub access and open pull request inventory for ${repoSlug}.`,
+      )];
+    }
+    records = JSON.parse(result.stdout);
+  } catch (error) {
+    return [finding(
+      `repo-pr-binding-inspection:${repoRoot}`,
+      `complete read-only open pull request inventory succeeds for ${repoSlug}`,
+      `open pull request inspection failed: ${(error as Error).message}`,
+      "error",
+      `Inspect GitHub access and open pull request inventory for ${repoSlug}.`,
+    )];
+  }
+
+  if (!Array.isArray(records)) {
+    return [finding(
+      `repo-pr-binding-inspection:${repoRoot}`,
+      `complete read-only open pull request inventory succeeds for ${repoSlug}`,
+      "gh pr list returned a non-list response",
+      "error",
+      `Inspect GitHub access and open pull request inventory for ${repoSlug}.`,
+    )];
+  }
+
+  const active: Array<{ number: number; issueNumber: number }> = [];
+  const findings: DoctorFinding[] = [];
+  for (const [index, record] of records.entries()) {
+    if (!record || typeof record !== "object") {
+      findings.push(finding(
+        `repo-pr-binding-inspection:${repoRoot}`,
+        `every open pull request has a valid identity and draft state in ${repoSlug}`,
+        `open pull request record ${index} is not an object`,
+        "error",
+        `Inspect the open pull request inventory for ${repoSlug}.`,
+      ));
+      continue;
+    }
+    const pullRequest = record as { number?: unknown; isDraft?: unknown; closingIssuesReferences?: unknown };
+    if (!Number.isInteger(pullRequest.number) || (pullRequest.number as number) <= 0 || typeof pullRequest.isDraft !== "boolean") {
+      findings.push(finding(
+        `repo-pr-binding-inspection:${repoRoot}`,
+        `every open pull request has a positive number and explicit draft state in ${repoSlug}`,
+        `open pull request record ${index} has malformed identity or draft state`,
+        "error",
+        `Inspect the open pull request inventory for ${repoSlug}.`,
+      ));
+      continue;
+    }
+    if (pullRequest.isDraft) continue;
+
+    const classification = classifyGoverningIssueReferences(pullRequest.closingIssuesReferences, repoSlug);
+    const number = pullRequest.number as number;
+    if (classification.kind === "valid") {
+      active.push({ number, issueNumber: classification.issueNumber });
+      continue;
+    }
+
+    const observed = classification.kind === "missing"
+      ? `PR #${number} has no recognized in-repository closing issue`
+      : classification.kind === "malformed"
+        ? `PR #${number} has malformed closing issue references: ${classification.detail}`
+        : classification.kind === "ambiguous"
+          ? `PR #${number} has multiple in-repository closing issues: ${classification.issueNumbers.map((issue) => `#${issue}`).join(", ")}`
+          : `PR #${number} has no in-repository closing issue; references point to ${classification.repositories.join(", ")}`;
+    findings.push(finding(
+      `repo-pr-binding:${repoRoot}#${number}`,
+      `open non-draft implementation PR #${number} resolves to exactly one usable in-repository closing issue`,
+      observed,
+      "error",
+      `Add exactly one recognized in-repository closing issue reference to PR #${number}.`,
+    ));
+  }
+
+  const claims = new Map<number, number[]>();
+  for (const pullRequest of active) {
+    const pullRequests = claims.get(pullRequest.issueNumber) ?? [];
+    pullRequests.push(pullRequest.number);
+    claims.set(pullRequest.issueNumber, pullRequests);
+  }
+  for (const [issueNumber, pullRequests] of [...claims.entries()].sort(([left], [right]) => left - right)) {
+    if (pullRequests.length < 2) continue;
+    const sortedPullRequests = pullRequests.sort((left, right) => left - right);
+    findings.push(finding(
+      `repo-issue-binding:${repoRoot}#${issueNumber}`,
+      `issue #${issueNumber} is governed by at most one open non-draft implementation PR`,
+      `issue #${issueNumber} is claimed by competing open PRs ${sortedPullRequests.map((number) => `#${number}`).join(", ")}`,
+      "error",
+      `Resolve the competing implementation PRs for issue #${issueNumber} without relying on doctor to choose a winner.`,
+    ));
+  }
+  return findings;
+}
+
 function checkNextSkill(repoRoot: string): DoctorFinding[] {
   const skillPath = join(repoRoot, "skills/next/SKILL.md");
   if (!existsSync(skillPath)) {
@@ -1277,6 +1393,7 @@ function buildDoctorReport(repoRootsOrCanonicalRoot: string[] | string, downstre
     ...checkVerdictContract(mainRepoRoot),
     ...allRepoRoots.flatMap((repoRoot) => checkRepoContract(repoRoot)),
     ...allRepoRoots.flatMap((repoRoot) => checkRepoGitHubLabels(repoRoot, resolvedDeps)),
+    ...allRepoRoots.flatMap((repoRoot) => checkRepoPullRequestBindings(repoRoot, resolvedDeps)),
     ...LAUNCHD_TARGETS.flatMap((target) => checkLaunchdPath(mainRepoRoot, home, target.plist, target.script, target.component)),
   ];
 
