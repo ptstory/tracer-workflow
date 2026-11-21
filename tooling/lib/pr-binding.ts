@@ -19,14 +19,20 @@ type BodyClosingReference = { issueNumber: number; repository: string };
 
 function parseBodyClosingReferences(body: string, repository: string): ParsedBodyReferences {
   const references: BodyClosingReference[] = [];
-  const pattern = /^\s*(?:Fixes|Closes|Resolves)\s+(?:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+))?#(\d+)\s*$/gim;
-  for (const match of body.matchAll(pattern)) {
-    const ownerRepository = match[1] ?? repository;
-    const issueNumber = Number(match[2]);
-    if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
-      return { kind: "malformed", detail: "pull request body contains an invalid closing issue number" };
+  const pattern = /^\s*(?:Fixes|Closes|Resolves)\s+(?:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+))?#(\d+)\s*$/im;
+  for (const line of body.split(/\r?\n/)) {
+    const trimmedLine = line.trim();
+    const match = trimmedLine.match(pattern);
+    if (match) {
+      const ownerRepository = match[1] ?? repository;
+      const issueNumber = Number(match[2]);
+      if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
+        return { kind: "malformed", detail: "pull request body contains an invalid closing issue number" };
+      }
+      references.push({ issueNumber, repository: ownerRepository });
+      continue;
     }
-    references.push({ issueNumber, repository: ownerRepository });
+    if (/^(?:Fixes|Closes|Resolves)\b/i.test(trimmedLine)) return { kind: "malformed", detail: `unrecognized closing reference line: ${trimmedLine}` };
   }
   return { kind: "valid", references };
 }

@@ -1117,7 +1117,7 @@ const implementationPr = (number: number, issueNumber: number, options: { body?:
   number,
   isDraft: options.draft ?? false,
   body: options.body ?? `Closes #${issueNumber}`,
-  closingIssuesReferences: [closingReference(issueNumber, options.owner, options.repository)],
+  closingIssuesReferences: options.owner && options.owner !== "ptstory" ? [closingReference(issueNumber, options.owner, options.repository)] : [closingReference(issueNumber)],
 });
 
 test("PR #32 regression reports an open implementation PR with no governing issue", () => {
