@@ -102,7 +102,7 @@ const fixture = ${JSON.stringify({
     labels: fixture.labels ?? (fixture.pullJson && typeof fixture.pullJson === "object" ? (fixture.pullJson as { labels?: { name: string }[] }).labels : undefined) ?? ((fixture.eventPayload as { pull_request?: { labels?: { name: string }[] } } | undefined)?.pull_request?.labels) ?? [],
     labelCreateFailure: fixture.labelCreateFailure ?? null,
     commentsJson: fixture.commentsJson,
-    checkRunsJson: fixture.checkRunsJson.map((checkRun) => ({ head_sha: fixtureHeadSha, ...checkRun })),
+    checkRunsJson: fixture.checkRunsJson.map((checkRun) => ({ head_sha: fixtureHeadSha, ...(checkRun as Record<string, unknown>) })),
     statusesJson: fixture.statusesJson,
     failure: fixture.failure ?? null,
   })};
