@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { latestConformingGateComment, reviewerLogins, type GateComment } from "../lib/verdict";
+import { latestConformingGateComment, parseGateComment, reviewerLogins, type GateComment } from "../lib/verdict";
 
 const REPOS = ["ptstory/tracer-workflow"] as const;
 
@@ -98,6 +98,50 @@ function classifyGateState(repo: string, pr: OpenPR): GateState {
   };
 }
 
+type ResolvedGateState = {
+  state: GateState;
+  verdict: GateComment | null;
+  verdictStatus: "none" | "invalid" | "parsed";
+};
+
+function readPullRequestGateState(repo: string, number: number): ResolvedGateState {
+  reviewerLogins();
+  const output = gh([
+    "pr", "view", String(number), "--repo", repo, "--json",
+    "number,title,headRefOid,comments,isDraft",
+  ]);
+  const payload = JSON.parse(output) as Partial<OpenPR>;
+  if (payload.number !== number || typeof payload.title !== "string" ||
+      typeof payload.headRefOid !== "string" || !/^[0-9a-f]{40}$/i.test(payload.headRefOid) ||
+      typeof payload.isDraft !== "boolean" || !Array.isArray(payload.comments)) {
+    throw new Error("GitHub returned incomplete pull request data");
+  }
+  const comments = payload.comments.map((comment) => {
+    if (!comment || typeof comment !== "object" || typeof comment.body !== "string" ||
+        typeof comment.createdAt !== "string") {
+      throw new Error("GitHub returned an incomplete pull request comment");
+    }
+    return {
+      ...comment,
+      author: comment.author && typeof comment.author.login === "string" ? comment.author : null,
+    };
+  });
+  const pullRequest: OpenPR = { ...payload, comments } as OpenPR;
+  const state = classifyGateState(repo, pullRequest);
+  const trustedReviewers = reviewerLogins();
+  const latestMarked = comments
+    .filter((comment) => comment.body.startsWith("## review-gate:") &&
+      !!comment.author?.login && trustedReviewers.has(comment.author.login.toLowerCase()))
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .at(-1);
+  const parsed = parseGateComment(latestMarked ? [latestMarked] : [], { pullRequestNumber: number });
+  return {
+    state,
+    verdict: parsed.kind === "parsed" ? parsed.verdict : null,
+    verdictStatus: parsed.kind,
+  };
+}
+
 function collectGateStates(repos: readonly string[] = configuredRepos()): GateState[] {
   reviewerLogins();
   const rows: GateState[] = [];
@@ -153,5 +197,5 @@ function main(): void {
 
 if (import.meta.main) main();
 
-export type { GateState, OpenPR };
-export { REPOS, classifyGateState, collectGateStates, configuredRepos, countOpen, formatTable, listOpenPRs, main, parseArgs };
+export type { GateState, OpenPR, ResolvedGateState };
+export { REPOS, classifyGateState, collectGateStates, configuredRepos, countOpen, formatTable, listOpenPRs, main, parseArgs, readPullRequestGateState };
