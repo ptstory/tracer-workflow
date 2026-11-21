@@ -166,6 +166,23 @@ describe("tracer resume", () => {
     }
   });
 
+  test("fails closed before GitHub access when reviewer configuration is missing", () => {
+    writeGhStub(harness, prPayload());
+    const result = spawnSync("bun", ["tooling/tracer.ts", "resume", "17"], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        TRACER_REVIEWER_LOGINS: "",
+        PATH: `${harness.binDir}:${process.env.PATH ?? ""}`,
+      },
+      encoding: "utf8",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("TRACER_REVIEWER_LOGINS must contain at least one reviewer login");
+    expect(readFileSync(harness.ghLog, "utf8")).toBe("");
+  });
+
   test("fails clearly when GitHub access is unavailable", () => {
     writeGhStub(harness, null, "permission denied");
 
