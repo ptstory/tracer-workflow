@@ -29,7 +29,7 @@ type Harness = {
 
 type StubState = {
   listByRepo: Record<string, ListPR[]>;
-  prViews: Record<string, { body?: string; comments?: Comment[]; error?: string }>;
+  prViews: Record<string, { body?: string; comments?: Comment[]; error?: string; closingIssuesReferences?: unknown }>;
   issueViews: Record<string, { text?: string; error?: string }>;
   diffs: Record<string, { text?: string; error?: string }>;
 };
@@ -96,7 +96,7 @@ if (args[0] === "pr" && args[1] === "view") {
   const linkedIssue = body.match(/(?:Closes|Fixes|Resolves)\\s+(?:([A-Za-z0-9._-]+\\/[A-Za-z0-9._-]+)\\s+)?#(\\d+)/i);
   const linkedRepository = linkedIssue?.[1] ?? getArg("--repo");
   const [owner, name] = linkedRepository.split("/");
-  const closingIssuesReferences = linkedIssue ? [{ number: Number(linkedIssue[2]), repository: { owner: { login: owner }, name } }] : [];
+  const closingIssuesReferences = entry.closingIssuesReferences ?? (linkedIssue ? [{ number: Number(linkedIssue[2]), repository: { owner: { login: owner }, name } }] : []);
   process.stdout.write(JSON.stringify({ body, comments: entry.comments ?? [], closingIssuesReferences }));
   process.exit(0);
 }
@@ -237,6 +237,7 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     state.prViews[`${repo}#1`] = {
       body: "Closes #11",
       comments: [],
+      closingIssuesReferences: [{ number: 14, repository: { owner: { login: "ptstory" }, name: "tracer-workflow" } }],
     };
     state.prViews[`${repo}#2`] = {
       body: "Fixes https://github.com/ptstory/tracer-workflow/issues/12",
@@ -249,6 +250,7 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     state.issueViews[`${repo}#11`] = { text: "issue #11 — alpha\nbody:\nissue body 11" };
     state.issueViews[`${repo}#12`] = { text: "issue #12 — beta\nbody:\nissue body 12" };
     state.issueViews[`${repo}#13`] = { text: "issue #13 — gamma\nbody:\nissue body 13" };
+    state.issueViews[`${repo}#14`] = { text: "issue #14 — authoritative reference\nbody:\nissue body 14" };
     state.diffs[`${repo}#1`] = { text: "diff --git a/a.txt b/a.txt\n+one\n" };
     state.diffs[`${repo}#2`] = { text: "diff --git a/b.txt b/b.txt\n+two\n" };
     state.diffs[`${repo}#3`] = { text: "diff --git a/c.txt b/c.txt\n+three\n" };
@@ -261,6 +263,8 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     expect(result.stdout).toBe("");
     const copied = readFileSync(harness.pbcopyLog, "utf8");
     expect(copied).toContain("=== ptstory/tracer-workflow#1 — ungated");
+    expect(copied).toContain("issue #14 — authoritative reference");
+    expect(copied).not.toContain("issue #11 — alpha");
     expect(copied).toContain("=== ptstory/tracer-workflow#2 — stale");
     expect(copied).not.toContain("current");
     expect(copied).not.toContain("draft");
