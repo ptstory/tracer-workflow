@@ -10,7 +10,6 @@ test("classifies one body reference corroborated by GitHub", () => {
 
 test("requires a recognized body reference even when GitHub reports a manually linked issue", () => {
   expect(classifyGoverningIssueReferences([reference(65)], repository, "Related to #65")).toEqual({ kind: "missing" });
-  expect(classifyGoverningIssueReferences([], repository, "Closes #65").kind).toBe("malformed");
 });
 
 test("requires body and GitHub reference identities to agree", () => {
@@ -24,6 +23,7 @@ test("rejects unsupported, multiple, and malformed body references", () => {
   expect(classifyGoverningIssueReferences([], repository, "")).toEqual({ kind: "missing" });
   expect(classifyGoverningIssueReferences([reference(65, "other", "repo")], repository, "Closes other/repo#65")).toEqual({ kind: "unsupported", repositories: ["other/repo"] });
   expect(classifyGoverningIssueReferences([reference(65, "other", "repo")], repository, "Closes #65")).toEqual({ kind: "unsupported", repositories: ["other/repo"] });
+  expect(classifyGoverningIssueReferences([], repository, "Closes #65").kind).toBe("malformed");
   expect(classifyGoverningIssueReferences([reference(65), reference(66)], repository, "Closes #65\nFixes #66")).toEqual({ kind: "ambiguous", issueNumbers: [65, 66] });
   expect(classifyGoverningIssueReferences([{ number: "65" }], repository, "Closes #65")).toEqual({ kind: "malformed", detail: "closing issue reference 0 has incomplete identity" });
   expect(classifyGoverningIssueReferences([reference(Number.MAX_SAFE_INTEGER + 1)], repository, "Closes #65").kind).toBe("malformed");
