@@ -67,6 +67,9 @@ function classifyGoverningIssueReferences(value: unknown, repository: string, bo
     .filter(({ repository: referenceRepository }) => `${referenceRepository.owner.login}/${referenceRepository.name}`.toLowerCase() === expectedRepository)
     .map(({ number }) => number))].sort((left, right) => left - right);
   if (inRepositoryNumbers.length > 1) return { kind: "ambiguous", issueNumbers: inRepositoryNumbers };
+  if (references.length === 0) {
+    return { kind: "malformed", detail: `pull request body closes #${bodyReference.issueNumber}, but GitHub reports no matching in-repository closing issue reference` };
+  }
   if (inRepositoryNumbers.length === 0) {
     const unsupportedRepositories = [...new Set(references.map(({ repository: referenceRepository }) => `${referenceRepository.owner.login}/${referenceRepository.name}`))].sort((left, right) => left.localeCompare(right));
     return { kind: "unsupported", repositories: unsupportedRepositories };

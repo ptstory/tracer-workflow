@@ -10,6 +10,7 @@ test("classifies one body reference corroborated by GitHub", () => {
 
 test("requires a recognized body reference even when GitHub reports a manually linked issue", () => {
   expect(classifyGoverningIssueReferences([reference(65)], repository, "Related to #65")).toEqual({ kind: "missing" });
+  expect(classifyGoverningIssueReferences([], repository, "Closes #65").kind).toBe("malformed");
 });
 
 test("requires body and GitHub reference identities to agree", () => {
