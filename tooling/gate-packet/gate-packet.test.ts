@@ -93,7 +93,7 @@ if (args[0] === "pr" && args[1] === "view") {
     process.exit(1);
   }
   const body = entry.body ?? "";
-  const linkedIssues = [...body.matchAll(/\\b(?:Closes|Fixes|Resolves)\\s+(?:([A-Za-z0-9._-]+\\/[A-Za-z0-9._-]+))?#(\\d+)\\b/gi)];
+  const linkedIssues = [...body.matchAll(/^\\s*(?:Closes|Fixes|Resolves):?\\s+(?:([A-Za-z0-9._-]+\\/[A-Za-z0-9._-]+))?#(\\d+)\\s*$/gim)];
   const closingIssuesReferences = entry.closingIssuesReferences ?? linkedIssues.map((linkedIssue) => {
     const linkedRepository = linkedIssue[1] ?? getArg("--repo");
     const [owner, name] = linkedRepository.split("/");
@@ -269,7 +269,11 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     expect(copied).toContain("--- diff ---");
   });
 
-  test("does not treat a manually linked issue without a body closing reference as governing", () => {
+  test.each([
+    ["related mention", "Related to #65"],
+    ["tilde-fenced example", "Example:\n~~~text\nCloses #65\n~~~"],
+    ["backtick-fenced example", "Example:\n```text\nCloses #65\n```"],
+  ] as const)("does not treat a manually linked issue with %s as governing", (_label, body) => {
     const state = emptyStubState();
     const repo = REPOS[0];
     state.listByRepo[repo] = [{
@@ -280,7 +284,7 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
       isDraft: false,
     }];
     state.prViews[`${repo}#6`] = {
-      body: "Related to #65",
+      body,
       comments: [],
       closingIssuesReferences: [{ number: 65, repository: { owner: { login: "ptstory" }, name: "tracer-workflow" } }],
     };
@@ -292,6 +296,32 @@ describe("tooling/gate-packet/gate-packet.ts", () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toContain("has missing governing issue references");
     expect(result.stdout).toContain("--- issue ---\nnone");
+  });
+
+  test("uses GitHub's colon form when a PR body closes an issue", () => {
+    const state = emptyStubState();
+    const repo = REPOS[0];
+    state.listByRepo[repo] = [{
+      number: 7,
+      title: "colon close",
+      headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      comments: [],
+      isDraft: false,
+    }];
+    state.prViews[`${repo}#7`] = {
+      body: "Closes: #65",
+      comments: [],
+      closingIssuesReferences: [{ number: 65, repository: { owner: { login: "ptstory" }, name: "tracer-workflow" } }],
+    };
+    state.issueViews[`${repo}#65`] = { text: "issue #65 — colon close" };
+    state.diffs[`${repo}#7`] = { text: "diff --git a/x.txt b/x.txt\\n+payload\\n" };
+    writeGhStub(harness, state);
+
+    const result = runGatePacket(harness, ["--stdout"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("issue #65 — colon close");
+    expect(result.stderr).toBe("");
   });
 
   test("writes the formatted packet blocks to stdout when --stdout is set", () => {

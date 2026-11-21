@@ -10,6 +10,19 @@ test("classifies one body reference corroborated by GitHub", () => {
 
 test("requires a recognized body reference even when GitHub reports a manually linked issue", () => {
   expect(classifyGoverningIssueReferences([reference(65)], repository, "Related to #65")).toEqual({ kind: "missing" });
+  expect(classifyGoverningIssueReferences([reference(65)], repository, "Example:\n~~~text\nCloses #65\n~~~")).toEqual({ kind: "missing" });
+  expect(classifyGoverningIssueReferences([reference(65)], repository, "Example:\n```text\nCloses #65\n```")).toEqual({ kind: "missing" });
+});
+
+test("accepts GitHub's colon form for a closing keyword", () => {
+  expect(classifyGoverningIssueReferences([reference(65)], repository, "Closes: #65")).toEqual({ kind: "valid", issueNumber: 65 });
+});
+
+test("rejects fenced blocks that are not properly closed", () => {
+  expect(classifyGoverningIssueReferences([reference(65)], repository, "~~~text\nCloses #65")).toEqual({
+    kind: "malformed",
+    detail: "pull request body contains an unclosed fenced code block",
+  });
 });
 
 test("requires body and GitHub reference identities to agree", () => {

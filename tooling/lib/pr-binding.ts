@@ -19,9 +19,19 @@ type BodyClosingReference = { issueNumber: number; repository: string };
 
 function parseBodyClosingReferences(body: string, repository: string): ParsedBodyReferences {
   const references: BodyClosingReference[] = [];
-  const pattern = /^\s*(?:Fixes|Closes|Resolves)\s+(?:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+))?#(\d+)\s*$/im;
+  const pattern = /^\s*(?:Fixes|Closes|Resolves):?\s+(?:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+))?#(\d+)\s*$/i;
+  let fence: { character: string; length: number } | null = null;
   for (const line of body.split(/\r?\n/)) {
     const trimmedLine = line.trim();
+    const fenceMarker = trimmedLine.match(/^(`{3,}|~{3,})/);
+    if (fence) {
+      if (fenceMarker && fenceMarker[1][0] === fence.character && fenceMarker[1].length >= fence.length && /^(`+|~+)\s*$/.test(trimmedLine)) fence = null;
+      continue;
+    }
+    if (fenceMarker) {
+      fence = { character: fenceMarker[1][0], length: fenceMarker[1].length };
+      continue;
+    }
     const match = trimmedLine.match(pattern);
     if (match) {
       const ownerRepository = match[1] ?? repository;
@@ -34,6 +44,7 @@ function parseBodyClosingReferences(body: string, repository: string): ParsedBod
     }
     if (/^(?:Fixes|Closes|Resolves)\b/i.test(trimmedLine)) return { kind: "malformed", detail: `unrecognized closing reference line: ${trimmedLine}` };
   }
+  if (fence) return { kind: "malformed", detail: "pull request body contains an unclosed fenced code block" };
   return { kind: "valid", references };
 }
 

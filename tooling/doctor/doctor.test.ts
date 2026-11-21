@@ -1131,14 +1131,26 @@ test("PR #32 regression reports an open implementation PR with no governing issu
   expect(report.summary.errors).toBeGreaterThan(0);
 });
 
-test("rejects a manually linked issue without a recognized body closing reference", () => {
+test.each([
+  ["related mention", "Related to #95"],
+  ["tilde-fenced example", "Example:\n~~~text\nCloses #95\n~~~"],
+  ["backtick-fenced example", "Example:\n```text\nCloses #95\n```"],
+] as const)("rejects a manually linked issue with a %s instead of body closing syntax", (_label, body) => {
   const { report } = buildReportForOpenPullRequests({
-    openPullRequests: [{ ...implementationPr(94, 95, { body: "Related to #95" }) }],
+    openPullRequests: [implementationPr(94, 95, { body })],
   });
   const finding = report.findings.find((item: any) => item.component === `repo-pr-binding:${report.repoRoot}#94`);
 
   expect(finding?.severity).toBe("error");
   expect(finding?.observed).toContain("PR #94 has no recognized in-repository closing issue");
+});
+
+test("accepts a GitHub colon-form body reference in doctor", () => {
+  const { report } = buildReportForOpenPullRequests({
+    openPullRequests: [implementationPr(96, 97, { body: "Closes: #97" })],
+  });
+
+  expect(report.findings.filter((item: any) => item.component.startsWith("repo-pr-binding:") || item.component.startsWith("repo-issue-binding:"))).toEqual([]);
 });
 
 test("#71/#72/#73 regression reports every competing implementation PR", () => {
