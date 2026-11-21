@@ -2,7 +2,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "tracer": "bun tooling/tracer.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

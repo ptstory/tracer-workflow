@@ -204,7 +204,7 @@ describe("tooling/gate-state/gate-state.ts", () => {
             createdAt: "2026-01-01T00:00:00Z",
           },
           {
-            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreview-round: 0\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/project/pull/99\n",
+            body: "## review-gate: needs-fix\nhead-sha: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nreview-round: invalid\nreviewed-files: 1\nblocking-set: src/api.ts\nnext-action: from-pr-review https://github.com/acme/project/pull/99\n",
             author: { login: "reviewer" },
             createdAt: "2026-01-02T00:00:00Z",
           },

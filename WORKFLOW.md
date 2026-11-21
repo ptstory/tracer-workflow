@@ -143,9 +143,12 @@ Resume entry points:
 | selected issue/PR needs durable triage comment | `agent-brief <issue-or-pr-url>` |
 | issue is `ready-for-human` | human reviews the brief and makes the judgment/merge/scope decision |
 | issue exists, no PR | `from-issue <issue-url>` |
-| PR exists, no verdict | `review-gate` against the PR |
+| PR exists, no current valid verdict | `review-gate` against the PR |
 | PR exists, `needs-fix` verdict on current head | `from-pr-review` |
+| PR exists, `needs-human`, `blocked`, or `merge-candidate` verdict on current head | Explicit human stop or terminal merge-candidate state |
 | merged | `next` (safety stub until #30; not a working selector) |
+
+For these PR-only states, `bun run tracer resume <PR URL or number>` resolves the current head and trusted verdict through `tooling/gate-state/`. It prints exactly one invocation for `review-gate` or `from-pr-review`; terminal/human states have no invocation. Stale or malformed verdicts route to `review-gate`. The command is read-only and does not handle issue, repository, or local-worktree routing.
 
 Two limits:
 
