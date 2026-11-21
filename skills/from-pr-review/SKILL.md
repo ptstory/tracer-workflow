@@ -59,7 +59,13 @@ against actual check-run state, and hand back.
 
 2. **Checkout the branch.** Use the project's worktree convention (see the repo's
    `AGENTS.md`; default to a worktree, not a raw checkout, if the repo says so).
-   Confirm the working tree is clean before touching anything.
+   If the repository defines no worktree convention and the PR branch is not
+   checked out, run `gh pr checkout <N> --repo <OWNER/REPO>`. Confirm the working
+   tree is clean before touching anything, then verify `git rev-parse HEAD`
+   exactly matches the PR's current head SHA captured in step 1. In step 3, also
+   verify that this SHA matches the trusted verdict's `head-sha` before editing.
+   A mismatch means stop without modifying files and report the observed and
+   expected SHAs.
 
 3. **Build the review-thread ledger.** Pull every unresolved review thread and
    review comment via `gh pr view <N> --json reviews,comments` plus the
@@ -73,7 +79,12 @@ against actual check-run state, and hand back.
    `gh api repos/ptstory/tracer-workflow/contents/skills/review-gate/references/verdict-contract.md -H "Accept: application/vnd.github.raw"`.
    If neither works, stop; never proceed without the contract. On `needs-human`, stop
    and hand back; do not run a fix pass at any SHA. On round `N > 0`, apply the
-   contract's stale-finding rule and its correctness/security exception.
+   contract's stale-finding rule and its correctness/security exception. Apply
+   that rule to PR-metadata findings using the PR body's change history, not an
+   unchanged repository file named as an anchor. Do not refuse a current `needs-fix`
+   pass because the next corrective review is expected to trip the circuit breaker;
+   execute its authorized `fix-now` rows and state that the subsequent review is
+   expected to return `needs-human`.
    Non-actionable chatter is marked and skipped, not dropped.
 
 4. **Delegate judgment and record the disposition ledger.** For each ledger row,
@@ -114,14 +125,24 @@ against actual check-run state, and hand back.
    SHA, and update the PR body before checking readiness.
 
 9. **Verify against real check-runs (the gate).** For the new head SHA, poll
-   actual check-run state — `gh pr checks <N>` or the GitHub checks API — until
-   checks settle (not pending). Record per-check conclusion. Readiness follows
-   `WORKFLOW.md` and the canonical docs-only exception in
-   `skills/review-gate/references/verdict-contract.md`. For a docs-only PR, every
-   changed path must be allowlisted, applicable configured required checks (if
-   any) and `pr-body` must pass at the current head, and Review Gate review must
-   be clean at that head. Any mixed PR retains changed-path coverage. Older-head
-   results never count. A green local run in step 7 does not satisfy this; a
+   actual check-run state — `gh pr checks <N>` or the GitHub checks API — every
+   30 seconds, for no more than 20 completed polls. Once per poll, read the PR
+   head again; if it changes, restart verification for the new SHA and never count
+   older-head results. Record each check's conclusion. If checks remain pending
+   at the poll limit, report `blocked-on: checks pending`. If a check fails,
+   determine whether the failure is caused by this pass: repair an in-scope
+   failure in this same run, commit and push the correction, refresh the PR body
+   and evidence, then restart this step; report an external or otherwise
+   unremediable failure as the specific blocker. Readiness follows `WORKFLOW.md`
+   and the canonical contract in
+   `skills/review-gate/references/verdict-contract.md`; do not independently
+   reinterpret readiness evidence. In particular, record the contract's
+   `plan-unavailable` path as such when its exact evidence conditions hold; it
+   is not by itself a blocker. `indeterminate` readiness remains blocked. For a
+   docs-only PR, every changed path must be allowlisted, applicable configured
+   required checks (if any) and `pr-body` must pass at the current head, and
+   Review Gate review must be clean at that head. Any mixed PR retains ordinary
+   changed-path coverage. A green local run in step 7 does not satisfy this; a
    reported "tests pass" never does.
 
 10. **Reply to review threads.** For each ledger row, post a threaded reply that
@@ -136,7 +157,17 @@ against actual check-run state, and hand back.
     checks or open deferrals. Never "looks good" prose in place of the gate
     result. Every report, including blocked and unresolved-PR reports, ends
     with `Next action:` followed by one copy-pasteable command or invocation,
-    or `nothing — done` when no action remains. For a pushed fix, resolve the
+    or `nothing — done` when no action remains. Never name `from-pr-review`
+    itself as the next action for the same PR. After any push, the next action is
+    a fresh-session Review Gate handoff through the helper below. If the head is
+    unchanged and no `fix-now` rows remain, use `@review-gate <PR_URL>` as the
+    next action after recording dispositions and their replies; do not echo the
+    verdict's `from-pr-review` action. If no finding, disposition, thread, or PR
+    body changed during this pass, do not trigger a duplicate review at the
+    unchanged head; report the concrete outstanding action or `nothing — done`.
+    For an actual PR-body-only correction, use the narrow exception below, not a
+    code-fix pass.
+    For a pushed fix, resolve the
     helper from this installed Tracer skill location, not the target repository:
 
     ```sh
