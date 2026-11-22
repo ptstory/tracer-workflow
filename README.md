@@ -27,6 +27,7 @@ This is a personal workflow, deliberately heavier than a small change warrants, 
 | [`skills/review-gate/`](./skills/review-gate/) | Canonical review-gate contract | Active; applied by the `@review-gate` plugin |
 | [`actions/review-gate-gpt/`](./actions/review-gate-gpt/) | Custom GPT package | Available, but inactive as the review entry point |
 | [`tooling/review-gate-poller/`](./tooling/review-gate-poller/) | Legacy review-gate poller | Parked, not in use |
+| [`tooling/launch-lanes/`](./tooling/launch-lanes/) | Explicit-issue Crush lane launcher | Operator-run; dry-run supported |
 | [`skills/next/`](./skills/next/) | Future next-work selector | Stub until #30 |
 | [`docs/architecture/WORKFLOW-STAGE-INVENTORY.md`](./docs/architecture/WORKFLOW-STAGE-INVENTORY.md) | Canonical stage sources, consumers, deployments, and observed drift | Read-only inventory; #81 owns mechanical checks |
 
