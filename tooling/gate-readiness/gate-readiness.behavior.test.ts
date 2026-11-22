@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflowPath = join(repoRoot, ".github/workflows/gate-readiness.yml");
 const workflow = readFileSync(workflowPath, "utf8");
+const reviewGatePromptPath = join(repoRoot, "skills/review-gate/PROMPT.md");
+const reviewGatePrompt = readFileSync(reviewGatePromptPath, "utf8");
 
 type Harness = {
   root: string;
@@ -776,5 +778,39 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(commentLog).toContain("- readiness: false");
+  });
+
+  test("Review Gate evidence instructions discover failed push-only runs on the reviewed SHA", () => {
+    const reviewedHeadSha = "68109ff6d980ff035beee9b40a4e9058ec01d41d";
+    const response = {
+      check_runs: [
+        {
+          id: 16,
+          name: "inkode.yml",
+          head_sha: reviewedHeadSha,
+          event: "push",
+          status: "completed",
+          conclusion: "failure",
+        },
+      ],
+    };
+    const currentHeadRuns = response.check_runs.filter((run) => run.head_sha === reviewedHeadSha);
+    const evidenceState = currentHeadRuns.length === 0
+      ? "absent"
+      : currentHeadRuns.some((run) => run.status !== "completed")
+        ? "pending"
+        : currentHeadRuns.some((run) => run.conclusion !== "success")
+          ? "failed/cancelled"
+          : "passed";
+
+    const normalizedPrompt = reviewGatePrompt.replace(/\s+/g, " ");
+    expect(normalizedPrompt).toContain("GET /repos/<owner>/<repo>/commits/<head_sha>/check-runs");
+    expect(normalizedPrompt).toContain("GET /repos/<owner>/<repo>/commits/<head_sha>/statuses");
+    expect(normalizedPrompt).toContain("Do not rely solely on workflow-run lookups restricted to `pull_request` events");
+    expect(normalizedPrompt).toContain("Record whether current-head evidence is absent, pending, failed/cancelled,");
+    expect(currentHeadRuns).toHaveLength(1);
+    expect(currentHeadRuns[0].event).toBe("push");
+    expect(evidenceState).toBe("failed/cancelled");
+    expect(evidenceState).not.toBe("absent");
   });
 });
