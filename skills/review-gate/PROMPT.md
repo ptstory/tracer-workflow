@@ -28,13 +28,17 @@ Do this:
 2. Get the actual changed-file list from the PR (the GitHub connector's file list,
    NOT the PR body's prose list — the body is often stale after rebase).
 3. Acquire check evidence for that exact head independently of the PR event type.
-   Use the GitHub connector to paginate `GET /repos/<owner>/<repo>/commits/<head_sha>/check-runs`
-   and `GET /repos/<owner>/<repo>/commits/<head_sha>/statuses`. These exact-SHA
-   endpoints include push-triggered as well as pull-request-triggered checks. Do not
-   rely solely on workflow-run lookups restricted to `pull_request` events, and do
-   not treat the Gate Readiness reporter's comment as a substitute for this review's
-   evidence. Record whether current-head evidence is absent, pending, failed/cancelled,
-   or passed; do not count results from another SHA.
+   When the repository checkout is available, run
+   `bun tooling/review-gate-evidence.ts <owner> <repo> <head_sha>` and inspect its
+   JSON output. Otherwise use the GitHub connector to paginate
+   `GET /repos/<owner>/<repo>/commits/<head_sha>/check-runs` and
+   `GET /repos/<owner>/<repo>/commits/<head_sha>/statuses`, preserving the same
+   exact-SHA filtering and evidence classification. These exact-SHA endpoints include
+   push-triggered as well as pull-request-triggered checks. Do not rely solely on
+   workflow-run lookups restricted to `pull_request` events, and do not treat the
+   Gate Readiness reporter's comment as a substitute for this review's evidence.
+   Record whether current-head evidence is absent, pending, failed/cancelled, or
+   passed; do not count results from another SHA.
 4. If this is round `0`, run a full review with two independent axes —
    Standards and Spec — preserving each axis's own order, without reranking or
    merging findings across axes. Within those axes, cover severity-tagged
