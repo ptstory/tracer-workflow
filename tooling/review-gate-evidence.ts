@@ -1,8 +1,15 @@
 import { spawnSync } from "node:child_process";
 
 type CheckRun = {
+  id?: number;
   head_sha?: string;
   name?: string;
+  app?: { slug?: string };
+  run_number?: number;
+  run_attempt?: number;
+  run_started_at?: string;
+  started_at?: string;
+  created_at?: string;
   status?: string;
   conclusion?: string | null;
   event?: string;
@@ -12,6 +19,7 @@ type CommitStatus = {
   state?: string;
   context?: string;
   sha?: string;
+  created_at?: string;
 };
 
 type EvidenceState = "absent" | "pending" | "failed/cancelled" | "passed";
@@ -51,6 +59,35 @@ function collectStatuses(pages: unknown[]): CommitStatus[] {
   });
 }
 
+function selectLatestCheckRuns(checkRuns: CheckRun[]): CheckRun[] {
+  const latestByCheck = new Map<string, CheckRun>();
+  const sortedCheckRuns = [...checkRuns].sort((left, right) => {
+    const leftRunStarted = left.run_started_at ?? left.started_at ?? left.created_at ?? "";
+    const rightRunStarted = right.run_started_at ?? right.started_at ?? right.created_at ?? "";
+    return (left.app?.slug ?? "").localeCompare(right.app?.slug ?? "")
+      || (left.name ?? "").localeCompare(right.name ?? "")
+      || (left.run_number ?? 0) - (right.run_number ?? 0)
+      || (left.run_attempt ?? 0) - (right.run_attempt ?? 0)
+      || leftRunStarted.localeCompare(rightRunStarted)
+      || (left.id ?? 0) - (right.id ?? 0);
+  });
+  for (const checkRun of sortedCheckRuns) {
+    latestByCheck.set(`${checkRun.app?.slug ?? ""}\u0000${checkRun.name ?? ""}`, checkRun);
+  }
+  return Array.from(latestByCheck.values());
+}
+
+function selectLatestStatuses(statuses: CommitStatus[]): CommitStatus[] {
+  const latestByContext = new Map<string, CommitStatus>();
+  const sortedStatuses = [...statuses].sort((left, right) =>
+    (left.context ?? "").localeCompare(right.context ?? "")
+    || (left.created_at ?? "").localeCompare(right.created_at ?? ""));
+  for (const status of sortedStatuses) {
+    latestByContext.set(status.context ?? "", status);
+  }
+  return Array.from(latestByContext.values());
+}
+
 function classifyEvidence(checkRuns: CheckRun[], statuses: CommitStatus[]): EvidenceState {
   if (checkRuns.length === 0 && statuses.length === 0) return "absent";
   if (checkRuns.some((checkRun) => checkRun.status !== "completed") || statuses.some((status) => status.state === "pending")) {
@@ -71,8 +108,8 @@ export async function acquireReviewGateEvidence(
   const checkRunsPath = `/repos/${owner}/${repo}/commits/${headSha}/check-runs?per_page=100`;
   const statusesPath = `/repos/${owner}/${repo}/commits/${headSha}/statuses?per_page=100`;
   const [checkRunPages, statusPages] = await Promise.all([getPages(checkRunsPath), getPages(statusesPath)]);
-  const checkRuns = collectCheckRuns(checkRunPages).filter((checkRun) => checkRun.head_sha === headSha);
-  const statuses = collectStatuses(statusPages).filter((status) => status.sha === undefined || status.sha === headSha);
+  const checkRuns = selectLatestCheckRuns(collectCheckRuns(checkRunPages).filter((checkRun) => checkRun.head_sha === headSha));
+  const statuses = selectLatestStatuses(collectStatuses(statusPages).filter((status) => status.sha === undefined || status.sha === headSha));
   return {
     head_sha: headSha,
     state: classifyEvidence(checkRuns, statuses),
