@@ -3,6 +3,8 @@ import { acquireReviewGateEvidence } from "./review-gate-evidence";
 
 const reviewedHeadSha = "68109ff6d980ff035beee9b40a4e9058ec01d41d";
 const otherHeadSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const repoOwner = "ptstory";
+const corbyRepository = "corby-server-scraper";
 
 function makePageSource(checkRuns: unknown[], statuses: unknown[] = []) {
   const requests: string[] = [];
@@ -28,11 +30,11 @@ describe("Review Gate exact-head evidence acquisition", () => {
       },
     ]);
 
-    const evidence = await acquireReviewGateEvidence("ptstory", "corby-server-scraper", reviewedHeadSha, getPages);
+    const evidence = await acquireReviewGateEvidence(repoOwner, corbyRepository, reviewedHeadSha, getPages);
 
     expect(requests).toEqual([
-      `/repos/ptstory/corby-server-scraper/commits/${reviewedHeadSha}/check-runs?per_page=100`,
-      `/repos/ptstory/corby-server-scraper/commits/${reviewedHeadSha}/statuses?per_page=100`,
+      `/repos/${repoOwner}/${corbyRepository}/commits/${reviewedHeadSha}/check-runs?per_page=100`,
+      `/repos/${repoOwner}/${corbyRepository}/commits/${reviewedHeadSha}/statuses?per_page=100`,
     ]);
     expect(evidence.head_sha).toBe(reviewedHeadSha);
     expect(evidence.check_runs.map((checkRun) => checkRun.event)).toEqual(["push"]);
@@ -45,7 +47,7 @@ describe("Review Gate exact-head evidence acquisition", () => {
       { head_sha: otherHeadSha, event: "push", status: "completed", conclusion: "failure" },
     ]);
 
-    const evidence = await acquireReviewGateEvidence("ptstory", "tracer-workflow", reviewedHeadSha, getPages);
+    const evidence = await acquireReviewGateEvidence(repoOwner, "tracer-workflow", reviewedHeadSha, getPages);
 
     expect(evidence.check_runs).toEqual([]);
     expect(evidence.state).toBe("absent");
@@ -56,7 +58,7 @@ describe("Review Gate exact-head evidence acquisition", () => {
       { head_sha: reviewedHeadSha, event: "pull_request", status: "completed", conclusion: "success" },
     ]);
 
-    const evidence = await acquireReviewGateEvidence("ptstory", "tracer-workflow", reviewedHeadSha, getPages);
+    const evidence = await acquireReviewGateEvidence(repoOwner, "tracer-workflow", reviewedHeadSha, getPages);
 
     expect(evidence.check_runs).toHaveLength(1);
     expect(evidence.state).toBe("passed");
@@ -68,7 +70,7 @@ describe("Review Gate exact-head evidence acquisition", () => {
   ] as const)("classifies exact-head %s check evidence", async (_label, checkRun, expected) => {
     const { getPages } = makePageSource([checkRun]);
 
-    const evidence = await acquireReviewGateEvidence("ptstory", "tracer-workflow", reviewedHeadSha, getPages);
+    const evidence = await acquireReviewGateEvidence(repoOwner, "tracer-workflow", reviewedHeadSha, getPages);
 
     expect(evidence.state).toBe(expected);
   });

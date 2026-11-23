@@ -6,6 +6,9 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { acquireReviewGateEvidence } from "../review-gate-evidence";
 
+const repoOwner = "ptstory";
+const corbyRepository = "corby-server-scraper";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflowPath = join(repoRoot, ".github/workflows/gate-readiness.yml");
 const workflow = readFileSync(workflowPath, "utf8");
@@ -783,7 +786,7 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
   test("Review Gate evidence instructions discover failed push-only runs on the reviewed SHA", async () => {
     const reviewedHeadSha = "68109ff6d980ff035beee9b40a4e9058ec01d41d";
     const requests: string[] = [];
-    const evidence = await acquireReviewGateEvidence("ptstory", "corby-server-scraper", reviewedHeadSha, async (endpoint) => {
+    const evidence = await acquireReviewGateEvidence(repoOwner, corbyRepository, reviewedHeadSha, async (endpoint) => {
       requests.push(endpoint);
       return endpoint.includes("/check-runs?")
         ? [{
@@ -806,8 +809,8 @@ describe(".github/workflows/gate-readiness.yml behavior", () => {
     expect(normalizedPrompt).toContain("Do not rely solely on workflow-run lookups restricted to `pull_request` events");
     expect(normalizedPrompt).toContain("Record whether current-head evidence is absent, pending, failed/cancelled,");
     expect(requests).toEqual([
-      `/repos/ptstory/corby-server-scraper/commits/${reviewedHeadSha}/check-runs?per_page=100`,
-      `/repos/ptstory/corby-server-scraper/commits/${reviewedHeadSha}/statuses?per_page=100`,
+      `/repos/${repoOwner}/${corbyRepository}/commits/${reviewedHeadSha}/check-runs?per_page=100`,
+      `/repos/${repoOwner}/${corbyRepository}/commits/${reviewedHeadSha}/statuses?per_page=100`,
     ]);
     expect(evidence.check_runs).toHaveLength(1);
     expect(evidence.check_runs[0].event).toBe("push");
