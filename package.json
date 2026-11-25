@@ -3,7 +3,10 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "tracer": "bun tooling/tracer.ts"
+    "tracer": "bun tooling/tracer.ts",
+    "model:sync": "bun tooling/model-telemetry/model-telemetry.ts sync",
+    "model:report": "bun tooling/model-telemetry/model-telemetry.ts report",
+    "test:model-telemetry": "bun test tooling/model-telemetry/model-telemetry.test.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
