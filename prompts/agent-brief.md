@@ -12,6 +12,11 @@ re-verify them unless repository evidence contradicts them.
 
 ---
 
+For substantive planning of a new topic or a material scope/priority/sequence
+write, first use the read-only scoped [`continuity-preflight`](./continuity-preflight.md)
+and follow its disposition and placement. Do not repeat it for execution of an
+existing issue with a complete contract or routine CI/review/status handling.
+
 Prepare a durable agent brief for `<ISSUE_OR_PR_URL>`.
 
 The authoritative execution input may be one of three validated sources: a GitHub

@@ -40,6 +40,22 @@ planning session → [optional upstream to-tickets] or direct issue filing
 next is a safety stub until #30, not a working selector
 ```
 
+`continuity-preflight` is the scoped read-only intake before substantial planning
+for a new topic and before a substantive planning write, including new issue
+creation, material scope changes, and priority/sequence decisions. It reconciles
+relevant open and closed issues and PRs, decisions, and current work, then
+recommends disposition and placement without writing state or selecting a global
+winner. Use the canonical invocation and result contract in
+[`prompts/continuity-preflight.md`](./prompts/continuity-preflight.md). A fresh
+result may be reused for the same scope while its material evidence remains
+current; refresh changed evidence before a separate write. If required reads,
+coverage, or the current recommendation are unavailable or contradictory, stop
+that intake decision and identify one inspection/recovery action rather than
+calling work new. Direct GitHub edits outside a caller and unobserved vendor
+installations cannot be mechanically enforced by this prompt. Routine CI,
+review, and status handling, and execution of an existing issue with a complete
+contract, do not trigger another full preflight.
+
 `triage-queue` is an optional shallow repository-wide selector for incoming or
 untriaged work, or issues whose bodies are not complete execution contracts. It
 recommends how open issues and external PRs should move through the state machine,

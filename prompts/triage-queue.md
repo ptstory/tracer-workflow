@@ -10,6 +10,11 @@ explicitly asked.
 
 ---
 
+This is a repository-wide queue pass, not a substitute for the read-only scoped
+[`continuity-preflight`](./continuity-preflight.md). Before substantive planning
+or writes for a new topic, run that preflight; routine queue/review/CI/status
+handling and execution of a complete existing issue do not require a repeat.
+
 Evaluate the open issue queue for `<REPO_URL_OR_OWNER_REPO>`.
 
 Use GitHub as the source of truth. Read open issues and, if the repo treats

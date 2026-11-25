@@ -4,6 +4,8 @@ import { describe, expect, test } from "bun:test";
 
 const workflow = readFileSync(resolve(import.meta.dir, "../WORKFLOW.md"), "utf8");
 const context = readFileSync(resolve(import.meta.dir, "../CONTEXT.md"), "utf8");
+const triageQueue = readFileSync(resolve(import.meta.dir, "../prompts/triage-queue.md"), "utf8");
+const agentBrief = readFileSync(resolve(import.meta.dir, "../prompts/agent-brief.md"), "utf8");
 const verdictContract = readFileSync(
   resolve(import.meta.dir, "../skills/review-gate/references/verdict-contract.md"),
   "utf8",
@@ -47,6 +49,17 @@ describe("workflow and context operational contract", () => {
     for (const stage of ["gh-triage-queue", "to-issues", "requesting-code-review", "receiving-code-review"]) {
       expect(stageInventory).toContain(`\`${stage}\``);
     }
+  });
+
+  test("routes substantive planning through continuity preflight and preserves exemptions", () => {
+    const routingSection = workflow.split("`continuity-preflight` is the scoped read-only intake")[1]?.split("`triage-queue` is an optional shallow")[0] ?? "";
+    expect(routingSection).toMatch(/before substantial planning\s+for a new topic and before a substantive planning write/);
+    expect(routingSection).toContain("prompts/continuity-preflight.md");
+    expect(workflow).toMatch(/Routine CI,\s+review, and status handling, and execution of an existing issue with a complete\s+contract, do not trigger another full preflight\./);
+    expect(triageQueue).toMatch(/not a substitute for the read-only scoped\s+\[`continuity-preflight`\]\(\.\/continuity-preflight\.md\)/);
+    expect(agentBrief).toMatch(/For substantive planning of a new topic or a material scope\/priority\/sequence\s+write, first use the read-only scoped\s+\[`continuity-preflight`\]\(\.\/continuity-preflight\.md\)/);
+    expect(triageQueue).toMatch(/routine queue\/review\/CI\/status\s+handling and execution of a complete existing issue do not require a repeat/);
+    expect(agentBrief).toMatch(/Do not repeat it for execution of an\s+existing issue with a complete contract or routine CI\/review\/status handling\./);
   });
 
   test("gives every canonical inventory row an evidence and drift status", () => {
