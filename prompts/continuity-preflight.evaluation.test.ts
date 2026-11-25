@@ -53,7 +53,7 @@ const fixtures: ContinuityEvaluationFixture[] = [
     candidate: {
       disposition: "continue-update",
       artifacts: [{ ref: "https://github.com/acme/repo/issues/29", state: "active" }],
-      sourceRefs: ["https://github.com/acme/repo/issues/29"],
+      sourceRefs: ["https://github.com/acme/repo/issues/29", "https://github.com/acme/repo/pulls?q=is%3Apr+is%3Aopen+dependency+intake"],
       placement: "preserve-current",
       placementRationale: "The exact matching issue is already current work and remains the recommendation.",
       findings: [{ ref: "https://github.com/acme/repo/issues/29", relationship: "binding" }],
@@ -66,7 +66,7 @@ const fixtures: ContinuityEvaluationFixture[] = [
     expected: {
       disposition: "continue-update",
       artifactStates: [{ ref: "https://github.com/acme/repo/issues/29", state: "active" }],
-      sourceRefs: ["https://github.com/acme/repo/issues/29"],
+      sourceRefs: ["https://github.com/acme/repo/issues/29", "https://github.com/acme/repo/pulls?q=is%3Apr+is%3Aopen+dependency+intake"],
       placement: "preserve-current",
       findings: [{ ref: "https://github.com/acme/repo/issues/29", relationship: "binding" }],
       priority: "unknown",
