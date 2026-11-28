@@ -13,6 +13,7 @@ import {
   parseCorrectivePullRequestReferences,
   reviewEvents,
   summarizeSession,
+  unsuccessfulSessionSummary,
   validateAllowanceObservation,
   type AllowanceObservation,
   type AttemptRecord,
@@ -104,10 +105,12 @@ const gateBody = [
 ].join("\n");
 
 describe("reviewEvents", () => {
-  test("parses allowlisted gates through shared parsers and ignores non-allowlisted comments", () => {
+  test("parses trusted gates and excludes a structurally valid gate from an untrusted reviewer", () => {
+    const trustedBody = gateBody;
+    const untrustedBody = trustedBody;
     const events = reviewEvents("sample-owner/example", 12, [
-      { author: { login: "review-bot" }, createdAt: "2026-10-01T10:05:00Z", body: gateBody },
-      { author: { login: "random-user" }, createdAt: "2026-10-01T10:06:00Z", body: gateBody.replace("needs-fix", "merge-candidate") },
+      { author: { login: "review-bot" }, createdAt: "2026-10-01T10:05:00Z", body: trustedBody },
+      { author: { login: "random-user" }, createdAt: "2026-10-01T10:06:00Z", body: untrustedBody },
     ], new Set(["review-bot"]));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
@@ -119,6 +122,7 @@ describe("reviewEvents", () => {
       reviewedFiles: 2,
       blockingSet: ["src/a.ts"],
     });
+    expect(events).toHaveLength(1);
   });
 });
 
@@ -178,6 +182,34 @@ function review(overrides: Partial<ReviewEvent> = {}): ReviewEvent {
 }
 
 describe("buildTaskLifecycle", () => {
+  test("counts unsuccessful sessions without a linked PR in the overall outcome", () => {
+    const attempts = [
+      attempt({ successful: false }),
+      attempt({ sessionId: "unlinked", repo: "sample-owner/example", prNumber: null, successful: false }),
+    ];
+    expect(unsuccessfulSessionSummary(attempts)).toEqual({ total: 2, unlinked: 1 });
+  });
+
+  test("reports uncertain transitions for unknown and mixed observed identities", () => {
+    for (const observedModel of [{ status: "unknown" as const }, { status: "mixed" as const, values: ["model-a", "model-b"] }]) {
+      const lifecycle = buildTaskLifecycle([
+        attempt(),
+        attempt({
+          sessionId: observedModel.status,
+          firstAt: "2026-10-01T10:10:00Z",
+          lastAt: "2026-10-01T10:12:00Z",
+          observedModel,
+        }),
+      ], [review()])[0];
+      expect(lifecycle.attempts[1].phase).toBe("uncertain");
+    }
+    const afterUnknown = buildTaskLifecycle([
+      attempt({ observedModel: { status: "unknown" } }),
+      attempt({ sessionId: "known-after-unknown", firstAt: "2026-10-01T10:10:00Z", observedModel: { status: "known", value: "model-b" } }),
+    ], [review()])[0];
+    expect(afterUnknown.attempts[1].phase).toBe("uncertain");
+  });
+
   test("keeps gate acceptance separate from actual merge state and reports outcomes", () => {
     const lifecycle = buildTaskLifecycle([
       attempt(),
@@ -188,7 +220,7 @@ describe("buildTaskLifecycle", () => {
         lastAt: "2026-10-01T10:12:00Z",
         successful: false,
         reopenedIssueNumbers: [12],
-        correctivePullRequestNumbers: [14],
+        correctivePullRequestNumbers: ["sample-owner/example#14"],
         recordedCost: 0.2,
       }),
       attempt({
@@ -212,7 +244,7 @@ describe("buildTaskLifecycle", () => {
     expect(lifecycle.repairAttempts).toBe(1);
     expect(lifecycle.escalated).toBe(true);
     expect(lifecycle.reopenedIssueNumbers).toEqual([12]);
-    expect(lifecycle.correctivePullRequestNumbers).toEqual([14]);
+    expect(lifecycle.correctivePullRequestNumbers).toEqual(["sample-owner/example#14"]);
     expect(lifecycle.totalRecordedCost).toBeCloseTo(0.6);
     expect(lifecycle.finalContextTokens).toBe(1100);
     expect(lifecycle.totalRecordedCost).not.toBe(lifecycle.finalContextTokens);
@@ -227,9 +259,19 @@ describe("buildTaskLifecycle", () => {
     expect(lifecycle.prMergedAt).toBe("2026-10-01T11:00:00Z");
   });
 
-  test("keeps same-file later PRs unlinked unless explicitly identified as corrective", () => {
-    expect(parseCorrectivePullRequestReferences("Updated the same paths in pull/99.")).toEqual([]);
-    expect(parseCorrectivePullRequestReferences("Corrective-PR: #19\nCorrective-PR: https://github.com/sample-owner/example/pull/20")).toEqual([19, 20]);
+  test("keeps repository identity on explicitly linked corrective PRs", () => {
+    expect(parseCorrectivePullRequestReferences("Updated the same paths in pull/99.", "sample-owner/example")).toEqual([]);
+    expect(parseCorrectivePullRequestReferences("Corrective-PR: #19\nCorrective-PR: https://github.com/sample-owner/example/pull/20\nCorrective-PR: https://github.com/foreign-owner/example/pull/20", "sample-owner/example")).toEqual([
+      "sample-owner/example#19",
+      "sample-owner/example#20",
+    ]);
+    expect(buildTaskLifecycle([
+      attempt({ correctivePullRequestNumbers: ["sample-owner/example#14"] }),
+      attempt({ sessionId: "another", correctivePullRequestNumbers: ["another-owner/example#14"] }),
+    ], [])[0].correctivePullRequestNumbers).toEqual(["another-owner/example#14", "sample-owner/example#14"]);
+    expect(parseCorrectivePullRequestReferences("Corrective-PR: #20", "another-owner/example")).toEqual([
+      "another-owner/example#20",
+    ]);
   });
 });
 
@@ -270,7 +312,33 @@ describe("persistence", () => {
       execFileSync("git", ["-C", repository, "remote", "add", "origin", "https://github.com/example/repo.git"]);
       const ghPath = join(bin, "gh");
       const crushPath = join(bin, "crush");
-      writeFileSync(ghPath, `#!/bin/sh\nprintf '%s\\n' '[{"number":12,"state":"OPEN","mergedAt":null,"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","headRefName":"main","body":"Corrective-PR: #14","closingIssuesReferences":[],"comments":[{"author":{"login":"reviewer"},"body":"review-secret","createdAt":"2026-10-01T10:05:00Z"}]}]'\n`);
+      const persistedVerdict = [
+        "## review-gate: needs-fix",
+        "head-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "review-round: 0",
+        "reviewed-files: 1",
+        "blocking-set: src/a.ts",
+        "next-action: from-pr-review https://github.com/sample-owner/repo/pull/12",
+        "",
+        "### Spec",
+        "- [medium] [fix-now] `src/a.ts` (review finding) — Persisted prose sentinel-redaction-token.",
+      ].join("\n");
+      const persistedPullRequest = [{
+        number: 12,
+        state: "OPEN",
+        mergedAt: null,
+        headRefOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        headRefName: "main",
+        body: "Corrective-PR: #14",
+        closingIssuesReferences: [],
+        comments: [
+          { author: { login: "reviewer" }, body: persistedVerdict, createdAt: "2026-10-01T10:05:00Z" },
+          { author: { login: "reviewer" }, body: "review-secret", createdAt: "2026-10-01T10:06:00Z" },
+        ],
+      }];
+      writeFileSync(ghPath, `#!/bin/sh
+printf '%s\\n' '${JSON.stringify(persistedPullRequest)}'
+`);
       writeFileSync(crushPath, `#!/bin/sh\nprintf '%s\\n' '{"meta":{"cost":0.2},"messages":[{"role":"user","text":"assistant-secret"},{"role":"assistant","model":"model-a","created":"2026-10-01T10:00:00Z","parts":[{"type":"tool_call","name":"bash","payload":"tool-secret"}]}]}'\n`);
       chmodSync(ghPath, 0o755);
       chmodSync(crushPath, 0o755);
@@ -292,9 +360,15 @@ describe("persistence", () => {
       expect(readFileSync(join(root, "attempts.jsonl"), "utf8")).toBe(firstAttempts);
       expect(readFileSync(join(root, "reviews.jsonl"), "utf8")).toBe(firstReviews);
       expect(readFileSync(join(root, "allowance-observations.jsonl"), "utf8")).toBe(firstAllowance);
+      const attemptRecords = firstAttempts.trim().split("\n").map((line) => JSON.parse(line));
+      const reviewRecords = firstReviews.trim().split("\n").map((line) => JSON.parse(line));
+      expect(attemptRecords).toHaveLength(1);
+      expect(attemptRecords[0]).toMatchObject({ repo: "example/repo", prNumber: 12, correctivePullRequestNumbers: ["example/repo#14"] });
+      expect(reviewRecords).toHaveLength(1);
+      expect(reviewRecords[0]).toMatchObject({ repo: "example/repo", prNumber: 12, verdict: "needs-fix", headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", reviewRound: 0, reviewedFiles: 1, blockingSet: ["src/a.ts"], blockingFindingCount: 1 });
       for (const name of ["attempts.jsonl", "reviews.jsonl", "sessions/session-1.json"]) {
         const persisted = readFileSync(join(root, name), "utf8");
-        for (const secret of ["assistant-secret", "tool-secret", "review-secret"]) expect(persisted).not.toContain(secret);
+        for (const secret of ["assistant-secret", "tool-secret", "review-secret", "sentinel-redaction-token"]) expect(persisted).not.toContain(secret);
       }
     } finally {
       if (previousPath === undefined) delete process.env.PATH;

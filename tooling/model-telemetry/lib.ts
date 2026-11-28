@@ -66,7 +66,7 @@ export type AttemptRecord = SessionMarker &
     prNumber: number | null;
     issueNumbers: number[];
     reopenedIssueNumbers: number[];
-    correctivePullRequestNumbers: number[];
+    correctivePullRequestNumbers: string[];
     issueStates: Record<string, string>;
     prState: string | null;
     prMergedAt: string | null;
@@ -91,7 +91,7 @@ export type ReviewEvent = {
 };
 
 export type LinkedAttempt = AttemptRecord & {
-  phase: "initial" | "continuation" | "repair" | "escalation";
+  phase: "initial" | "continuation" | "repair" | "escalation" | "uncertain";
   review: ReviewEvent | null;
 };
 
@@ -100,7 +100,7 @@ export type TaskLifecycle = {
   prNumber: number;
   issueNumbers: number[];
   reopenedIssueNumbers: number[];
-  correctivePullRequestNumbers: number[];
+  correctivePullRequestNumbers: string[];
   attempts: LinkedAttempt[];
   reviews: ReviewEvent[];
   gateAccepted: boolean;
@@ -115,6 +115,8 @@ export type TaskLifecycle = {
   prState: string | null;
   prMergedAt: string | null;
 };
+
+export type UnsuccessfulSessionSummary = { total: number; unlinked: number };
 
 export type AllowanceObservation = {
   version: 1;
@@ -258,10 +260,18 @@ function attemptEnd(attempt: AttemptRecord): string {
   return attempt.lastAt ?? attempt.firstAt ?? attempt.firstSeenAt;
 }
 
-function modelChanged(previous: AttemptRecord[], current: AttemptRecord): boolean {
+function modelTransition(previous: AttemptRecord[], current: AttemptRecord): "same" | "changed" | "unknown" {
   const prior = [...previous].reverse().find((attempt) => attempt.observedModel.status === "known");
-  return prior !== undefined && prior.observedModel.status === "known" && current.observedModel.status === "known" &&
-    prior.observedModel.value !== current.observedModel.value;
+  if (!prior || prior.observedModel.status !== "known" || current.observedModel.status !== "known") return "unknown";
+  return prior.observedModel.value === current.observedModel.value ? "same" : "changed";
+}
+
+export function unsuccessfulSessionSummary(attempts: AttemptRecord[]): UnsuccessfulSessionSummary {
+  const unsuccessful = attempts.filter((attempt) => attempt.successful === false);
+  return {
+    total: unsuccessful.length,
+    unlinked: unsuccessful.filter((attempt) => !attempt.repo || attempt.prNumber === null).length,
+  };
 }
 
 export function buildTaskLifecycle(
@@ -293,8 +303,10 @@ export function buildTaskLifecycle(
         .at(-1) ?? null;
       let phase: LinkedAttempt["phase"];
       if (index === 0) phase = "initial";
-      else if (priorReview?.verdict === "needs-fix") phase = modelChanged(prior, attempt) ? "escalation" : "repair";
-      else phase = "continuation";
+      else if (priorReview?.verdict === "needs-fix") {
+        const transition = modelTransition(prior, attempt);
+        phase = transition === "changed" ? "escalation" : transition === "same" ? "repair" : "uncertain";
+      } else phase = "continuation";
 
       const nextAttemptAt = taskAttempts[index + 1] ? attemptTime(taskAttempts[index + 1]) : null;
       const review = taskReviews.find(
@@ -313,7 +325,7 @@ export function buildTaskLifecycle(
       prNumber,
       issueNumbers: [...new Set(taskAttempts.flatMap((attempt) => attempt.issueNumbers))].sort((a, b) => a - b),
       reopenedIssueNumbers: [...new Set(taskAttempts.flatMap((attempt) => attempt.reopenedIssueNumbers))].sort((a, b) => a - b),
-      correctivePullRequestNumbers: [...new Set(taskAttempts.flatMap((attempt) => attempt.correctivePullRequestNumbers))].sort((a, b) => a - b),
+      correctivePullRequestNumbers: [...new Set(taskAttempts.flatMap((attempt) => attempt.correctivePullRequestNumbers))].sort(),
       attempts: linked,
       reviews: taskReviews,
       gateAccepted: taskReviews.some((review) => review.verdict === "merge-candidate"),
@@ -333,10 +345,16 @@ export function buildTaskLifecycle(
   return lifecycles.sort((a, b) => a.repo.localeCompare(b.repo) || a.prNumber - b.prNumber);
 }
 
-export function parseCorrectivePullRequestReferences(body: string): number[] {
-  return [...new Set([...body.matchAll(/^Corrective-PR:\s*(?:#(\d+)|https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/(\d+))\s*$/gim)]
-    .map((match) => Number(match[1] ?? match[2]))
-    .filter((number) => Number.isInteger(number) && number > 0))].sort((a, b) => a - b);
+export function parseCorrectivePullRequestReferences(body: string, repository: string): string[] {
+  const references = new Set<string>();
+  for (const match of body.matchAll(/^Corrective-PR:\s*(?:#(\d+)|https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+))\s*$/gim)) {
+    const prNumber = Number(match[1] ?? match[3]);
+    const referencedRepository = (match[2] ?? repository).toLowerCase();
+    if (Number.isInteger(prNumber) && prNumber > 0 && referencedRepository === repository.toLowerCase()) {
+      references.add(`${referencedRepository}#${prNumber}`);
+    }
+  }
+  return [...references].sort((left, right) => left.localeCompare(right));
 }
 
 export function validateAllowanceObservation(observation: AllowanceObservation): AllowanceObservation {

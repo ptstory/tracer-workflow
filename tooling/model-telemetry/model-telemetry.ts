@@ -19,6 +19,7 @@ import {
   normalizeGitHubRemote,
   parseCorrectivePullRequestReferences,
   reviewEvents,
+  unsuccessfulSessionSummary,
   trustedReviewerLogins,
   validateAllowanceObservation,
   type AllowanceObservation,
@@ -273,8 +274,8 @@ function sync(): { attempts: AttemptRecord[]; reviews: ReviewEvent[] } {
     const reopenedIssueNumbers = issueNumbers.filter((number) =>
       previous?.issueStates?.[String(number)] === "CLOSED" && issueStates[String(number)] === "OPEN",
     );
-    const correctivePullRequestNumbers = pr
-      ? [...parseCorrectivePullRequestReferences(pr.body ?? ""), ...(pr.comments ?? []).flatMap((comment) => parseCorrectivePullRequestReferences(comment.body ?? ""))]
+    const correctivePullRequestNumbers = pr && marker.repo
+      ? [...parseCorrectivePullRequestReferences(pr.body ?? "", marker.repo), ...(pr.comments ?? []).flatMap((comment) => parseCorrectivePullRequestReferences(comment.body ?? "", marker.repo!))]
       : previous?.correctivePullRequestNumbers ?? [];
     attempts.push({
       ...marker,
@@ -284,7 +285,7 @@ function sync(): { attempts: AttemptRecord[]; reviews: ReviewEvent[] } {
       issueNumbers,
       issueStates: Object.keys(issueStates).length ? issueStates : previous?.issueStates ?? {},
       reopenedIssueNumbers: [...new Set([...(previous?.reopenedIssueNumbers ?? []), ...reopenedIssueNumbers])],
-      correctivePullRequestNumbers: [...new Set(correctivePullRequestNumbers)].sort((a, b) => a - b),
+      correctivePullRequestNumbers: [...new Set(correctivePullRequestNumbers)].sort(),
       prState: pr?.state ?? previous?.prState ?? null,
       prMergedAt: pr?.mergedAt ?? previous?.prMergedAt ?? null,
     });
@@ -343,9 +344,10 @@ function report(args: string[]): void {
 
   const gateAccepted = lifecycles.filter((task) => task.gateAccepted);
   const merged = lifecycles.filter((task) => task.merged);
-  const unsuccessful = lifecycles.reduce((sum, task) => sum + task.unsuccessfulSessions, 0);
+  const unsuccessful = unsuccessfulSessionSummary(data.attempts);
   const repairs = lifecycles.reduce((sum, task) => sum + task.repairAttempts, 0);
   const escalations = lifecycles.filter((task) => task.escalated).length;
+  const uncertainTransitions = lifecycles.reduce((sum, task) => sum + task.attempts.filter((attempt) => attempt.phase === "uncertain").length, 0);
   const reopened = [...new Set(lifecycles.flatMap((task) => task.reopenedIssueNumbers))];
   const corrective = [...new Set(lifecycles.flatMap((task) => task.correctivePullRequestNumbers))];
 
@@ -353,9 +355,11 @@ function report(args: string[]): void {
   process.stdout.write(`PR lifecycles observed:       ${lifecycles.length}\n`);
   process.stdout.write(`Gate accepted:               ${gateAccepted.length}\n`);
   process.stdout.write(`PRs merged:                  ${merged.length}\n`);
-  process.stdout.write(`Unsuccessful sessions:       ${unsuccessful}\n`);
+  process.stdout.write(`Unsuccessful sessions:       ${unsuccessful.total}\n`);
+  process.stdout.write(`Unlinked unsuccessful:       ${unsuccessful.unlinked}\n`);
   process.stdout.write(`Repair attempts:             ${repairs}\n`);
   process.stdout.write(`Escalated lifecycles:        ${escalations}\n`);
+  process.stdout.write(`Uncertain transitions:       ${uncertainTransitions}\n`);
   process.stdout.write(`Reopened issues:             ${reopened.length}\n`);
   process.stdout.write(`Linked corrective PRs:       ${corrective.length}\n`);
   process.stdout.write(`Median final context:        ${number(median(gateAccepted.map((task) => task.finalContextTokens).filter((value): value is number => value !== null)))} tokens\n`);

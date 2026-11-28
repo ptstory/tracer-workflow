@@ -54,7 +54,7 @@ bun run model:report
 
 Sync reads session markers, requests saved metadata with `crush session show <id> --json`, resolves PRs and closing issues through GitHub, parses trusted Review Gate comments, and regenerates the derived ledgers. Set `TRACER_REVIEWER_LOGINS` to the trusted reviewer logins used by Tracer. Without a valid allowlist, attempts still sync and prior review telemetry is preserved; no new comments are trusted. No model is called during sync.
 
-Use `report --no-sync` for local-only ledger reads and `report --json` for lifecycle JSON. Reports keep separate counts for gate acceptance, actual merge state, unsuccessful sessions, repairs, escalations, reopened issues, and explicitly linked corrective PRs. A later PR that happens to touch the same files is not treated as corrective work. Corrective links use an explicit `Corrective-PR: #<number>` or full GitHub pull-request URL field.
+Use `report --no-sync` for local-only ledger reads and `report --json` for lifecycle JSON. Reports keep separate counts for gate acceptance, actual merge state, all unsuccessful sessions (including an explicit count of those without a linked PR), repairs, escalations, uncertain model transitions, reopened issues, and explicitly linked corrective PRs. A later PR that happens to touch the same files is not treated as corrective work. Corrective links use an explicit `Corrective-PR: #<number>` or a full GitHub pull-request URL for the same repository; foreign-repository URLs are ignored because the collector does not resolve or persist cross-repository PRs.
 
 ## Account-level allowance observations
 
@@ -72,6 +72,6 @@ Observations are account-level and always marked `unattributable`; contamination
 
 ## Outcome and cost semantics
 
-Gate acceptance is the trusted Review Gate `merge-candidate` signal. Actual merge state comes separately from the PR's GitHub state and `mergedAt`. A changed observed model after a needs-fix review is reported as an escalation; subsequent work on the same observed model is a repair attempt. Corrective PRs require an explicit `Corrective-PR` link. Issue reopening is identified when an issue previously observed closed is later observed open.
+Gate acceptance is the trusted Review Gate `merge-candidate` signal. Actual merge state comes separately from the PR's GitHub state and `mergedAt`. A known changed observed model after a needs-fix review is reported as an escalation; a known same observed model is a repair attempt. If either identity is unknown or mixed, the transition is reported as uncertain rather than inferred as a repair or escalation. Corrective PRs require an explicit `Corrective-PR` link. Issue reopening is identified when an issue previously observed closed is later observed open.
 
 Saved-session prompt/total/completion token counters are latest-step context/output snapshots; the report never sums them as cumulative spend. Cumulative saved session cost is reported independently and is not presented as account allowance consumption.
