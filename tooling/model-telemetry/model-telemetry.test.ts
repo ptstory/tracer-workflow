@@ -113,6 +113,7 @@ describe("reviewEvents", () => {
       { author: { login: "random-user" }, createdAt: "2026-10-01T10:06:00Z", body: untrustedBody },
     ], new Set(["review-bot"]));
     expect(events).toHaveLength(1);
+    expect(events[0].commentedAt).toBe("2026-10-01T10:05:00Z");
     expect(events[0]).toMatchObject({
       repo: "sample-owner/example",
       prNumber: 12,
@@ -265,6 +266,14 @@ describe("buildTaskLifecycle", () => {
     expect(lifecycle.prMergedAt).toBe("2026-10-01T11:00:00Z");
   });
 
+  test("keeps same-file later PRs unlinked unless explicitly identified as corrective", () => {
+    expect(parseCorrectivePullRequestReferences("Updated the same paths in pull/99.", "sample-owner/example")).toEqual([]);
+    expect(parseCorrectivePullRequestReferences("Corrective-PR: #19\nCorrective-PR: https://github.com/sample-owner/example/pull/20\nCorrective-PR: https://github.com/foreign-owner/example/pull/20", "sample-owner/example")).toEqual([
+      "sample-owner/example#19",
+      "sample-owner/example#20",
+    ]);
+  });
+
   test("keeps repository identity on explicitly linked corrective PRs", () => {
     expect(parseCorrectivePullRequestReferences("Updated the same paths in pull/99.", "sample-owner/example")).toEqual([]);
     expect(parseCorrectivePullRequestReferences("Corrective-PR: #19\nCorrective-PR: https://github.com/sample-owner/example/pull/20\nCorrective-PR: https://github.com/foreign-owner/example/pull/20", "sample-owner/example")).toEqual([
@@ -278,6 +287,14 @@ describe("buildTaskLifecycle", () => {
     expect(parseCorrectivePullRequestReferences("Corrective-PR: #20", "another-owner/example")).toEqual([
       "another-owner/example#20",
     ]);
+    const lifecycle = buildTaskLifecycle([
+      attempt({ sessionId: "local-a", correctivePullRequestNumbers: ["sample-owner/example#14"] }),
+      attempt({ sessionId: "local-b", correctivePullRequestNumbers: ["sample-owner/example#14"] }),
+    ], [])[0];
+    expect(lifecycle.correctivePullRequestNumbers).toEqual(["sample-owner/example#14"]);
+    expect(buildTaskLifecycle([
+      attempt({ sessionId: "foreign", correctivePullRequestNumbers: ["another-owner/example#14"] }),
+    ], [])[0].correctivePullRequestNumbers).toEqual(["another-owner/example#14"]);
   });
 });
 
@@ -410,6 +427,27 @@ printf '%s\\n' '${JSON.stringify(persistedPullRequest)}'
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(repository, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("report", () => {
+  test("includes failures without a linked PR in the unsuccessful session total", () => {
+    const root = mkdtempSync(join(tmpdir(), "model-telemetry-report-"));
+    try {
+      writeFileSync(join(root, "attempts.jsonl"), [
+        JSON.stringify(attempt({ successful: false })),
+        JSON.stringify(attempt({ sessionId: "unlinked-report", repo: null, prNumber: null, successful: false })),
+      ].join("\n") + "\n");
+      writeFileSync(join(root, "reviews.jsonl"), "");
+      const output = execFileSync("bun", [telemetryCli, "report", "--no-sync"], {
+        encoding: "utf8",
+        env: { ...process.env, TRACER_MODEL_TELEMETRY_ROOT: root, TRACER_REVIEWER_LOGINS: "reviewer" },
+      });
+      expect(output).toContain("Unsuccessful sessions:       2");
+      expect(output).toContain("Unlinked unsuccessful:       1");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

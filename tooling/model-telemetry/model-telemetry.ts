@@ -327,7 +327,7 @@ function money(value: number | null): string {
   return value === null ? "-" : `$${value.toFixed(3)}`;
 }
 
-function report(args: string[]): void {
+export function report(args: string[]): void {
   const shouldSync = !args.includes("--no-sync");
   const data = shouldSync
     ? sync()
@@ -410,9 +410,11 @@ function help(): never {
   process.exit(2);
 }
 
-const [command, ...args] = process.argv.slice(2);
-if (command === "mark") mark(args);
-else if (command === "sync") sync();
-else if (command === "report") report(args);
-else if (command === "allowance" && args[0] === "add") writeAllowanceObservation(args.slice(1));
-else help();
+if (import.meta.main) {
+  const [command, ...args] = process.argv.slice(2);
+  if (command === "mark") mark(args);
+  else if (command === "sync") sync();
+  else if (command === "report") report(args);
+  else if (command === "allowance" && args[0] === "add") writeAllowanceObservation(args.slice(1));
+  else help();
+}
