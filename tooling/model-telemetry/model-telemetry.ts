@@ -336,15 +336,15 @@ export function report(args: string[]): void {
         reviews: readJsonl<ReviewEvent>(REVIEWS_PATH),
       };
   const lifecycles = buildTaskLifecycle(data.attempts, data.reviews);
+  const unsuccessful = unsuccessfulSessionSummary(data.attempts);
 
   if (args.includes("--json")) {
-    process.stdout.write(`${JSON.stringify(lifecycles, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ lifecycles, unsuccessfulSessions: unsuccessful }, null, 2)}\n`);
     return;
   }
 
   const gateAccepted = lifecycles.filter((task) => task.gateAccepted);
   const merged = lifecycles.filter((task) => task.merged);
-  const unsuccessful = unsuccessfulSessionSummary(data.attempts);
   const repairs = lifecycles.reduce((sum, task) => sum + task.repairAttempts, 0);
   const escalations = lifecycles.filter((task) => task.escalated).length;
   const uncertainTransitions = lifecycles.reduce((sum, task) => sum + task.attempts.filter((attempt) => attempt.phase === "uncertain").length, 0);

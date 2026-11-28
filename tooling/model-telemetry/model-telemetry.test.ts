@@ -453,6 +453,11 @@ describe("report", () => {
       });
       expect(output).toContain("Unsuccessful sessions:       2");
       expect(output).toContain("Unlinked unsuccessful:       1");
+      const jsonOutput = execFileSync("bun", [telemetryCli, "report", "--no-sync", "--json"], {
+        encoding: "utf8",
+        env: { ...process.env, TRACER_MODEL_TELEMETRY_ROOT: root, TRACER_REVIEWER_LOGINS: "reviewer" },
+      });
+      expect(JSON.parse(jsonOutput).unsuccessfulSessions).toEqual({ total: 2, unlinked: 1 });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
