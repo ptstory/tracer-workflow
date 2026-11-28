@@ -23,10 +23,10 @@ const telemetryCli = join(import.meta.dir, "model-telemetry.ts");
 
 describe("normalizeGitHubRemote", () => {
   test("normalizes SSH and HTTPS GitHub origins", () => {
-    expect(normalizeGitHubRemote("git@github.com:ptstory/thread-atlas.git")).toBe("ptstory/thread-atlas");
-    expect(normalizeGitHubRemote("https://github.com/ptstory/thread-atlas.git")).toBe("ptstory/thread-atlas");
-    expect(normalizeGitHubRemote("ssh://git@github.com/ptstory/thread-atlas")).toBe("ptstory/thread-atlas");
-    expect(normalizeGitHubRemote("https://gitlab.com/ptstory/thread-atlas.git")).toBeNull();
+    expect(normalizeGitHubRemote("git@github.com:sample-owner/thread-atlas.git")).toBe("sample-owner/thread-atlas");
+    expect(normalizeGitHubRemote("https://github.com/sample-owner/thread-atlas.git")).toBe("sample-owner/thread-atlas");
+    expect(normalizeGitHubRemote("ssh://git@github.com/sample-owner/thread-atlas")).toBe("sample-owner/thread-atlas");
+    expect(normalizeGitHubRemote("https://gitlab.com/sample-owner/thread-atlas.git")).toBeNull();
   });
 });
 
@@ -100,18 +100,18 @@ const gateBody = [
   "review-round: 0",
   "reviewed-files: 2",
   "blocking-set: src/a.ts",
-  "next-action: from-pr-review https://github.com/ptstory/example/pull/12",
+  "next-action: from-pr-review https://github.com/sample-owner/example/pull/12",
 ].join("\n");
 
 describe("reviewEvents", () => {
   test("parses allowlisted gates through shared parsers and ignores non-allowlisted comments", () => {
-    const events = reviewEvents("ptstory/example", 12, [
+    const events = reviewEvents("sample-owner/example", 12, [
       { author: { login: "review-bot" }, createdAt: "2026-10-01T10:05:00Z", body: gateBody },
       { author: { login: "random-user" }, createdAt: "2026-10-01T10:06:00Z", body: gateBody.replace("needs-fix", "merge-candidate") },
     ], new Set(["review-bot"]));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      repo: "ptstory/example",
+      repo: "sample-owner/example",
       prNumber: 12,
       verdict: "needs-fix",
       headSha: "1111111111111111111111111111111111111111",
@@ -130,7 +130,7 @@ function attempt(overrides: Partial<AttemptRecord> = {}): AttemptRecord {
     projectDir: "/tmp/repo",
     configuredModel: "configured-a",
     firstSeenAt: "2026-10-01T10:00:00Z",
-    repo: "ptstory/example",
+    repo: "sample-owner/example",
     branch: "issue-12",
     headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     capturedAt: "2026-10-01T10:03:00Z",
@@ -162,7 +162,7 @@ function attempt(overrides: Partial<AttemptRecord> = {}): AttemptRecord {
 
 function review(overrides: Partial<ReviewEvent> = {}): ReviewEvent {
   return {
-    repo: "ptstory/example",
+    repo: "sample-owner/example",
     prNumber: 12,
     verdict: "needs-fix",
     headSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -229,7 +229,7 @@ describe("buildTaskLifecycle", () => {
 
   test("keeps same-file later PRs unlinked unless explicitly identified as corrective", () => {
     expect(parseCorrectivePullRequestReferences("Updated the same paths in pull/99.")).toEqual([]);
-    expect(parseCorrectivePullRequestReferences("Corrective-PR: #19\nCorrective-PR: https://github.com/ptstory/example/pull/20")).toEqual([19, 20]);
+    expect(parseCorrectivePullRequestReferences("Corrective-PR: #19\nCorrective-PR: https://github.com/sample-owner/example/pull/20")).toEqual([19, 20]);
   });
 });
 
