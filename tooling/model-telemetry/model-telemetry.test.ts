@@ -295,6 +295,13 @@ describe("buildTaskLifecycle", () => {
     expect(buildTaskLifecycle([
       attempt({ sessionId: "foreign", correctivePullRequestNumbers: ["another-owner/example#14"] }),
     ], [])[0].correctivePullRequestNumbers).toEqual(["another-owner/example#14"]);
+    expect(buildTaskLifecycle([
+      attempt({ repo: "sample-owner/example", correctivePullRequestNumbers: ["sample-owner/example#14"] }),
+      attempt({ repo: "another-owner/example", correctivePullRequestNumbers: ["another-owner/example#14"] }),
+    ], []).map((task) => task.correctivePullRequestNumbers)).toEqual([
+      ["another-owner/example#14"],
+      ["sample-owner/example#14"],
+    ]);
   });
 });
 
