@@ -208,6 +208,12 @@ describe("buildTaskLifecycle", () => {
       attempt({ sessionId: "known-after-unknown", firstAt: "2026-10-01T10:10:00Z", observedModel: { status: "known", value: "model-b" } }),
     ], [review()])[0];
     expect(afterUnknown.attempts[1].phase).toBe("uncertain");
+    const unknownImmediatelyBefore = buildTaskLifecycle([
+      attempt(),
+      attempt({ sessionId: "unknown-between", firstAt: "2026-10-01T10:10:00Z", observedModel: { status: "unknown" } }),
+      attempt({ sessionId: "known-after-unknown", firstAt: "2026-10-01T10:20:00Z", observedModel: { status: "known", value: "model-a" } }),
+    ], [review()])[0];
+    expect(unknownImmediatelyBefore.attempts[2].phase).toBe("uncertain");
   });
 
   test("keeps gate acceptance separate from actual merge state and reports outcomes", () => {

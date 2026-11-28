@@ -261,7 +261,7 @@ function attemptEnd(attempt: AttemptRecord): string {
 }
 
 function modelTransition(previous: AttemptRecord[], current: AttemptRecord): "same" | "changed" | "unknown" {
-  const prior = [...previous].reverse().find((attempt) => attempt.observedModel.status === "known");
+  const prior = previous.at(-1);
   if (!prior || prior.observedModel.status !== "known" || current.observedModel.status !== "known") return "unknown";
   return prior.observedModel.value === current.observedModel.value ? "same" : "changed";
 }
