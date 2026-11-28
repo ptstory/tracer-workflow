@@ -318,7 +318,7 @@ describe("persistence", () => {
         "review-round: 0",
         "reviewed-files: 1",
         "blocking-set: src/a.ts",
-        "next-action: from-pr-review https://github.com/sample-owner/repo/pull/12",
+        "next-action: from-pr-review https://github.com/example/repo/pull/12",
         "",
         "### Spec",
         "- [medium] [fix-now] `src/a.ts` (review finding) — Persisted prose sentinel-redaction-token.",
