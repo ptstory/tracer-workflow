@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { validatePrBody } from "../../scripts/check-pr-body";
 import {
   attributableAllowanceObservations,
   allowlistedSessionFields,
@@ -471,6 +472,30 @@ describe("report", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("pull request body", () => {
+  test("keeps the closing issue reference when regenerating evidence", () => {
+    const body = [
+      "Closes #301",
+      "",
+      "## Summary",
+      "```text",
+      "telemetry marker -> local ledgers",
+      "```",
+      "",
+      "## Evidence",
+      "- Head SHA: 0000000000000000000000000000000000000000",
+      "",
+      "## Merge Danger",
+      "Door: two-way",
+      "Blast Radius: Local telemetry can be removed without changing any service.",
+      "",
+      "## Docs",
+      "README updated with new outcome semantics.",
+    ].join("\n");
+    expect(validatePrBody(body, "0000000000000000000000000000000000000000")).toEqual([]);
   });
 });
 
